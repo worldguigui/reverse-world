@@ -17,7 +17,10 @@ export function createProject({ name = '未命名世界', description = '' } = {
     version: 1,
     name,
     description,
-    timePoints: [], // { id, label, mapId, rmapId }（图片底图 / 栅格底图，空 = 继承上一个时间点）
+    // { id, label, mapId, rmapId, image }
+    //   mapId / rmapId = 贴到球上的底图（图片 / 栅格），空 = 继承上一个时间点
+    //   image          = 这个时代自己的插图，纯资料图，不贴球面
+    timePoints: [],
     maps: [],       // { id, name, dataUrl } 图片底图
     rasterMaps: [], // { id, name, w, h, dataUrl } 栅格底图（PNG：R=高度 G=河流）
     entries: [],    // { id, title, description, image, lat, lng, color, from, to }
@@ -64,8 +67,8 @@ function nextColor(project) {
 
 // ---------------------------------------------------------------- 时间点
 
-export function addTimePoint(project, { label = '新时间点', mapId = null, rmapId = null, id = uid('tp') } = {}) {
-  const tp = { id, label, mapId, rmapId };
+export function addTimePoint(project, { label = '新时间点', mapId = null, rmapId = null, image = null, id = uid('tp') } = {}) {
+  const tp = { id, label, mapId, rmapId, image };
   project.timePoints.push(tp);
   return tp;
 }
@@ -76,6 +79,7 @@ export function updateTimePoint(project, id, patch) {
   if ('label' in patch) tp.label = String(patch.label || tp.label);
   if ('mapId' in patch) tp.mapId = patch.mapId;   // null 表示继承
   if ('rmapId' in patch) tp.rmapId = patch.rmapId; // 栅格底图优先于图片底图
+  if ('image' in patch) tp.image = patch.image || null; // 时代插图，null = 没有
   return tp;
 }
 

@@ -1,4 +1,5 @@
 import { useStore } from '../../../store/index.js';
+import { fileToDataUrl } from '../../../utils/files.js';
 import { Labeled } from '../common.jsx';
 
 const STATS = [
@@ -6,12 +7,14 @@ const STATS = [
   ['routes', '路线'], ['regions', '区域'],
 ];
 
-/** 没有选中任何对象时的世界概览：名称、简介、统计格 */
+/** 没有选中任何对象时的世界概览：名称、简介、统计格、当前切面的配图 */
 export function OverviewPanel() {
   const project = useStore((s) => s.project);
   const counts = useStore((s) => s.derived.counts);
   const timeIndex = useStore((s) => s.timeIndex);
   const updateProject = useStore((s) => s.updateProject);
+  const updateTimePoint = useStore((s) => s.updateTimePoint);
+  const pickImage = useStore((s) => s.pickImage);
 
   const tp = project.timePoints[timeIndex];
 
@@ -45,6 +48,30 @@ export function OverviewPanel() {
           </div>
         ))}
       </div>
+
+      {/* 当前切面的配图，做法与条目配图完全一致（见 panels/ItemEditor.jsx）。
+          配图属于时代：换一个时间点就是换一张图 */}
+      {tp && (
+        <>
+          <div className="field-label">{`配图 · ${tp.label}`}</div>
+          {tp.image ? (
+            <div style={{ display: 'grid', gap: '6px' }}>
+              <img className="entry-img" src={tp.image} alt="" />
+              <button className="btn" onClick={() => updateTimePoint(tp.id, { image: null })}>移除配图</button>
+            </div>
+          ) : (
+            <button
+              className="btn"
+              onClick={async () => {
+                const file = await pickImage();
+                if (file) updateTimePoint(tp.id, { image: await fileToDataUrl(file, 1024) });
+              }}
+            >
+              ⬆ 上传配图
+            </button>
+          )}
+        </>
+      )}
 
       <p className="insp-hint" style={{ marginTop: '10px' }}>
         {tp

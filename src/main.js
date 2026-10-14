@@ -340,7 +340,7 @@ async function main() {
     clock.last = now;
     tweens.update();
     globe.update?.(dt, camera);
-    rig.update();
+    rig.update(dt); // 自转按真实秒数走，帧率高低都转一样快
     processHover();
     render();
   });

@@ -12,7 +12,6 @@ export function ProjectMenu({ onClose }) {
   const exportProject = useStore((s) => s.exportProject);
   const openWorkshop = useStore((s) => s.openWorkshop);
   const generateRealEarth = useStore((s) => s.generateRealEarth);
-  const importCities = useStore((s) => s.importCities);
   const select = useStore((s) => s.select);
 
   const item = (label, run) => (
@@ -27,7 +26,6 @@ export function ProjectMenu({ onClose }) {
       <div className="menu-sep" />
       {item('🖌 地形工坊（当前时代）', () => openWorkshop())}
       {item('🌐 真实地球地形（当前时代）', () => generateRealEarth())}
-      {item('🏙 导入真实城市', () => importCities())}
       <div className="menu-sep" />
       {item('📂 导入项目 (.world.json)', () => pickFile('.json,application/json').then((f) => f && importFile(f)))}
       {item('💾 导出项目', exportProject)}

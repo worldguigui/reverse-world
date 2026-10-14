@@ -19,6 +19,7 @@ export const createUISlice = (set, get) => ({
   workshopSize: 8,
   workshopStrength: 0.08,
   workshopHard: true,      // true=硬笔（无扩散），false=软笔（高斯）
+  workshopZoom: 1,         // 画布缩放倍数（1 = 适应窗口），只给顶栏读数用
   canUndo: false,
   canRedo: false,
   settingsOpen: false,
@@ -71,10 +72,11 @@ export const createUISlice = (set, get) => ({
   resetWorkshopBrush() {
     set({
       workshopTool: 'raise', workshopSize: 8, workshopStrength: 0.08,
-      workshopHard: true, canUndo: false, canRedo: false,
+      workshopHard: true, workshopZoom: 1, canUndo: false, canRedo: false,
     });
   },
   setWorkshopBrush(patch) { set(patch); },
+  setWorkshopZoom(zoom) { set({ workshopZoom: zoom }); },
   setWorkshopFlags({ canUndo, canRedo }) { set({ canUndo, canRedo }); },
   toggleSettings() { set((s) => ({ settingsOpen: !s.settingsOpen })); },
   setSettingsOpen(open) { set({ settingsOpen: open }); },

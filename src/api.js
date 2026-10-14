@@ -22,6 +22,8 @@ export function installAPI({ ctx, project }) {
     // —— 相机 ——
     flyTo: (lat, lng, opts = {}) => ctx.flyTo(lat, lng, opts),
     where: () => ctx.where(),
+    /** 复位视角：地平线掰回正北，飞回设置里的初始经纬度 */
+    resetView: () => ctx.resetView(),
 
     // —— 地形 ——
     /** 打开当前时代的地形工坊 */
@@ -55,6 +57,7 @@ export function installAPI({ ctx, project }) {
       + "world.addRoute({ title, points: [{lat,lng}...] }) 加路线\n"
       + "world.addRegion({ name, ring: [[lng,lat]...] })  加区域\n"
       + 'world.flyTo(lat, lng, { distance, duration })    飞到坐标\n'
+      + 'world.where() / resetView()                     当前视角 / 复位视角\n'
       + 'world.openWorkshop() / generateRealEarth()       地形工坊 / 真实地球\n'
       + 'world.importCities()                             导入真实城市\n'
       + 'world.paintTerrain(lat, lng, { tool, size, strength, passes }) 涂画笔\n'

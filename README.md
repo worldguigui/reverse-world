@@ -15,16 +15,16 @@
 - **前端框架**：React + Zustand，仅接管 UI 层与状态层（`core/`、`view/` 不进框架）；构建产物相对路径，可静态部署。
 - **命令**：`npm install` / `npm run dev`（http://localhost:5173）/ `npm run build`（dist/）。
 - **验证脚本**（`scripts/`，依赖本机 Edge + 已启动 dev server）：`node scripts/verify-terrain.mjs`（地形端到端）、`node scripts/ui-test.mjs`（UI 交互）、`node scripts/shot.mjs`（截图）。
-- **编程入口**：浏览器控制台 `window.world`（由 `src/api.js#installAPI` 挂载），提供 `help()/loadSample()/setTime()/generateRealEarth()/openWorkshop()/paintTerrain()/sampleTerrain()/importCities()/addEntry()/flyTo()` 等。
+- **编程入口**：浏览器控制台 `window.world`（由 `src/api.js#installAPI` 挂载），提供 `help()/loadSample()/setTime()/generateRealEarth()/openWorkshop()/paintTerrain()/sampleTerrain()/importCities()/addEntry()/flyTo()/where()/resetView()` 等。
 
 ### 2. 核心概念
 
 - **世界项目** = 时间点序列 + 底图（图片 / 栅格地形）+ 内容（条目/路线/区域），整体是一个可 JSON 序列化的对象（`src/core/project.js#createProject`）。
-- **时间点（切面）**：手工定义的有序节点；每个时间点可绑定自己的地形快照——大陆漂移、沧海桑田就是切换时间点。底图沿时间轴向上继承（`project.js#mapAt/rasterAt`）。
+- **时间点（切面）**：手工定义的有序节点；每个时间点可绑定自己的地形快照——大陆漂移、沧海桑田就是切换时间点。底图沿时间轴向上继承（`project.js#mapAt/rasterAt`）。每个时间点还可以挂一张**配图**（`image` 字段，做法与条目配图完全一致）：它是这个时代的资料图（手稿、势力图、插画……），与「贴到球面上的底图」是两回事，渲染管线完全不读它，只随项目一起存与导出。在世界概览里上传与移除。
 - **内容生命周期**：每条内容有「出现于 / 消失于」（`from/to` 时间点 id，留空 = 自始/至今），可见性判定唯一位置 `project.js#isActiveAt`（闭区间 `from <= index <= to`）。
 - **栅格地形**：等距圆柱投影高度网格（默认 512×256，可升 1024×512）+ 河流通路；高度用归一化单位（0=海平面，[-4,4] 设计范围）。渲染成「色带 + hillshade」贴图，**GPU 顶点位移让山从球面上真正隆起**。
 - **海陆掩膜（可选）**：一张二值「是陆是海」的图（`core/landmask.js`），只回答海陆判定，不参与高度。**不是强制规则**——自定义世界可以没有它，没有时按高度正负判海陆，与旧行为一致；真实地球预设自带一份 `public/textures/earth-water.png`，用来把低海拔城市从海里捞回来。
-- **地形工坊**：全屏栅格画笔（抬升/降低/抹平/河流，硬笔/软笔），每笔实时反映到球体；撤销/重做；一键从真实地球生成。
+- **地形工坊**：全屏栅格画笔（抬升/降低/抹平/河流，硬笔/软笔），笔刷最小可到**一格**，每笔实时反映到球体；画布支持滚轮缩放与拖动平移；撤销/重做；一键从真实地球生成。
 
 ### 3. 分层架构
 
@@ -37,17 +37,17 @@ src/
   utils/files.js   浏览器文件操作：loadImage（栅格与海陆掩膜各自取用，互不依赖）
   api.js           window.world 编程接口（自动化/未来后端驱动入口）
   store/           状态层（Zustand，唯一状态源，全部可序列化）
-    ui.js          交互态：编辑模式、选中、绘制中数据、草稿、浮层开关、提示条、
+    ui.js          交互态：编辑模式、选中、绘制中数据、草稿、浮层开关、提示条、工坊缩放读数、
                    layoutEpoch/touchLayout（「只有地形变了」信号，区别于内容变化）
     world.js       世界数据：project + 当前切面 + derived 派生快照（内容信号）+ mutateProject 写入收口
     view.js        画面设置：viewConfig 与 setViewConfig/applyView
-    actions.js     复合动作：新建/载入/导出、飞行、工坊、地形生成、示例世界、文件导入
+    actions.js     复合动作：新建/载入/导出、飞行/复位视角、工坊、地形生成、示例世界、文件导入
   session.js       非序列化运行态：renderer/scene/相机/图层、当前网格、栅格解码缓存、
                    自动保存器、切面应用的竞态令牌（eraToken）与幂等记录（appliedEra）
   bridge.js        store → 三维的单向同步：订阅 derived/切面/选中，重建图层、应用切面、切面底图预解
   core/            数据核心层（纯数据/纯算法，不依赖 three）
-    project.js     数据模型：时间点/图片底图/栅格底图/条目/路线/区域 + 切面可见性
-    raster.js      TerrainGrid：画笔/色带/hillshade/采样/重采样/PNG 编解码。只管「多高」
+    project.js     数据模型：时间点（含配图）/图片底图/栅格底图/条目/路线/区域 + 切面可见性
+    raster.js      TerrainGrid：画笔（最小 1 格）/色带/hillshade/采样/重采样/PNG 编解码。只管「多高」
     landmask.js    LandMask：二值海陆场 + 离岸距离（倒角距离变换）。只管「是陆是海」，可选
     realearth.js   真实地球：高程图 + 海陆掩膜合成、河流栅格化、城市导入
     storage.js     IndexedDB 持久化 + 防抖自动保存 + .world.json 导出/导入
@@ -59,12 +59,14 @@ src/
     markers.js     条目标注层（Sprite，贴地 + 背面剔除拾取）
     routes.js      路线层（大圆弧细分 + Line2 像素宽度）
     regions.js     区域层（earcut 剖分 + 球面递归细分防弦陷）
-    camera.js      轨道相机（OrbitControls 封装）+ flyTo 球面飞行
+    camera.js      自由翻滚相机：四元数 trackball 管旋转、OrbitControls 只管缩放，
+                   + flyTo 球面飞行、resetView 复位视角
   ui/              UI 层（React）
     react/         五个面板组件 + mount.js（每面板一个 root）+ hooks.js（订阅派生信号）
       Toolbar / Timeline / Inspector / SettingsPanel / Workshop + panels/（检查器各子表单）
     registry.js    面板挂载表：容器 id → 组件
-    workshop-session.js  工坊会话：网格、撤销/重做栈、指针涂抹（大 buffer 不进 store）
+    workshop-session.js  工坊会话：网格、撤销/重做栈、指针涂抹、画布视图（缩放/平移）
+                         （大 buffer 不进 store）
 scripts/           headless Edge 端到端验证（verify-terrain / ui-test / shot）
 public/            静态资源：data/*.geojson（河流/城市）、textures/earth-topology.png（高程）、
                    textures/earth-water.png（海陆掩膜）
@@ -78,6 +80,8 @@ public/            静态资源：data/*.geojson（河流/城市）、textures/e
 - **贴图对准**：`utils.js#latLngToVec3` 与 `SphereGeometry` 的 UV 展开一致。
 - **球面弦陷防护**：区域按边长 ≤2° 递归四分割（`view/regions.js#pushSubdivided`，深度上限 6），路线走大圆弧 slerp 细分（`view/routes.js#arcPositions`，≤2°/段）。
 - **背面剔除拾取**：`view/markers.js#pick` 按 `dot(标注方向, 相机方向) > 1/相机距离 + 0.02` 过滤地平线以下。
+- **自由翻滚的相机**（`view/camera.js`）：OrbitControls 的球坐标把 `phi` 从相机位置 `acos` 出来，恒落在 `[0, π]`，绕极点时被夹住——这是表示法的限制，参数怎么调都过不去。所以旋转改由自己用四元数做 trackball：拖动时按「屏幕右 / 屏幕上」两个轴构造四元数，**同时**乘到相机的位置与 `up` 上。相机永远看原点、且 `up ⊥ 视线`，两者同步旋转后这个关系不变（OrbitControls 自己的坐标系里 `phi` 恒为 π/2，它的往返换算仍然精确），于是可以越过南北极、把地平线转歪。缩放仍交给 OrbitControls——距离计算与朝向无关，没必要重写。自转也改为绕世界 Y 轴（南北极）而非相机上方向：翻过球之后两者不一致，用后者会变成绕屏幕竖线打转。转晕了用 🧭 复位视角 / `world.resetView()` 回到正北朝上。
+- **工坊画布视图**（`ui/workshop-session.js`）：画布按「一格一 CSS 像素」写死尺寸，缩放平移全走 CSS `transform: translate() scale()`，**不动画布分辨率**——改分辨率等于重采样，图会糊。缩放锚点直接用画布自己的 `getBoundingClientRect()` 算：它返回的是**变换后**的矩形，于是 `toGrid` 那条「屏幕坐标 → 网格坐标」的换算在任意缩放下自动成立，不必手写变换的逆。
 - **栅格存储**：整张地形编码为一张 PNG（`core/raster.js#encodePNG`：R+G=16-bit 高度 [-4,4]，B=河流），IndexedDB 单条记录 500ms 防抖自动保存，导出为内嵌图片的单文件 `.world.json`（`core/storage.js`）。
 - **数据驱动渲染（两级信号）**：store 里刻意区分两种变化——「内容变了」（增删改条目/路线/区域、切时间点）与「只是地形变了」（工坊画笔、`paintTerrain`）。
   - 前者 → `bridge.js#refreshLayers()` 从 `P.activeItems` 全量重建三层；
@@ -120,7 +124,16 @@ public/            静态资源：data/*.geojson（河流/城市）、textures/e
 
 > 更新规则：**新版本条目插入本列表顶部**（最新在上），保持「从头检索先见最新」。历史条目只追加不改。
 
-### v0.2.0 海陆掩膜与三处卡顿修复（2026-10-13）
+### v0.0.3 工坊视口、时代插图与自由翻滚（2026-10-13）
+
+1. **笔刷可以小到一格**：工坊画笔下限由 2 格放到 1 格。1 格不能沿用原来「距离 ≤ 半径」的判据——正交四邻的距离恰好也等于整数 1，会被一并圈进来，落成一个十字形的 5 格；改成 `radius <= 1` 时只命中指针所在的那一格（`core/raster.js#applyBrush`）。
+2. **工坊画布可滚轮缩放与拖动平移**（`ui/workshop-session.js`）：滚轮以光标为锚点缩放（光标底下那一格保持不动），中键 / 右键 / Shift+左键拖动平移，顶栏加缩放读数与「⤢ 适应窗口」。画布不再靠 `object-fit: contain` 铺满，改为原尺寸 + CSS `transform`，缩放倍数 1×（适应窗口）到 32×；外层新增 `.wk-stage` 负责裁切，`ResizeObserver` 在窗口变化时重算适应比例并让容器中心那一格留在原地。
+3. **时间点可挂一张配图**（`core/project.js` 的 `image` 字段）：做法与**条目配图完全一致**——世界概览里一个「⬆ 上传配图」，有图则显示图片与「移除配图」。配图属于时代，跟着切面走；它与「贴到球面上的底图」是两回事，渲染管线完全不读它，随项目一起保存与导出。
+4. **相机可以任意方向翻滚**（`view/camera.js`）：原先的轨道相机受 OrbitControls 球坐标限制——`phi` 由 `acos` 导出、恒在 `[0, π]`，到极点就被夹死（实测从 88° 出发连续五次同向拖拽都停在 90.000）。改为自己用四元数做 trackball，拖动时同时旋转相机位置与 `up`，于是能越过南北极、把地平线转歪；缩放仍交给 OrbitControls。自转改为绕世界 Y 轴（南北极）而非相机上方向，`main.js` 传入真实秒数使帧率高低转速一致。新增 🧭 复位视角（`world.resetView()`）。
+5. **项目菜单移除「导入真实城市」**：下拉菜单不再暴露这一项；`world.importCities()` 与时间点编辑器里的导入按钮保持不变。
+6. **验收**：`scripts/verify-terrain.mjs` 与 `scripts/ui-test.mjs` 全绿、无运行时报错；`npm run build` 通过。
+
+### v0.0.2 海陆掩膜与三处卡顿修复（2026-10-13）
 
 1. **新增可选的海陆掩膜** `core/landmask.js` + `public/textures/earth-water.png`：二值「是陆是海」场（外扩 1 格抹掉图上的细河线、保住沿海城市），另提供 `distanceToLand()` 倒角距离变换，供海洋深浅推导使用。
 2. **高程与海陆解耦**：`core/raster.js` 只管「多高」，`core/landmask.js` 只管「是陆是海」，两者互不认识；`core/realearth.js` 才把它们拼起来。掩膜是**可选的**——自定义世界不必有它，没有掩膜时按高度正负判海陆，与旧行为一致。不再为了真实厚度升级整个高程系统，现有视觉立体效果原样保留。
@@ -131,7 +144,7 @@ public/            静态资源：data/*.geojson（河流/城市）、textures/e
 7. 顺带修复示例世界「亚特兰蒂斯高地」跑到南半球：`core/sample.js#atCell` 用 `res` 当作纬度方向格数，实际纵向格数是横向的一半。
 8. 图片读取搬到 `utils/files.js`（`loadImage`），栅格与掩膜各自取用，互不依赖。
 
-### v0.1.0 UI 层与状态层 React 化（2026-10-13）
+### v0.0.1 UI 层与状态层 React 化（2026-10-13）
 
 1. 引入 React 19 + Zustand：UI 层五个面板（顶栏 / 时间轴 / 检查器 / 画面设置 / 地形工坊）改由 React 组件渲染，每面板一个 root；`core/`、`view/` 不进框架。
 2. 新增 `store/` 作为唯一状态源（分 ui / world / view / actions 四片，全部可 `JSON.stringify`），原先散在 `main.js#state` 与各面板闭包里的状态集中于此。

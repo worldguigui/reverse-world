@@ -10,9 +10,12 @@ const TOOLS = [
   ['river', '💧 河流', '拖动画出河流，宽度由笔刷大小决定'],
 ];
 
-/** 画布本身是网格自带的节点，塞进来后要撑满容器并保持像素感 */
-const CANVAS_STYLE = 'width:100%;height:100%;object-fit:contain;image-rendering:pixelated;'
-  + 'cursor:crosshair;background:#000;touch-action:none;display:block;';
+/**
+ * 画布本身是网格自带的节点，塞进来后按「一格一 CSS 像素」摆好，缩放交给 transform。
+ * 尺寸由 workshop-session 在 attachCanvas 时写死（跟着网格分辨率走），这里只管定位与像素感。
+ */
+const CANVAS_STYLE = 'position:absolute;left:0;top:0;transform-origin:0 0;'
+  + 'image-rendering:pixelated;cursor:crosshair;background:#000;touch-action:none;display:block;';
 
 /**
  * 底图工坊：全屏栅格绘制。
@@ -27,21 +30,23 @@ export function Workshop({ container }) {
   const hard = useStore((s) => s.workshopHard);
   const canUndo = useStore((s) => s.canUndo);
   const canRedo = useStore((s) => s.canRedo);
+  const zoom = useStore((s) => s.workshopZoom);
   const setWorkshopBrush = useStore((s) => s.setWorkshopBrush);
   const [generating, setGenerating] = useState(false);
   const wrapRef = useRef(null);
 
-  // 容器常驻 DOM，只切 .hidden——不卸载，E2E 与样式都按这个来
+  // 容器常驻 DOM，只切 .hidden——不卸载，E2E 与样式都按这个来。
+  // 这一步必须排在下面挂画布之前：容器还 display:none 时量不出尺寸，算不出适应窗口的比例。
   useEffect(() => { container.classList.toggle('hidden', !open); }, [container, open]);
 
-  // 把网格的画布插进容器并装上绘制事件；关掉时原样摘走，画布留着下次用
+  // 把网格的画布插进容器并装上涂抹/平移/缩放；关掉时原样摘走，画布留着下次用
   useEffect(() => {
     const canvas = open ? W.workshop.grid?.colorCanvas : null;
     const wrap = wrapRef.current;
     if (!canvas || !wrap) return undefined;
     canvas.style.cssText = CANVAS_STYLE;
     wrap.appendChild(canvas);
-    const detach = W.attachCanvas(canvas);
+    const detach = W.attachCanvas(canvas, wrap);
     return () => {
       detach();
       if (canvas.parentNode === wrap) wrap.removeChild(canvas);
@@ -78,6 +83,10 @@ export function Workshop({ container }) {
       <div className="wk-top glass">
         <span className="wk-title">🖌 底图工坊</span>
         <span className="wk-dim">{`${grid.w}×${grid.h} 栅格 · 画完切到主视图看球体效果`}</span>
+        <span className="wk-dim">{`缩放 ${Math.round(zoom * 100)}%`}</span>
+        <button className="btn btn-mini" title="恢复「整张地图铺满窗口」" onClick={() => W.fitView()}>
+          ⤢ 适应窗口
+        </button>
         <span style={{ flex: 1 }} />
         <button className="btn" disabled={!canUndo} onClick={() => W.undo()}>↶ 撤销</button>
         <button className="btn" disabled={!canRedo} onClick={() => W.redo()}>↷ 重做</button>
@@ -103,10 +112,10 @@ export function Workshop({ container }) {
           ))}
 
           <div className="wk-slider">
-            <span className="field-label">笔刷大小 </span><b>{size}</b>
+            <span className="field-label">笔刷大小 </span><b>{size} 格</b>
             <input
               type="range"
-              min={2}
+              min={1}
               max={48}
               value={size}
               onChange={(e) => setWorkshopBrush({ workshopSize: +e.target.value })}
@@ -132,10 +141,18 @@ export function Workshop({ container }) {
             {hard ? '■ 硬笔（无扩散）' : '● 软笔（高斯）'}
           </button>
 
-          <p className="insp-hint">硬笔=半径内全强度，画垂直悬崖/方柱/笔直边界；软笔=高斯自然山脉。按住拖动连续涂抹。</p>
+          <p className="insp-hint">
+            硬笔=半径内全强度，画垂直悬崖/方柱/笔直边界；软笔=高斯自然山脉。按住拖动连续涂抹。
+            <br />
+            <b>滚轮</b>缩放（以光标为中心），<b>Shift+左键 / 中键 / 右键拖动</b>平移。
+            笔刷最小 1 格，放大到看得清落点再抠细节。
+          </p>
         </div>
 
-        <div className="wk-canvas-wrap" ref={wrapRef} />
+        {/* 画布绝对定位在 .wk-stage 里，靠 transform 缩放；外层只管边框与裁切 */}
+        <div className="wk-canvas-wrap">
+          <div className="wk-stage" ref={wrapRef} />
+        </div>
       </div>
     </div>
   );

@@ -137,6 +137,9 @@ export const createActionsSlice = (set, get) => ({
   flyTo(lat, lng, opts) { session.rig?.flyToLatLng(lat, lng, opts); },
   where: () => session.rig?.getLatLngZoom(),
 
+  /** 复位视角：把地平线掰回正北、飞回初始经纬度。自由翻滚之后靠它回家 */
+  resetView() { session.rig?.resetView(); },
+
   /** 飞到某个内容的代表位置（路线的首个途经点、区域的第一个顶点） */
   flyToItem(kind, item) {
     let lat, lng;

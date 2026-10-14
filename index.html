@@ -216,10 +216,13 @@
     .wk-slider { display: grid; gap: 4px; font-size: 12px; color: var(--ink-dim); margin-top: 6px; }
     .wk-slider input { width: 100%; accent-color: var(--accent); }
     .wk-canvas-wrap {
-      flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
-      border: 1px solid var(--line); border-radius: 10px; padding: 10px;
+      flex: 1; min-width: 0; display: flex; overflow: hidden;
+      border: 1px solid var(--line); border-radius: 10px;
       background: rgba(4, 8, 18, 0.6);
     }
+    /* 画布的定位容器：画布绝对定位在里面，缩放平移都靠 transform，
+       所以要裁切——不做的话放大后的图会盖到侧栏上去 */
+    .wk-stage { position: relative; flex: 1; min-width: 0; overflow: hidden; }
   </style>
 </head>
 <body>

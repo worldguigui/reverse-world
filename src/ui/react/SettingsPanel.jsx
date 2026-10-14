@@ -76,6 +76,7 @@ export function SettingsPanel() {
   const config = useStore((s) => s.viewConfig);
   const setViewConfig = useStore((s) => s.setViewConfig);
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
+  const resetView = useStore((s) => s.resetView);
   // 收起时整个渲染成空，容器靠 #settings:empty 隐掉（与检查器同一套办法）
   if (!open) return null;
 
@@ -126,6 +127,8 @@ export function SettingsPanel() {
       <Group title="📷 视角">
         <Slider label="视场角 FOV" value={config.camera.fov} min={20} max={90} step={1}
           onChange={(v) => set({ camera: { fov: v } })} />
+        {/* 球可以往任意方向连续翻滚，转晕了就按这个把「上」掰回正北 */}
+        <button className="btn" onClick={() => resetView()}>🧭 复位视角（正北朝上）</button>
         <Check label="自动旋转" checked={config.rotation.enabled}
           onChange={(v) => set({ rotation: { enabled: v } })} />
         <Slider label="旋转速度 °/s" value={config.rotation.speed} min={0} max={5} step={0.05}

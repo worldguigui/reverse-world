@@ -47,7 +47,7 @@ export class TerrainGrid {
   /**
    * 在格点 (cx, cy) 应用画笔。
    * @param {'raise'|'lower'|'smooth'|'river'} kind
-   * @param {number} radius 半径（格）
+   * @param {number} radius 半径（格）。1 = 只落当前这一格（最小笔刷）
    * @param {number} strength 强度（厚度），raise/lower 为归一化高度增量
    * @param {boolean} [hard=false]  true=硬笔（方波硬边，半径内全 strength，不做高斯扩散）
    * @returns {[x,y,w,h]|null 受影响矩形（渲染脏区）
@@ -59,11 +59,18 @@ export class TerrainGrid {
     const y1 = Math.min(this.h - 1, Math.ceil(cy + radius) + 1);
     const r2 = radius * radius;
 
+    // 半径 1 是「一格笔刷」：只落指针所在的那一格（格 (x,y) 覆盖 [x,x+1)，中心在 x+0.5）。
+    // 不能走下面 d2 > r2 的判据——正交的四个邻居距离正好等于 1，会被一并圈进来，
+    // 变成十字形的 5 格，那不是「1 像素」。
+    const single = radius <= 1;
+    const tx = Math.floor(cx);
+    const ty = Math.floor(cy);
+
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         const dx = x - cx, dy = y - cy;
         const d2 = dx * dx + dy * dy;
-        if (d2 > r2) continue;
+        if (single ? (x !== tx || y !== ty) : d2 > r2) continue;
         const i = this.idx(x, y);
         // fall 决定该格影响力度：硬笔=1（半径内全强度），软笔=高斯衰减边缘趋 0
         const fall = hard ? 1 : Math.exp((-4.5 * d2) / Math.max(1e-6, r2));
