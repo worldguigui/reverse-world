@@ -1,6 +1,6 @@
 /**
  * 画面设置（区别于「世界观数据」——那些存在项目文件里）。
- * 这里只管渲染观感：视角、光照、大气、星空、标注大小。
+ * 这里只管渲染观感：视角、光照、大气、星空、地名与光点的尺寸。
  * localStorage 持久化，所有 GUI/API 修改的都是同一个 config 对象。
  */
 
@@ -31,7 +31,8 @@ export const DEFAULT_CONFIG = {
   },
   stars: { enabled: true, count: 4000 },
   markers: {
-    size: 0.05,        // 标注世界尺寸
+    labelPx: 15,       // 地名在屏幕上的高度（像素）：跟真实地图一样不随远近缩放
+    dotPx: 18,         // 选中事件那个光点的直径（像素）
     routeWidth: 3,     // 路线像素宽度
     fillOpacity: 0.32, // 区域填充不透明度
   },

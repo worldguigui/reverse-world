@@ -5,5 +5,4 @@ dist/
 .claude/
 docs/
 scripts/
-
-
+/shot*.png

@@ -34,8 +34,11 @@ export class RegionLayer {
     this._lineBin = createMaterialBin(32, () => new THREE.LineBasicMaterial({ transparent: true }));
   }
 
-  /** 重建全部区域（切面切换或数据变更后调用） */
-  refresh(regions) {
+  /**
+   * 重建全部区域。只有内容真的变了才调——每个区域都要重新三角剖分、递归细分、再投到球面。
+   * 收全部区域而不是当前游标下在场的那批，此后游标怎么走都只翻可见性。
+   */
+  build(regions) {
     this._clearBuilt();
     const fillOpacity = this.getConfig().markers.fillOpacity;
     for (const region of regions) {
@@ -81,6 +84,14 @@ export class RegionLayer {
     }
   }
 
+  /** 只改「谁在场」；游标每走一步都会调，所以只翻 visible，几何一概不重算 */
+  setActive(ids) {
+    for (const [id, e] of this.byId) {
+      if (e.fill) e.fill.visible = ids.has(id);
+      e.line.visible = ids.has(id);
+    }
+  }
+
   _add(obj) {
     obj.layers.set(LAYER_CONTENT); // 单独一趟渲染，见 render-layers.js
     this.group.add(obj);
@@ -121,7 +132,8 @@ export class RegionLayer {
 
   /** 射线拾取填充面，返回区域 id 或 null */
   pick(raycaster) {
-    const meshes = [...this.byId.values()].map((e) => e.fill).filter(Boolean);
+    // 不在场的区域只是 visible=false，射线不看这个标志，得自己筛掉
+    const meshes = [...this.byId.values()].map((e) => e.fill).filter((f) => f && f.visible);
     const hits = raycaster.intersectObjects(meshes, false);
     return hits.length ? hits[0].object.userData.itemId : null;
   }

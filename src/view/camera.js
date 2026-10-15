@@ -52,9 +52,14 @@ export class CameraRig {
     controls.minDistance = config.minDistance;
     controls.maxDistance = config.maxDistance;
 
-    // 用户一上手（拖拽/滚轮），立刻打断进行中的 flyTo 动画
-    domElement.addEventListener('pointerdown', () => tweens.cancel('camera'));
-    domElement.addEventListener('wheel', () => tweens.cancel('camera'), { passive: true });
+    // 用户一上手（拖拽/滚轮），立刻打断进行中的 flyTo 动画，并通知外部
+    // （回放的自动跟拍据此让位：镜头归用户，叙事照旧往下走）
+    const interrupt = () => {
+      tweens.cancel('camera');
+      this.onUserInterrupt?.();
+    };
+    domElement.addEventListener('pointerdown', interrupt);
+    domElement.addEventListener('wheel', interrupt, { passive: true });
 
     domElement.addEventListener('pointerdown', this._onDown);
     domElement.addEventListener('pointermove', this._onMove);

@@ -1,5 +1,5 @@
 import { useStore } from '../../../store/index.js';
-import { Labeled, TimeSelect } from '../common.jsx';
+import { Labeled, YearInput } from '../common.jsx';
 
 /**
  * 绘制路线 / 区域时的表单。
@@ -52,10 +52,10 @@ export function DrawForm({ kind }) {
       </Labeled>
 
       <Labeled label="出现于">
-        <TimeSelect value={form.from} onChange={(v) => saveDrawForm({ from: v })} />
+        <YearInput value={form.from} onChange={(v) => saveDrawForm({ from: v })} />
       </Labeled>
       <Labeled label="消失于">
-        <TimeSelect value={form.to} onChange={(v) => saveDrawForm({ to: v })} nullLabel="至今" />
+        <YearInput value={form.to} onChange={(v) => saveDrawForm({ to: v })} placeholder="至今" />
       </Labeled>
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>

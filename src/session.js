@@ -10,7 +10,8 @@ export const session = {
   scene: null,
   camera: null,
   globe: null,
-  markers: null,
+  labels: null,         // 地名层：每条地点一块贴地的四边形，字画在上面
+  eventDot: null,       // 事件光点层：整层只有一个点，跟着当前选中的事件走
   routes: null,
   regions: null,
   rig: null,
@@ -18,9 +19,8 @@ export const session = {
 
   autosaver: null,     // 防抖自动保存（core/storage.js#createAutoSaver）
 
-  currentGrid: null,   // 当前切面的 TerrainGrid（贴地采样 / 画笔 / 工坊）
+  currentGrid: null,    // 舞台的 TerrainGrid（贴地采样 / 画笔 / 工坊）；没有地形时为 null
   gridCache: new Map(), // rmapId → TerrainGrid（工坊编辑后回填）
-  eraToken: 0,          // 切面切换的序号：快速连切时用来丢弃过期的那次异步解码结果
-  appliedEra: null,     // { project, key } 已经生效的切面目标，用来认掉重复的 applyEra
-  applyingEra: null,    // { project, key } 正在解码中的切面目标，避免同一个目标解码两次
+  stageToken: 0,        // 换脸的序号：连换两张底图时用来丢弃过期的那次异步解码结果
+  applyingStage: false, // 正在解码贴图中，供「要不要等它」判断
 };

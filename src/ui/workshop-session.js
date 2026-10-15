@@ -10,7 +10,6 @@ import { useStore } from '../store/index.js';
 export const workshop = {
   grid: null,        // 正在编辑的 TerrainGrid（由打开方决定是克隆还是直接绑定）
   binding: null,     // 直接编辑已存在的栅格底图时记下 { rmapId }
-  tp: null,          // 正在编辑哪个时间点
   hooks: null,       // { onChange, onCommit, onCancel, loadRealEarth }
   undoStack: [],
   redoStack: [],
@@ -35,10 +34,9 @@ function syncFlags() {
   });
 }
 
-export function beginWorkshop({ grid, binding = null, tp, hooks }) {
+export function beginWorkshop({ grid, binding = null, hooks }) {
   workshop.grid = grid;
   workshop.binding = binding;
-  workshop.tp = tp;
   workshop.hooks = hooks;
   workshop.undoStack = [];
   workshop.redoStack = [];
@@ -53,7 +51,6 @@ export function beginWorkshop({ grid, binding = null, tp, hooks }) {
 export function endWorkshop() {
   workshop.grid = null;
   workshop.binding = null;
-  workshop.tp = null;
   workshop.hooks = null;
   workshop.undoStack = [];
   workshop.redoStack = [];

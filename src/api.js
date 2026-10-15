@@ -1,23 +1,64 @@
 /**
  * 对外编程接口，挂在 window.world 上：
  * 可在控制台、自动化脚本（scripts/verify-world.mjs）里驱动整个工具。
+ *
+ * 时间轴只有一根游标（数值年，负数为公元前），没有「第几个切面」这种槽位概念：
+ * setCursor(1914) 就是「看 1914 年那一刻的全场」。
  */
-export function installAPI({ ctx, project }) {
+import { timeDomain } from './core/timeline.js';
+
+export function installAPI({ ctx, project, cursor }) {
   const get = () => project();
 
   const api = {
     // —— 时间轴 ——
-    listTimePoints: () => get()?.timePoints.map((t, i) => ({ index: i, id: t.id, label: t.label })) ?? [],
-    setTime: (index) => ctx.setTime(index),
-    addTimePoint: (label = '新时间点') => { const tp = ctx.addTimePoint({ label }); return tp?.id; },
+    /** 游标停在哪一年。走 getter 现取：ctx 是组装那一刻的状态快照，读它的字段会一直停在初始值 */
+    getCursor: () => cursor(),
+    setCursor: (year) => ctx.setCursor(year),
+    /** 时间轴定义域 { min, max, start, end }；没有任何内容带时间时是 null */
+    getDomain: () => timeDomain(get()),
+    /** 前后跳一个刻度 */
+    stepCursor: (dir) => ctx.stepCursor(dir),
+    /** 跳到某条事件发生的那一年，并把它飞进视野 */
+    jumpToEvent: (id) => ctx.jumpToEvent(id),
+    /** 摊开 / 收起编年史长卷 */
+    showChronicle: (open = true) => ctx.setChronicleOpen(open),
 
     // —— 内容 ——
-    /** 当前切面可见的条目 */
+    /** 当前游标下在场的地点 */
     listEntries: () => ctx.activeEntries(),
     addEntry: (data) => ctx.addEntryViaApi(data),
+    /** 当前游标下在场的事件（含没有地点的纯叙事事件） */
+    listEvents: () => ctx.activeEvents(),
+    addEvent: (data) => ctx.addEventViaApi(data),
     addRoute: (data) => ctx.addRouteViaApi(data),
     addRegion: (data) => ctx.addRegionViaApi(data),
     removeItem: (kind, id) => ctx.removeItem(kind, id),
+
+    // —— 人物 ——
+    /** 全部人物。人物不分在场：生卒是生平，不拿来筛事件 */
+    listCharacters: () => ctx.characters(),
+    addCharacter: (data) => ctx.addCharacterViaApi(data),
+    /** 某个人物涉及的事件，按时间先后。反向关系现算，人物上不存清单 */
+    eventsOfCharacter: (id) => ctx.eventsOfCharacter(id),
+
+    // —— 章节与视图条件 ——
+    /** 全部章节，按录入先后 */
+    listGroups: () => ctx.groups(),
+    addGroup: (data) => ctx.addGroupViaApi(data),
+    /** 某个章节里的事件，按时间先后 */
+    eventsOfGroup: (id) => ctx.eventsOfGroup(id),
+    /** 当前视图条件 { groupId, characterId }，两者都空就是「全部」 */
+    getViewFilter: () => ctx.currentView(),
+    /** 只看某一章（收窄长卷、时间轴刻度与球上的事件；地点路线区域不受影响） */
+    filterByGroup: (id) => ctx.setViewFilter({ groupId: id ?? null, characterId: null }),
+    /**
+     * 只看某个人物涉及的事件。这一组是**算出来的**——不落盘、不进 chapters，
+     * 换成别的筛选就没了。收窄的是事件的在场集合，不是数据本身。
+     */
+    filterByCharacter: (id) => ctx.setViewFilter({ groupId: null, characterId: id ?? null }),
+    /** 退出筛选，长卷与时间轴回到「全部」 */
+    clearFilter: () => ctx.setViewFilter({ groupId: null, characterId: null }),
 
     // —— 相机 ——
     flyTo: (lat, lng, opts = {}) => ctx.flyTo(lat, lng, opts),
@@ -26,11 +67,11 @@ export function installAPI({ ctx, project }) {
     resetView: () => ctx.resetView(),
 
     // —— 地形 ——
-    /** 打开当前时代的地形工坊 */
+    /** 打开地形工坊 */
     openWorkshop: () => ctx.openWorkshop(),
-    /** 为当前时代生成真实地球地形（高程+河流） */
+    /** 生成真实地球地形（高程+河流） */
     generateRealEarth: () => ctx.generateRealEarth(),
-    /** 导入真实城市（Natural Earth 243 城）为条目 */
+    /** 导入真实城市（Natural Earth 243 城）为地点 */
     importCities: () => ctx.importCities(),
     /** 采样某经纬度的归一化高度（-1..1，0=海平面），无地形返回 null */
     sampleTerrain: (lat, lng) => ctx.sampleTerrain(lat, lng),
@@ -49,13 +90,23 @@ export function installAPI({ ctx, project }) {
     // eslint-disable-next-line no-console
     console.log(
       '%c window.world API %c\n'
-      + 'world.listTimePoints()                          时间点列表\n'
-      + 'world.setTime(index)                            切换切面\n'
-      + "world.addTimePoint('第三纪')                     新增时间点\n"
-      + 'world.listEntries()                             当前切面的条目\n'
-      + "world.addEntry({ title, lat, lng, from, to })    加条目（from/to 传时间点 id 或 null）\n"
+      + 'world.getCursor() / setCursor(year)             游标停在哪一年（负数 = 公元前）\n'
+      + 'world.getDomain()                               时间轴定义域，没有内容带时间时是 null\n'
+      + 'world.stepCursor(±1) / jumpToEvent(id)          前后跳一个刻度 / 跳到某条事件\n'
+      + 'world.showChronicle(true)                       摊开 / 收起编年史长卷\n'
+      + 'world.listEntries()                             当前游标下在场的地点\n'
+      + "world.addEntry({ title, lat, lng, from, to })    加地点（from/to 是年份，留空 = 常驻）\n"
+      + 'world.listEvents()                              当前游标下在场的事件\n'
+      + "world.addEvent({ title, lat, lng, from, to })    加事件（lat/lng 可省 = 纯叙事，不上球）\n"
       + "world.addRoute({ title, points: [{lat,lng}...] }) 加路线\n"
       + "world.addRegion({ name, ring: [[lng,lat]...] })  加区域\n"
+      + 'world.listGroups() / eventsOfGroup(id)          章节清单 / 某章里的事件\n'
+      + "world.addGroup({ name })                         加章节\n"
+      + 'world.filterByGroup(id) / filterByCharacter(id)  只看某一章 / 某个人物涉及的事件\n'
+      + 'world.getViewFilter() / clearFilter()           当前筛选条件 / 退出筛选\n'
+      + 'world.listCharacters()                        全部人物\n'
+      + "world.addCharacter({ name, aliases, born, died })  加人物（born/died 留空 = 不详）\n"
+      + 'world.eventsOfCharacter(id)                     某个人物涉及的事件\n'
       + 'world.flyTo(lat, lng, { distance, duration })    飞到坐标\n'
       + 'world.where() / resetView()                     当前视角 / 复位视角\n'
       + 'world.openWorkshop() / generateRealEarth()       地形工坊 / 真实地球\n'

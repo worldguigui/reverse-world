@@ -7,7 +7,7 @@ import { addItem } from './project.js';
  * 真实地球数据管线：三份数据各自成层，谁也不认识谁。
  *   高程图  → TerrainGrid.height（多高）
  *   海陆掩膜 → 哪一格是陆地、离岸多远（是陆是海）
- *   河网 / 城市 → 河流通道与条目标注
+ *   河网 / 城市 → 河流通道与地点标注
  * 「高程 + 海陆」在这里合成，但两边都不需要知道对方：raster 只认高度数值，
  * landmask 只认二值海陆，换掉任意一份都不牵动另一份，也不牵动渲染。
  * 数据文件在 public/data/、public/textures/（Natural Earth / three-globe，公共领域）。
@@ -145,8 +145,11 @@ function stampCircle(channel, w, h, cx, cy, radius) {
   }
 }
 
-/** Natural Earth 城市点 → 普通条目标注（复用标注/检查器全套能力） */
-export async function importCitiesAsEntries(project, tpId, { minPop = 0 } = {}) {
+/**
+ * Natural Earth 城市点 → 普通地点标注（复用标注/检查器全套能力）。
+ * 一座城市几千年都在那儿，所以不带时间——它们是常驻地点，与游标无关。
+ */
+export async function importCitiesAsEntries(project, { minPop = 0 } = {}) {
   const geo = await fetch(CITIES_URL).then((r) => r.json());
   let n = 0;
   for (const feature of geo.features) {
@@ -158,7 +161,7 @@ export async function importCitiesAsEntries(project, tpId, { minPop = 0 } = {}) 
     addItem(project, 'entry', {
       title: p.name ?? '无名城',
       description: `${p.featurecla ?? ''}${pop ? ` · 人口约 ${fmtPop(pop)}` : ''}`,
-      lat, lng, from: tpId,
+      lat, lng,
     });
     n++;
   }

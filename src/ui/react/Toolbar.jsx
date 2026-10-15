@@ -6,14 +6,16 @@ import { ProjectMenu } from './ProjectMenu.jsx';
 /** 各编辑模式下显示在右上角的一句提示 */
 const MODE_HINTS = {
   browse: '',
-  'add-entry': '单击球面放置条目，Esc 退出',
+  'add-entry': '单击球面放置地点，Esc 退出',
+  'add-event': '单击球面给它一个地点（也可以不点），Esc 退出',
   'draw-route': '单击依次添加途经点，Enter 完成',
   'draw-region': '单击勾画边界（≥3 点），靠近起点点击或 Enter 闭合',
 };
 
 const MODES = [
   { id: 'browse', label: '🖐 浏览', title: '浏览模式：悬停查看、单击选中、双击定位' },
-  { id: 'add-entry', label: '📍 条目', title: '在球面上单击放置条目' },
+  { id: 'add-entry', label: '📍 地点', title: '在球面上单击放置地点' },
+  { id: 'add-event', label: '⚡ 事件', title: '在球面上单击给它一个地点；不点则是没有地点的纯叙事事件' },
   { id: 'draw-route', label: '🛤 路线', title: '依次单击途经点绘制路线' },
   { id: 'draw-region', label: '🏳 区域', title: '逐点勾画势力区域' },
 ];
@@ -70,6 +72,23 @@ export function Toolbar() {
 
       <div className="bar-side">
         <span className="mode-hint" id="mode-hint">{MODE_HINTS[mode] ?? ''}</span>
+        {/* 人物与章节都不进模式那一排：它们不改球面的交互方式，只是把检查器翻到另一页 */}
+        <button
+          className="mode-btn"
+          id="tb-characters"
+          title="人物：录入角色，看他们各自涉及哪些事件"
+          onClick={() => select({ kind: 'characters' })}
+        >
+          🧝 人物
+        </button>
+        <button
+          className="mode-btn"
+          id="tb-groups"
+          title="章节：把事件分成有名字的一组组"
+          onClick={() => select({ kind: 'groups' })}
+        >
+          📖 章节
+        </button>
         <button className="icon-btn" title="画面设置" onClick={() => toggleSettings()}>⚙</button>
       </div>
 

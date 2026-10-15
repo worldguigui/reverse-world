@@ -94,7 +94,7 @@ export class Globe {
 
   /**
    * 内容图层的深度掩膜：一个「不含地形起伏」的正球，只写深度、不写颜色。
-   * 主循环第二趟单独画它，第三趟画条目/路线/区域时就有了一份光滑球面的深度——
+   * 主循环第二趟单独画它，第三趟画地点/事件/路线/区域时就有了一份光滑球面的深度——
    * 于是内容不会被鼓起来的山挡住（山在半径 1 之上，掩膜在 1 上），
    * 但转到球背面仍然会被它正确挡住。
    * 分段数取得比球体高：轮廓越接近正圆，贴着地平线的标注越不会闪烁。
@@ -119,7 +119,7 @@ export class Globe {
   /**
    * 换底图时刻意不碰 sphereMat.needsUpdate。
    * three 里 needsUpdate 会让材质 version++，下一帧整个地形着色器要重新编译并链接——
-   * 实测一次 100ms 以上，正好落在切面切换那一帧上，就是「切时代卡一下」的来源。
+   * 实测一次 100ms 以上，正好落在换底图那一帧上，就是「换一次底图卡一下」的来源。
    * 这里换的只是 map 与几个 uniform，着色器分支（有没有贴图）从构造起就没变过，
    * 根本不需要重编译；真要改分支，改的是 onBeforeCompile 本身，那时才该 needsUpdate。
    */
@@ -339,7 +339,7 @@ function makePlaceholderTexture() {
   ctx.fillStyle = 'rgba(160, 190, 255, 0.5)';
   ctx.font = '22px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('尚无底图 · 在右侧时间点中用地形工坊绘制或从真实地球生成', w / 2, h / 2 - 30);
+  ctx.fillText('尚无底图 · 在右侧「编辑地形」里画一张，或从真实地球生成', w / 2, h / 2 - 30);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;

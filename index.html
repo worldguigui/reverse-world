@@ -116,6 +116,28 @@
     .stat b { display: block; font-size: 16px; }
     .stat span { font-size: 10px; color: var(--ink-dim); }
     .entry-img { width: 100%; border-radius: 8px; border: 1px solid var(--line); }
+    /* 人物清单与「涉及的事件」清单共用的一行：左边一栏定宽，右边标题占满可溢出省略 */
+    .char-list { display: grid; gap: 4px; }
+    .char-row {
+      display: flex; align-items: baseline; gap: 8px; text-align: left; cursor: pointer;
+      padding: 6px 8px; border-radius: 6px; font-family: inherit; font-size: 12.5px;
+      background: rgba(110, 168, 255, 0.08); border: 1px solid transparent; color: var(--ink);
+    }
+    .char-row:hover { background: rgba(110, 168, 255, 0.2); }
+    .char-row b { flex: 0 0 auto; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .char-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-dim); }
+    /* 章节清单：一行一个章节，上行改名、下行是条数与范围加两个动作 */
+    .chap-list { display: grid; gap: 12px; }
+    .chap-row { display: grid; gap: 5px; }
+    .chap-meta { display: flex; align-items: center; gap: 6px; }
+    /* 「涉及人物」的勾选 tag：勾上的用自己的配色描边，一条事件里有谁一眼看清 */
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip {
+      padding: 4px 9px; border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 12px;
+      background: rgba(110, 168, 255, 0.08); border: 1px solid var(--line); color: var(--ink-dim);
+    }
+    .chip:hover { background: rgba(110, 168, 255, 0.2); }
+    .chip.on { background: rgba(110, 168, 255, 0.16); font-weight: 600; }
     .map-thumb { width: 64px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
     .map-row {
       display: flex; align-items: center; gap: 8px; font-size: 12.5px;
@@ -126,29 +148,124 @@
     /* ---------------- 底部时间轴 ---------------- */
     #timeline {
       position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 20;
-      max-width: min(86vw, 900px);
+      /* 必须给死宽度：fixed 元素默认收缩包裹，而 .tl-track 的子元素全是绝对定位、
+         撑不出内在宽度，轨道会被压成 0 宽——刻度全叠在一点，游标走不动 */
+      width: min(86vw, 900px);
     }
+    #timeline:empty { display: none; } /* 没有内容带时间时整根轴不出现，容器也别留个空壳 */
     .tl-inner {
       display: flex; align-items: center; gap: 6px; padding: 7px 10px;
     }
-    .tl-chips { display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none; }
-    .tl-chips::-webkit-scrollbar { display: none; }
-    .tl-chip {
-      flex-shrink: 0; background: rgba(110, 168, 255, 0.08); border: 1px solid var(--line);
-      color: var(--ink-dim); font-size: 12.5px; padding: 7px 14px;
-      border-radius: 999px; cursor: pointer; white-space: nowrap;
+    /* 读数：当前游标停在哪一年，以及离它最近的那条事件 */
+    .tl-readout {
+      display: flex; align-items: baseline; gap: 8px; min-width: 132px;
+      padding-left: 2px; cursor: default;
     }
-    .tl-chip:hover { color: var(--ink); background: rgba(110, 168, 255, 0.16); }
-    .tl-chip.current {
-      color: #04122e; background: var(--accent); border-color: var(--accent); font-weight: 600;
+    .tl-year {
+      font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;
+      color: var(--ink); white-space: nowrap;
     }
+    .tl-near {
+      font-size: 11.5px; color: var(--ink-dim); white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; max-width: 120px;
+    }
+
+    /* 轨道：一条按时间线性铺开的轴，刻度按年份落位，游标可以拖着走 */
+    .tl-track {
+      position: relative; flex: 1; min-width: 0; height: 34px;
+      cursor: ew-resize; touch-action: none;
+    }
+    .tl-track::before {
+      content: ''; position: absolute; left: 0; right: 0; top: 50%;
+      height: 1px; background: var(--line);
+    }
+    .tl-tick {
+      position: absolute; top: 50%; width: 9px; height: 9px; padding: 0;
+      margin: -4.5px 0 0 -4.5px; border-radius: 50%; cursor: pointer;
+      background: rgba(110, 168, 255, 0.35); border: 1px solid var(--line);
+      transform: translateX(0);
+    }
+    .tl-tick:hover { background: var(--accent); }
+    .tl-tick.at-cursor {
+      background: var(--accent); border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(110, 168, 255, 0.25);
+    }
+    /* 有区间的刻度：从起点往终点拉一根横线，一眼看出它持续了多久 */
+    .tl-span {
+      position: absolute; top: 50%; height: 3px; margin-top: -1.5px;
+      border-radius: 2px; background: rgba(110, 168, 255, 0.22); pointer-events: none;
+    }
+    .tl-cursor {
+      position: absolute; top: 2px; bottom: 2px; width: 2px; margin-left: -1px;
+      background: var(--accent); border-radius: 1px; pointer-events: none;
+      box-shadow: 0 0 8px rgba(110, 168, 255, 0.7);
+    }
+    .tl-cursor::before {
+      content: ''; position: absolute; left: 50%; top: -3px; width: 10px; height: 10px;
+      margin-left: -5px; border-radius: 50%; background: var(--accent);
+    }
+
     .tl-arrow {
       flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
       background: rgba(110, 168, 255, 0.1); border: 1px solid var(--line);
       color: var(--ink); cursor: pointer; font-size: 12px;
     }
     .tl-arrow:hover { background: rgba(110, 168, 255, 0.22); }
-    .tl-add { color: var(--accent); font-size: 15px; }
+
+    /* ---------------- 编年史长卷 ---------------- */
+    /* 浮在时间轴正上方，与它同轴对齐；不摊开时整块不存在 */
+    .chronicle {
+      position: fixed; bottom: 68px; left: 50%; transform: translateX(-50%); z-index: 19;
+      max-width: min(86vw, 900px); min-width: min(60vw, 520px);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .chr-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 8px 6px 14px; border-bottom: 1px solid var(--line);
+    }
+    .chr-title { font-size: 13px; font-weight: 600; letter-spacing: 2px; }
+    .chr-count { flex: 1; font-size: 11.5px; color: var(--ink-dim); }
+    /* 顶上的视图入口：全部 | 第一章 … | 按人物筛出来的临时组 */
+    .chr-tabs {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      padding: 8px 14px 0;
+    }
+    .chr-tab {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 999px; cursor: pointer; font-family: inherit;
+      font-size: 11.5px; color: var(--ink-dim);
+      background: rgba(110, 168, 255, 0.08); border: 1px solid transparent;
+    }
+    .chr-tab:hover { background: rgba(110, 168, 255, 0.2); }
+    .chr-tab.on {
+      color: var(--ink); background: rgba(110, 168, 255, 0.26);
+      border-color: rgba(110, 168, 255, 0.6);
+    }
+    .chr-x {
+      padding: 0 2px; border: none; background: none; cursor: pointer;
+      color: inherit; font-size: 11px; line-height: 1;
+    }
+    .chr-x:hover { color: var(--danger); }
+    .chr-strip { display: flex; gap: 8px; padding: 10px 14px 12px; overflow-x: auto; }
+    .chr-strip .insp-hint { padding: 2px 0; }
+    .chr-item {
+      flex: 0 0 auto; display: grid; gap: 2px; text-align: left; cursor: pointer;
+      min-width: 104px; max-width: 168px; padding: 8px 11px; border-radius: 8px;
+      background: rgba(110, 168, 255, 0.08); border: 1px solid transparent;
+      color: var(--ink); font-family: inherit;
+    }
+    .chr-item:hover { background: rgba(110, 168, 255, 0.2); }
+    /* 游标还没走到的事件先淡着：长卷是读出来的，读到哪儿亮到哪儿 */
+    .chr-item.ahead { opacity: 0.42; }
+    .chr-item.at-cursor {
+      opacity: 1; background: rgba(110, 168, 255, 0.26);
+      border-color: rgba(110, 168, 255, 0.6);
+      box-shadow: 0 0 0 3px rgba(110, 168, 255, 0.12);
+    }
+    .chr-year { font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+    .chr-item.at-cursor .chr-year { color: var(--accent); }
+    .chr-name { font-size: 12.5px; line-height: 1.35; }
+    .chr-note { font-size: 10px; color: var(--ink-dim); }
 
     /* ---------------- 画面设置 ---------------- */
     #settings {

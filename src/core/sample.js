@@ -1,76 +1,263 @@
 import * as P from './project.js';
-import { buildRealEarthGrid, importCitiesAsEntries } from './realearth.js';
+import { buildRealEarthGrid } from './realearth.js';
 
 /**
- * 示例世界：真实地球地形 + 程序化剧情——
- * 第一时代大西洋上耸立着「亚特兰蒂斯高地」，帝国纪元开始前沉入大海，
- * 顺带演示「每个时代有自己的地形快照」这一核心能力。
+ * 示例世界：真实地球地形 + 第一次世界大战。
+ *
+ * 舞台只有一张脸（真实地球高程），全部叙事都落在 1914–1919 这六年里：
+ *   - 地点是印在地图上的地名，各自带一个起始年，游标扫过去就一个接一个浮出来；
+ *   - 事件按年份排开，是时间轴刻度的全部来源；
+ *   - 人物只挂在事件上，人物卡上那张「涉及的事件」是现算出来的；
+ *   - 战线用一条路线与一条区域画出来，两者也只在这几年里在场。
+ *
+ * 一战在轴上是六年，事件自然要密：一条一条排开，箭头才有的可翻。
  */
 export async function buildSampleProject() {
   const res = 512;
   const p = P.createProject({
-    name: '示例世界 · 泰拉',
-    description: '以真实地球地形为底：在大航海时代与帝国时代之间，看沧海桑田。',
+    name: '示例世界 · 一战',
+    description: '以真实地球地形为底：从萨拉热窝的那一枪到凡尔赛宫的签字，六年之间的事件、地点与人物。',
   });
 
-  // —— 时代一：真实地形 + 亚特兰蒂斯高地 ——
-  const grid1 = await buildRealEarthGrid(res);
-  // 纵向是纬度 180°，格数是横向的一半——用 res 会把纬度缩到两倍（亚特兰蒂斯会跑到南半球去）
-  const atCell = (lat, lng) => [((lng + 180) / 360) * grid1.w, ((90 - lat) / 180) * grid1.h];
-  const [ax, ay] = atCell(28, -32);
-  for (let pass = 0; pass < 6; pass++) grid1.applyBrush('raise', ax, ay, 10, 0.09);
-  grid1.renderColor();
-  const rm1 = P.addRasterMap(p, { name: '泰拉地形 · 大航海时代', w: res, h: res / 2, dataUrl: grid1.encodePNG() });
-  const tp1 = P.addTimePoint(p, { label: '大航海时代' });
-  P.updateTimePoint(p, tp1.id, { rmapId: rm1.id });
+  // —— 舞台：一张脸。真实地球高程，不做任何人工改动 ——
+  const grid = await buildRealEarthGrid(res);
+  const rmap = P.addRasterMap(p, { name: '地球地形', w: res, h: res / 2, dataUrl: grid.encodePNG() });
+  p.baseRasterId = rmap.id;
 
-  // —— 时代二：亚特兰蒂斯沉没 ——
-  const grid2 = grid1.clone();
-  for (let pass = 0; pass < 12; pass++) grid2.applyBrush('lower', ax, ay, 12, 0.1);
-  grid2.renderColor();
-  const rm2 = P.addRasterMap(p, { name: '泰拉地形 · 帝国时代', w: res, h: res / 2, dataUrl: grid2.encodePNG() });
-  const tp2 = P.addTimePoint(p, { label: '帝国时代' });
-  P.updateTimePoint(p, tp2.id, { rmapId: rm2.id });
+  // —— 章节：把散在欧洲各处的战场串成一段叙事 ——
+  // 章节只是一个归类，本身不带年份；标签上的「1914–1919」是拿组内事件的年份算出来的
+  const war = P.addItem(p, 'group', { name: '一战' });
 
-  // —— 内容 ——
-  P.addItem(p, 'entry', {
-    title: '亚特兰蒂斯',
-    description: '高原文明，帝国纪元开始前沉入大海——切换时代看它消失。',
-    lat: 28, lng: -32, color: '#4dd0ff', from: tp1.id, to: tp1.id,
+  // —— 人物：不上球，只挂在事件上 ——
+  // 人是事件的参与者，不是地点上的东西，所以只有生卒没有存续区间，
+  // 生卒也不参与在场判定：一条 1916 年的事件本来就该列 1916 年活着的人，那是写的时候的事
+  const franz = P.addItem(p, 'character', {
+    name: '斐迪南大公', aliases: ['奥匈帝国皇储'], born: 1863, died: 1914,
+    description: '在萨拉热窝遇刺，成了整场战争的引信。', color: '#ff9ad5',
   });
-  P.addItem(p, 'entry', {
-    title: '长安西市',
-    description: '丝绸之路的东方起点，胡商云集。',
-    lat: 34.3, lng: 108.9, from: tp1.id,
+  const wilhelm = P.addItem(p, 'character', {
+    name: '威廉二世', aliases: ['德皇'], born: 1859, died: 1941,
+    description: '给奥匈开出空头支票，战败后退位流亡。', color: '#ffd54d',
   });
+  const moltke = P.addItem(p, 'character', {
+    name: '小毛奇', aliases: ['德军总参谋长'], born: 1848, died: 1916,
+    description: '执行施里芬计划，在马恩河城下把它改坏了。', color: '#c78dff',
+  });
+  const falkenhayn = P.addItem(p, 'character', {
+    name: '法金汉', aliases: [], born: 1861, died: 1922,
+    description: '接替毛奇，把凡尔登变成一台绞肉机——他要的就是让人来送死。', color: '#ff6e6e',
+  });
+  const hindenburg = P.addItem(p, 'character', {
+    name: '兴登堡', aliases: [], born: 1847, died: 1934,
+    description: '坦能堡一战成名，后来成了德国的实际掌权者。', color: '#8dff70',
+  });
+  const ludendorff = P.addItem(p, 'character', {
+    name: '鲁登道夫', aliases: [], born: 1865, died: 1937,
+    description: '兴登堡身边的实际指挥者，1918 年押上全部家当的那场豪赌由他发起。', color: '#7da7ff',
+  });
+  const joffre = P.addItem(p, 'character', {
+    name: '霞飞', aliases: ['法军总司令'], born: 1852, died: 1931,
+    description: '在马恩河把德军挡住，之后被换下去养老。', color: '#4dd0ff',
+  });
+  const petain = P.addItem(p, 'character', {
+    name: '贝当', aliases: [], born: 1856, died: 1951,
+    description: '「他们过不来」，凡尔登的那句口号就是他说的。', color: '#ffb545',
+  });
+  const foch = P.addItem(p, 'character', {
+    name: '福煦', aliases: ['协约国联军总司令'], born: 1851, died: 1929,
+    description: '从马恩河一路指挥到停战，在贡比涅的火车厢里接受德国投降。', color: '#6ee7a8',
+  });
+  const haig = P.addItem(p, 'character', {
+    name: '黑格', aliases: ['英军总司令'], born: 1861, died: 1928,
+    description: '索姆河、帕斯尚尔都出自他的手笔，伤亡换来的是几公里的推进。', color: '#d0a0ff',
+  });
+  const nicholas = P.addItem(p, 'character', {
+    name: '尼古拉二世', aliases: ['俄国末代沙皇'], born: 1868, died: 1918,
+    description: '把俄国拖进战争，最后连同家人一起死在叶卡捷琳堡的地下室。', color: '#ff8f8f',
+  });
+  const lenin = P.addItem(p, 'character', {
+    name: '列宁', aliases: [], born: 1870, died: 1924,
+    description: '德国把他送回俄国，他回来把俄国从战争里拔了出来。', color: '#ff4d4d',
+  });
+  const wilson = P.addItem(p, 'character', {
+    name: '威尔逊', aliases: ['美国总统'], born: 1856, died: 1924,
+    description: '把美国带进战争，又在巴黎和会上推销他那套「十四点」。', color: '#4dd0ff',
+  });
+  const clemenceau = P.addItem(p, 'character', {
+    name: '克列孟梭', aliases: ['法国总理'], born: 1841, died: 1929,
+    description: '人称「老虎」，在和会上要的是把德国彻底压死。', color: '#ffd54d',
+  });
+  const lloydGeorge = P.addItem(p, 'character', {
+    name: '劳合·乔治', aliases: ['英国首相'], born: 1863, died: 1945,
+    description: '夹在法国人的复仇与威尔逊的理想之间，替英国讨价还价。', color: '#8dff70',
+  });
+  const kemal = P.addItem(p, 'character', {
+    name: '凯末尔', aliases: [], born: 1881, died: 1938,
+    description: '在加里波利把登陆的协约国军队按在滩头，后来成了土耳其的国父。', color: '#ffb545',
+  });
+
+  // —— 布景：地点。带起始年，游标扫到那一年它才印上地图 ——
+  const place = (title, description, lat, lng, from) => P.addItem(p, 'entry', {
+    title, description, lat, lng, from,
+  });
+
+  place('萨拉热窝', '波斯尼亚首府。1914 年 6 月 28 日，一枪在这里点燃了欧洲。', 43.86, 18.41, 1914);
+  place('维也纳', '奥匈帝国的都城，宣战书从这里发出去。', 48.21, 16.37, 1914);
+  place('柏林', '德意志帝国的都城。空头支票与无限制潜艇战都出自这里。', 52.52, 13.4, 1914);
+  place('贝尔格莱德', '塞尔维亚首都，多瑙河与萨瓦河交汇处。奥匈的第一轮攻势在这里被打了回去。', 44.79, 20.45, 1914);
+  place('列日', '比利时国境上的要塞群。德军指望它让开路，它拖了整整十二天。', 50.63, 5.57, 1914);
+  place('坦能堡', '东普鲁士的沼泽与林地。俄军第二集团军在这里被整个吃掉。', 53.5, 20.0, 1914);
+  place('伊普尔', '佛兰德斯的低地。三次战役打下来，地图上只剩下弹坑与泥。', 50.85, 2.89, 1914);
+  place('加里波利', '达达尼尔海峡入口的半岛。协约国在这里撞上了一堵墙。', 40.24, 26.28, 1915);
+  place('加利西亚', '喀尔巴阡山北麓，东线拉锯最久的一段。', 49.6, 24.5, 1915);
+  place('凡尔登', '默兹河畔的要塞。1916 年在这里打的那十个月，被叫作「绞肉机」。', 49.16, 5.38, 1916);
+  place('索姆河', '英法并肩推进的战场，第一天的伤亡至今仍是英军史上最惨的一日。', 50.0, 2.65, 1916);
+  place('日德兰半岛', '丹麦的北角外海，两国主力舰队唯一一次正面交手的地方。', 56.3, 5.0, 1916);
+  place('康布雷', '英军把几百辆坦克一次放出去的地方，突破很成功，扩大战果没跟上。', 50.18, 3.23, 1917);
+  place('帕斯尚尔', '伊普尔东边的一片低洼地，1917 年秋天在这里推进了几公里。', 50.9, 2.95, 1917);
+  place('华盛顿', '大洋另一边。齐默尔曼电报与参战宣言都发生在这座城市里。', 38.9, -77.03, 1917);
+  place('圣彼得堡', '俄国的都城。二月与十月，两次革命都发生在这里。', 59.93, 30.34, 1917);
+  place('亚眠', '1918 年 8 月，协约国从这里开始反攻，鲁登道夫称之为德军最黑暗的一天。', 49.89, 2.3, 1918);
+  place('贡比涅', '森林里的一节火车厢，停战协定在那里签下。', 49.42, 2.82, 1918);
+  place('凡尔赛', '镜厅。五年后，另一份和约在这里签下。', 48.8, 2.13, 1919);
+
+  // —— 演员：事件。自带年份，是时间轴刻度的来源 ——
+  // groupId 归入章节，characters 记下「谁参与了这件事」——
+  // 关联只写在这一侧，人物卡上那张「涉及的事件」是现算出来的
+  const ev = (from, title, description, lat, lng, characters) => P.addItem(p, 'event', {
+    title, description, lat, lng, from,
+    groupId: war.id, characters: characters.map((c) => c.id),
+  });
+
+  // 1914：从一枪到整条西线冻住
+  ev(1914, '萨拉热窝事件',
+    '皇储遇刺。一个塞尔维亚青年开了两枪，欧洲的同盟体系随即开始倒下去。',
+    43.86, 18.41, [franz, wilhelm]);
+  ev(1914, '奥匈对塞尔维亚宣战',
+    '柏林开出的空头支票兑现了，维也纳把宣战书递到贝尔格莱德。',
+    44.79, 20.45, [wilhelm]);
+  ev(1914, '德国对俄法宣战',
+    '总动员一旦启动就停不下来。两天之内，欧洲主要国家全部卷了进去。',
+    52.52, 13.4, [wilhelm, moltke]);
+  ev(1914, '列日要塞陷落',
+    '德军绕过中立国边境的打算在这里多花了十二天，施里芬计划的时间表从此对不上。',
+    50.63, 5.57, [moltke]);
+  ev(1914, '坦能堡会战',
+    '俄军第二集团军被合围歼灭，兴登堡与鲁登道夫一夜之间成了民族英雄。',
+    53.5, 20.0, [hindenburg, ludendorff]);
+  ev(1914, '马恩河战役',
+    '德军在巴黎城下被挡住，速胜的打算到此为止。毛奇随后被撤换。',
+    49.0, 3.0, [moltke, joffre]);
+  ev(1914, '第一次伊普尔战役',
+    '双方都想绕过对方的北翼，结果一起撞进佛兰德斯，西线自此僵持。',
+    50.85, 2.89, [falkenhayn]);
+  ev(1914, '奥斯曼帝国参战',
+    '君士坦丁堡站到了同盟国一边，战争从此不只是欧洲的事。',
+    41.01, 28.98, [wilhelm]);
+  ev(1914, '圣诞节停战',
+    '西线好几段战壕里，双方士兵爬出来交换香烟、踢了一场球，第二天接着打。',
+    50.9, 2.92, []);
+
+  // 1915：毒气、登陆、潜艇
+  ev(1915, '伊普尔毒气战',
+    '德军在伊普尔放出氯气，这是大规模化学武器第一次上战场。',
+    50.85, 2.89, [falkenhayn]);
+  ev(1915, '加里波利登陆',
+    '协约国想打通海峡直取君士坦丁堡，登陆部队被凯末尔按在滩头，八个月后撤走。',
+    40.24, 26.28, [kemal]);
+  ev(1915, '卢西塔尼亚号被击沉',
+    '一艘英国客轮在爱尔兰外海被潜艇击沉，一百多名美国乘客葬身海底。',
+    51.25, -10.5, [wilhelm]);
+  ev(1915, '意大利转投协约国',
+    '原本与德奥同盟的意大利掉头加入对面，为的是拿到南蒂罗尔与达尔马提亚。',
+    46.0, 12.5, []);
+  ev(1915, '戈尔利采攻势',
+    '德奥在东线撕开一个大口子，俄军一路退到自己的国境线内，伤亡过百万。',
+    49.9, 21.0, [hindenburg, ludendorff]);
+
+  // 1916：绞肉机之年
+  ev(1916, '凡尔登战役',
+    '法金汉要的不是这块地，是让法国人在这里把血流干。十个月，双方投入近两百万。',
+    49.16, 5.38, [falkenhayn, petain]);
+  ev(1916, '日德兰海战',
+    '两国主力舰队唯一一次正面交手。英国损失的船更多，德国舰队此后没再出海。',
+    56.3, 5.0, []);
+  ev(1916, '布鲁西洛夫攻势',
+    '俄军靠短促炮火准备打穿了奥匈防线，差点把奥匈从战争里打出去，自己也就此耗尽。',
+    49.6, 24.5, [nicholas]);
+  ev(1916, '索姆河战役',
+    '第一天英军就伤亡近六万。战役打了四个半月，战线最多挪动了十几公里。',
+    50.0, 2.65, [haig, foch]);
+  ev(1916, '坦克第一次开上战场',
+    '索姆河战役里的十几辆铁盒子，多数抛了锚，但把对面吓得不轻。',
+    50.05, 2.75, [haig]);
+
+  // 1917：美国来了，俄国走了
+  ev(1917, '齐默尔曼电报',
+    '德国提议墨西哥对美开战，电报被英国截获并公布，美国国内的孤立情绪一夜翻盘。',
+    38.9, -77.03, [wilhelm, wilson]);
+  ev(1917, '无限制潜艇战',
+    '德国宣布击沉一切驶向英国海域的船只。它想在美国赶到之前掐断英国的海上补给。',
+    54.0, 6.0, [wilhelm, ludendorff]);
+  ev(1917, '俄国二月革命',
+    '彼得格勒的面包骚动演成兵变，沙皇退位，临时政府决定把战争继续打下去。',
+    59.93, 30.34, [nicholas]);
+  ev(1917, '美国参战',
+    '大洋另一边的人力和工业倒向协约国，天平就此倾斜。',
+    38.9, -77.03, [wilson]);
+  ev(1917, '帕斯尚尔战役',
+    '英军在泥里往前挪了几公里，代价是几十万人。黑格此后没再发动这样规模的攻势。',
+    50.9, 2.92, [haig]);
+  ev(1917, '俄国十月革命',
+    '布尔什维克拿下彼得格勒，新政权第一件事就是宣布停战。',
+    59.93, 30.34, [lenin]);
+  ev(1917, '康布雷战役',
+    '英军把几百辆坦克集中起来一次放出，头一天就推进到前几次战役几个月的深度。',
+    50.18, 3.23, [haig]);
+
+  // 1918–1919：反攻与清算
+  ev(1918, '十四点和平原则',
+    '威尔逊向国会提出十四条，想给战后的世界立一套规矩——包括成立国际联盟。',
+    38.9, -77.03, [wilson]);
+  ev(1918, '布列斯特和约',
+    '苏俄割地退出战争，德国终于腾出东线的几十个师。',
+    52.1, 23.7, [lenin]);
+  ev(1918, '百日攻势',
+    '协约国从亚眠发起反攻，德军的防线一路退回本国边境，鲁登道夫称之为最黑暗的一天。',
+    49.89, 2.3, [foch, haig, ludendorff]);
+  ev(1918, '贡比涅停战',
+    '11 月 11 日 11 时，森林里的火车厢中签下停战协定，四年的枪声停了下来。',
+    49.42, 2.82, [foch]);
+  ev(1919, '巴黎和会开幕',
+    '战胜国在巴黎开会重画世界地图。会场里坐满了人，真正说了算的是三个。',
+    48.86, 2.35, [wilson, clemenceau, lloydGeorge]);
+  ev(1919, '凡尔赛条约',
+    '在镜厅里签下和约，把下一场战争的种子也一并埋了进去。',
+    48.8, 2.13, [wilson, clemenceau, foch]);
+
+  // —— 战线：一条推进路线与一条战壕带，也只在几年之内在场 ——
   P.addItem(p, 'route', {
-    title: '丝绸之路',
-    description: '连接东方与西方的商路。',
-    color: '#ffb545', from: tp1.id,
+    title: '施里芬计划进军路线',
+    description: '德军借道比利时直取巴黎的预定路线。它比计划慢了十几天，马恩河上就再也推不动了。',
+    color: '#ff6e6e', from: 1914, to: 1914,
     points: [
-      { lat: 34.3, lng: 108.9 },
-      { lat: 40.1, lng: 94.7 },
-      { lat: 39.6, lng: 66.9 },
-      { lat: 33.3, lng: 44.4 },
-      { lat: 41.9, lng: 12.5 },
+      { lat: 50.78, lng: 6.08 },  // 亚琛
+      { lat: 50.63, lng: 5.57 },  // 列日
+      { lat: 50.85, lng: 4.35 },  // 布鲁塞尔
+      { lat: 50.45, lng: 3.95 },  // 蒙斯
+      { lat: 49.9, lng: 3.6 },
+      { lat: 49.0, lng: 3.0 },    // 马恩河
     ],
   });
   P.addItem(p, 'region', {
-    name: '帝国疆域',
-    description: '帝国时代才出现的庞大疆域。',
-    color: '#ff6e6e', from: tp2.id,
+    name: '西线战壕带',
+    description: '从北海一直拉到瑞士边境的一条线。四年里它几乎没有动过，两侧的士兵就住在里面。',
+    color: '#c78dff', from: 1914, to: 1918,
     ring: [
-      [-2, 36], [5, 38], [12, 45], [18, 42], [25, 38],
-      [30, 33], [26, 31], [18, 33], [10, 36], [2, 37],
+      [2.4, 51.2], [4.2, 50.9], [5.0, 50.2], [5.8, 49.6], [6.8, 48.8],
+      [7.6, 47.7], [6.4, 48.6], [5.4, 49.4], [4.4, 50.1], [3.2, 50.8],
     ],
   });
-
-  // —— 真实城市（人口 400 万以上的大城市）——
-  try {
-    await importCitiesAsEntries(p, tp1.id, { minPop: 4_000_000 });
-  } catch (err) {
-    console.warn('[sample] 城市数据导入失败（离线？）：', err);
-  }
 
   return p;
 }

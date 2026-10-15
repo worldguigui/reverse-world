@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { latLngToVec3, vec3ToLatLng, TweenManager } from './utils.js';
 import { CameraRig } from './view/camera.js';
 import { Globe } from './view/globe.js';
-import { MarkerLayer } from './view/markers.js';
+import { LabelLayer, EventDotLayer } from './view/markers.js';
 import { RouteLayer } from './view/routes.js';
 import { RegionLayer } from './view/regions.js';
 import * as P from './core/project.js';
@@ -15,7 +15,7 @@ import { installAPI } from './api.js';
 import { useStore } from './store/index.js';
 import { setViewHooks } from './store/actions.js';
 import { session } from './session.js';
-import { initBridge, refreshLayers, relayoutLayers, getGridCached } from './bridge.js';
+import { initBridge, relayoutLayers, applyStage, getGridCached } from './bridge.js';
 import { LAYER_SCENE, LAYER_MASK, LAYER_CONTENT } from './view/render-layers.js';
 
 const $ = (id) => document.getElementById(id);
@@ -43,68 +43,59 @@ async function main() {
   const globe = new Globe(scene, config, renderer.capabilities.getMaxAnisotropy());
   // 画面设置随时可能被改，图层每次都现取当前值，不缓存对象引用
   const viewConfig = () => store.getState().viewConfig;
-  const markers = new MarkerLayer(globe.group, viewConfig);
+  const maxAniso = renderer.capabilities.getMaxAnisotropy();
+  // 地点是印在球上的地名，事件是选中时亮起的一个光点——样子差得远，各起一层
+  const labels = new LabelLayer(globe.group, viewConfig, maxAniso);
+  const eventDot = new EventDotLayer(globe.group, viewConfig, maxAniso);
   const routes = new RouteLayer(globe.group, viewConfig);
   const regions = new RegionLayer(globe.group, viewConfig);
   routes.setSize(innerWidth, innerHeight);
+  labels.setViewport(innerWidth, innerHeight);
+  eventDot.setViewport(innerWidth, innerHeight);
 
   Object.assign(session, {
-    renderer, scene, camera, globe, markers, routes, regions, rig, tweens,
+    renderer, scene, camera, globe, labels, eventDot, routes, regions, rig, tweens,
     autosaver: createAutoSaver(500),
   });
 
   // 标注/路线/区域贴着地形走。海面以下是负高度，只贴到海平面为止——
-  // 否则海上的条目会沉到球面以下（比深度掩膜还低），直接看不见。
+  // 否则海上的地点会沉到球面以下（比深度掩膜还低），直接看不见。
   const terrainRadius = (lat, lng) => {
     const grid = session.currentGrid;
     if (!grid) return 0;
     return Math.max(0, grid.sample(lat, lng)) * viewConfig().terrain.exaggeration;
   };
-  markers.terrainRadius = terrainRadius;
+  labels.terrainRadius = terrainRadius;
+  eventDot.terrainRadius = terrainRadius;
   routes.terrainRadius = terrainRadius;
   regions.terrainRadius = terrainRadius;
 
   // ---------------------------------------------------------- 地形工坊面板
   /**
-   * 打开当前（或指定）时间点的地形工坊。
-   * 已有栅格底图时直接编辑它；被多个时代共享则先复制一份专属快照，避免改一处动全部。
+   * 打开地形工坊。球只有一张脸，所以工坊改的就是这一次性的全局地形：
+   * 已有栅格底图就直接编辑它，没有就先给一片汪洋。
    */
-  async function openWorkshopPanel(tpId) {
+  async function openWorkshopPanel() {
     const s = store.getState();
     const p = s.project;
-    const idx = p ? p.timePoints.findIndex((t) => t.id === (tpId ?? p.timePoints[s.timeIndex]?.id)) : -1;
-    if (idx < 0) { s.toast('请先在底部时间轴创建时间点'); return; }
-    s.setTime(idx);
+    if (!p) { s.toast('先新建一个世界再画地形'); return; }
 
-    const tp = p.timePoints[idx];
     let grid;
     let binding = null; // 直接编辑已存在的栅格底图时记下它的 id
-    if (tp.rmapId) {
-      const rmap = P.getRasterMap(p, tp.rmapId);
-      if (P.rasterUsersAt(p, rmap.id, idx) > 1) {
-        grid = (await getGridCached(rmap)).clone();
-        s.toast('该地形被多个时代共享：已复制为本时代专属快照');
-      } else {
-        grid = await getGridCached(rmap);
-        binding = { rmapId: rmap.id };
-      }
+    const rmap = P.getRasterMap(p, p.baseRasterId);
+    if (rmap) {
+      grid = await getGridCached(rmap);
+      binding = { rmapId: rmap.id };
     } else {
-      const inherited = P.rasterAt(p, idx);
-      if (inherited) {
-        grid = (await getGridCached(inherited)).clone();
-        s.toast('已从上一时代复制地形快照，本时代可独立修改');
-      } else {
-        grid = new TerrainGrid(512, 256);
-        grid.fill(-0.45);
-        s.toast('一片汪洋：拿画笔造出你的大陆吧');
-      }
+      grid = new TerrainGrid(512, 256);
+      grid.fill(-0.45);
+      s.toast('一片汪洋：拿画笔造出你的大陆吧');
     }
 
     s.resetWorkshopBrush();
     W.beginWorkshop({
       grid,
       binding,
-      tp,
       hooks: {
         onChange(g) {
           // 球体实时预览：第一次建纹理，之后只刷新内容
@@ -119,27 +110,30 @@ async function main() {
         onCommit(g) {
           const st = store.getState();
           const png = g.encodePNG();
-          st.mutateProject((proj) => {
-            if (binding) {
-              const rmap = P.getRasterMap(proj, binding.rmapId);
-              rmap.dataUrl = png;
-              session.gridCache.set(rmap.id, g);
-            } else {
-              const rmap = P.addRasterMap(proj, { name: `地形 · ${tp.label}`, w: g.w, h: g.h, dataUrl: png });
-              P.updateTimePoint(proj, tp.id, { rmapId: rmap.id });
-              session.gridCache.set(rmap.id, g);
-            }
-          });
+          // 先把新地形接上，再改数据——改数据会立刻触发整层重建，
+          // 那时 terrainRadius 读到的必须是新网格，否则内容会按旧高度贴一次地
           session.currentGrid = g;
           globe.setRaster(g);
-          refreshLayers(); // 这里数据真的变了（mutateProject 已换过 derived），要整层重建
+          st.mutateProject((proj) => {
+            let rmapId = binding?.rmapId;
+            if (rmapId) {
+              P.getRasterMap(proj, rmapId).dataUrl = png;
+            } else {
+              rmapId = P.addRasterMap(proj, { name: '地形', w: g.w, h: g.h, dataUrl: png }).id;
+              proj.baseRasterId = rmapId;
+            }
+            // 刚编好的网格就在手上，直接回填缓存：下次打开工坊或贴地都不必再解一次 PNG
+            session.gridCache.set(rmapId, g);
+          });
           st.setWorkshopOpen(false);
-          st.toast(`「${tp.label}」的地形已保存`);
+          st.toast('地形已保存');
         },
         onCancel() {
-          session.currentGrid = null;
+          // 工坊是在缓存里那份网格上就地改的，取消时必须把它丢掉重新解码，
+          // 否则球上会一直留着改到一半的样子
+          if (binding) session.gridCache.delete(binding.rmapId);
           store.getState().setWorkshopOpen(false);
-          relayoutLayers(); // 只是贴地半径回到 0，内容本身没变
+          applyStage();
         },
       },
     });
@@ -164,6 +158,8 @@ async function main() {
       store.getState().setViewConfig({ rotation: { enabled: false } });
     }
   };
+  // 用户自己动了镜头：打断进行中的 flyTo，让用户立即接管镜头
+  rig.onUserInterrupt = () => {}; // 回调保留，便于将来扩展镜头相关行为
 
   // ---------------------------------------------------------- 鼠标交互
   const raycaster = new THREE.Raycaster();
@@ -177,9 +173,11 @@ async function main() {
   const toNdc = (e) => ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
 
   function pickAt(ndcVec) {
-    raycaster.setFromCamera(ndcVec, camera);
-    const entryId = markers.pick(raycaster, camera);
+    // 地名走屏幕空间：它贴着地表，斜看时几乎侧对镜头，射线打不准
+    const entryId = labels.pick(ndcVec);
     if (entryId) return { kind: 'entry', id: entryId };
+    // 事件不在球上拾取——入口只有时间轴刻度与编年史长卷
+    raycaster.setFromCamera(ndcVec, camera);
     const regionId = regions.pick(raycaster);
     if (regionId) return { kind: 'region', id: regionId };
     const routeId = routes.pick(raycaster);
@@ -218,7 +216,7 @@ async function main() {
 
     if (s.mode === 'browse') {
       s.select(pickAt(ndc));
-    } else if (s.mode === 'add-entry') {
+    } else if (s.mode === 'add-entry' || s.mode === 'add-event') {
       const ll = pickSphere(ndc);
       if (ll) s.setPendingCoords({ lat: ll.lat, lng: ll.lng });
     } else if (s.mode === 'draw-route' || s.mode === 'draw-region') {
@@ -263,7 +261,7 @@ async function main() {
     if (!pointerDirty || s.mode !== 'browse' || !s.project) return;
     pointerDirty = false;
     const hit = pickAt(ndc);
-    markers.setHover(hit?.kind === 'entry' ? hit.id : null);
+    labels.setHover(hit?.kind === 'entry' ? hit.id : null);
     regions.setHover(hit?.kind === 'region' ? hit.id : null);
     if (hit) {
       const item = P.getItem(s.project, hit.kind, hit.id);
@@ -287,8 +285,8 @@ async function main() {
     if (e.key === 'Enter' && (s.mode === 'draw-route' || s.mode === 'draw-region')) {
       s.commitDraw(s.mode === 'draw-route' ? 'route' : 'region'); // 点数不足时 commitDraw 自己会忽略
     }
-    if (e.key === 'ArrowLeft') s.step(-1);
-    if (e.key === 'ArrowRight') s.step(1);
+    if (e.key === 'ArrowLeft') s.stepCursor(-1);
+    if (e.key === 'ArrowRight') s.stepCursor(1);
   });
 
   // ---------------------------------------------------------- 尺寸与退出
@@ -297,6 +295,8 @@ async function main() {
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
     routes.setSize(innerWidth, innerHeight);
+    labels.setViewport(innerWidth, innerHeight);
+    eventDot.setViewport(innerWidth, innerHeight);
   });
   addEventListener('beforeunload', () => session.autosaver.flush());
   document.addEventListener('visibilitychange', () => {
@@ -306,7 +306,11 @@ async function main() {
   // ---------------------------------------------------------- 启动
   const restored = await loadStoredProject();
   if (restored) store.getState().hydrateProject(restored);
-  installAPI({ ctx: store.getState(), project: () => store.getState().project });
+  installAPI({
+    ctx: store.getState(),
+    project: () => store.getState().project,
+    cursor: () => store.getState().cursor,
+  });
   console.info(
     '%c window.world ',
     'background:#6ea8ff;color:#000;padding:2px 6px;border-radius:4px;font-weight:bold',
@@ -317,7 +321,7 @@ async function main() {
    * 一帧三趟，靠 render-layers.js 里的层号分工：
    *   ① 球体/大气/星空 —— 正常写颜色和深度
    *   ② 深度掩膜球（半径 1 的光滑正球，只写深度不写颜色）
-   *   ③ 条目/路线/区域 —— 对着②留下的深度做测试
+   *   ③ 地点/事件/路线/区域 —— 对着②留下的深度做测试
    * 于是内容不会被鼓起来的山挡住，转到球背面时又会被②挡住。
    * 末尾把相机层号复位成默认，免得影响拾取或别处。
    */
@@ -341,6 +345,9 @@ async function main() {
     tweens.update();
     globe.update?.(dt, camera);
     rig.update(dt); // 自转按真实秒数走，帧率高低都转一样快
+    // 地名的浓淡、大小与碰撞剔除都只跟相机有关，所以每帧现算，不走 store 的信号
+    labels.update(camera);
+    eventDot.update(camera);
     processHover();
     render();
   });

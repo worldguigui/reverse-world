@@ -51,25 +51,36 @@ const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 /
 /**
  * 极简补间动画管理器：flyTo 等动画都挂在这里，
  * 同一 tag 的新动画会顶掉旧动画；用户一上手就取消。
+ *
+ * 回调里可以再开动画（回放推游标，游标一走就飞向刚登场的事件）。因此 update() 不能
+ * 就地过滤自己的数组：那样算完一圈会把回调期间新加的动画一起写掉，新加的这次飞行
+ * 就凭空消失了。这里改成先把待办挪出来、算完再收回，并用 dead 标记流传中的取消。
  */
 export class TweenManager {
   #tweens = [];
 
   add({ tag = null, duration = 1000, ease = easeInOutCubic, onUpdate, onComplete }) {
     if (tag) this.cancel(tag);
-    this.#tweens.push({ tag, duration, ease, onUpdate, onComplete, start: performance.now() });
+    this.#tweens.push({ tag, duration, ease, onUpdate, onComplete, start: performance.now(), dead: false });
   }
 
   cancel(tag) {
-    this.#tweens = this.#tweens.filter((t) => t.tag !== tag);
+    // 打标记而不是只删数组里的：此刻可能有一批动画正被 update() 拿在手上，
+    // 不标记的话它们会在这一圈结束时被放回去，取消就白取消了
+    for (const t of this.#tweens) if (t.tag === tag) t.dead = true;
+    this.#tweens = this.#tweens.filter((t) => !t.dead);
   }
 
   update(now = performance.now()) {
-    this.#tweens = this.#tweens.filter((t) => {
+    const pending = this.#tweens;
+    this.#tweens = [];
+    for (const t of pending) {
+      if (t.dead) continue;
       const k = Math.min(1, (now - t.start) / t.duration);
       t.onUpdate(t.ease(k), k);
-      if (k >= 1) { t.onComplete?.(); return false; }
-      return true;
-    });
+      if (t.dead) continue; // 回调里把自己取消了
+      if (k < 1) this.#tweens.push(t);
+      else t.onComplete?.();
+    }
   }
 }

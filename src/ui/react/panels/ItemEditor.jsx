@@ -1,11 +1,17 @@
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
-import { Labeled, BackToOverview, TimeSelect } from '../common.jsx';
+import { Labeled, BackToOverview, YearInput, CharacterPicker, GroupSelect } from '../common.jsx';
 
-const TITLES = { entry: '📍 条目', route: '🛤 路线', region: '🏳 势力区域' };
+const TITLES = { entry: '📍 地点', event: '⚡ 事件', route: '🛤 路线', region: '🏳 势力区域' };
+
+/** 有配图的内容：事件和地点一样，都挂一张图 */
+const HAS_IMAGE = new Set(['entry', 'event']);
+
+/** 拿经纬度定位的内容：事件与地点同形，只是事件的坐标可以缺省 */
+const HAS_LATLNG = new Set(['entry', 'event']);
 
 /**
- * 条目 / 路线 / 区域的查看与编辑。
+ * 地点 / 事件 / 路线 / 区域的查看与编辑。
  * 调用方用 key={kind:id} 挂载，切换选中对象即重挂载，各字段自然取到新对象的值。
  */
 export function ItemEditor({ kind, id }) {
@@ -15,7 +21,10 @@ export function ItemEditor({ kind, id }) {
   const flyToItem = useStore((s) => s.flyToItem);
   const pickImage = useStore((s) => s.pickImage);
 
-  const list = { entry: project.entries, route: project.routes, region: project.regions }[kind];
+  const list = {
+    entry: project.entries, event: project.events,
+    route: project.routes, region: project.regions,
+  }[kind];
   const item = list?.find((it) => it.id === id);
   if (!item) return null;
 
@@ -25,7 +34,7 @@ export function ItemEditor({ kind, id }) {
     <div className="insp-block">
       <div className="insp-title">{TITLES[kind]}</div>
 
-      {kind === 'entry' && (
+      {HAS_IMAGE.has(kind) && (
         <>
           <div className="field-label">配图</div>
           {item.image ? (
@@ -66,12 +75,32 @@ export function ItemEditor({ kind, id }) {
         />
       </Labeled>
 
-      {kind === 'entry' && (
+      {/* 关联只写在这一侧：人物的反向清单由它现算，人物卡上不存副本 */}
+      {kind === 'event' && (
+        <Labeled label="涉及人物">
+          <CharacterPicker
+            ids={item.characters ?? []}
+            onChange={(ids) => patch({ characters: ids })}
+          />
+        </Labeled>
+      )}
+
+      {kind === 'event' && (
+        <Labeled label="所属章节">
+          <GroupSelect value={item.groupId} onChange={(id) => patch({ groupId: id })} />
+        </Labeled>
+      )}
+
+      {HAS_LATLNG.has(kind) && (
         <Labeled label="坐标">
-          <span>
-            <span className="insp-hint">{`${item.lat.toFixed(2)}°, ${item.lng.toFixed(2)}° `}</span>
-            <button className="btn btn-mini" onClick={() => flyToItem('entry', item)}>飞到</button>
-          </span>
+          {item.lat == null || item.lng == null ? (
+            <span className="insp-hint">没有地点：不上球，只进编年史</span>
+          ) : (
+            <span>
+              <span className="insp-hint">{`${item.lat.toFixed(2)}°, ${item.lng.toFixed(2)}° `}</span>
+              <button className="btn btn-mini" onClick={() => flyToItem(kind, item)}>飞到</button>
+            </span>
+          )}
         </Labeled>
       )}
       {kind === 'route' && (
@@ -85,11 +114,12 @@ export function ItemEditor({ kind, id }) {
         </Labeled>
       )}
 
+      {/* 两端都留空 = 常驻。负数是公元前，小数表达更细的粒度 */}
       <Labeled label="出现于">
-        <TimeSelect value={item.from} onChange={(v) => patch({ from: v || null })} />
+        <YearInput value={item.from} onChange={(v) => patch({ from: v })} />
       </Labeled>
       <Labeled label="消失于">
-        <TimeSelect value={item.to} onChange={(v) => patch({ to: v || null })} nullLabel="至今" />
+        <YearInput value={item.to} onChange={(v) => patch({ to: v })} placeholder="至今" />
       </Labeled>
       <Labeled label="颜色">
         <input type="color" value={item.color} onChange={(e) => patch({ color: e.target.value })} />

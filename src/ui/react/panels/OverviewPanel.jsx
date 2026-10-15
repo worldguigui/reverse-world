@@ -1,22 +1,45 @@
 import { useStore } from '../../../store/index.js';
-import { fileToDataUrl } from '../../../utils/files.js';
+import { useProjectRevision } from '../hooks.js';
 import { Labeled } from '../common.jsx';
 
 const STATS = [
-  ['timePoints', '时间点'], ['maps', '底图'], ['entries', '条目'],
+  ['entries', '地点'], ['events', '事件'],
   ['routes', '路线'], ['regions', '区域'],
+  ['characters', '人物'],
 ];
 
-/** 没有选中任何对象时的世界概览：名称、简介、统计格、当前切面的配图 */
+/**
+ * 没有选中任何对象时的世界概览：名称、简介、统计格、舞台。
+ * 这一页讲的是整个世界，所以没有「配图」——配图属于某一条地点或事件，属于具体的东西。
+ */
 export function OverviewPanel() {
   const project = useStore((s) => s.project);
   const counts = useStore((s) => s.derived.counts);
-  const timeIndex = useStore((s) => s.timeIndex);
   const updateProject = useStore((s) => s.updateProject);
-  const updateTimePoint = useStore((s) => s.updateTimePoint);
-  const pickImage = useStore((s) => s.pickImage);
+  const uploadMap = useStore((s) => s.uploadMap);
+  const clearStage = useStore((s) => s.clearStage);
+  const openWorkshop = useStore((s) => s.openWorkshop);
+  const generateRealEarth = useStore((s) => s.generateRealEarth);
+  const importCities = useStore((s) => s.importCities);
+  useProjectRevision(); // 上传底图 / 改地形后这张脸的名字要跟着变
 
-  const tp = project.timePoints[timeIndex];
+  const baseMap = project.maps.find((m) => m.id === project.baseMapId) ?? null;
+  const baseRaster = project.rasterMaps.find((m) => m.id === project.baseRasterId) ?? null;
+  const face = baseRaster ? `地形 · ${baseRaster.name}` : baseMap ? `底图 · ${baseMap.name}` : '引擎自带的地球贴图';
+
+  // 单选项由数据决定选中态，故受控：上传新底图后要立刻反映到这一组 radio 上
+  const mapRow = (map) => (
+    <label className="map-row" key={map.id}>
+      <input
+        type="radio"
+        name="stage-map"
+        checked={project.baseMapId === map.id}
+        onChange={() => { updateProject({ baseMapId: map.id, baseRasterId: null }); }}
+      />
+      <img className="map-thumb" src={map.dataUrl} alt={map.name} />
+      <span>{map.name}</span>
+    </label>
+  );
 
   return (
     <div className="insp-block">
@@ -49,34 +72,38 @@ export function OverviewPanel() {
         ))}
       </div>
 
-      {/* 当前切面的配图，做法与条目配图完全一致（见 panels/ItemEditor.jsx）。
-          配图属于时代：换一个时间点就是换一张图 */}
-      {tp && (
-        <>
-          <div className="field-label">{`配图 · ${tp.label}`}</div>
-          {tp.image ? (
-            <div style={{ display: 'grid', gap: '6px' }}>
-              <img className="entry-img" src={tp.image} alt="" />
-              <button className="btn" onClick={() => updateTimePoint(tp.id, { image: null })}>移除配图</button>
-            </div>
-          ) : (
-            <button
-              className="btn"
-              onClick={async () => {
-                const file = await pickImage();
-                if (file) updateTimePoint(tp.id, { image: await fileToDataUrl(file, 1024) });
-              }}
-            >
-              ⬆ 上传配图
-            </button>
-          )}
-        </>
-      )}
+      <hr className="sep" />
+
+      {/* 舞台：球自己的那张脸。与时间无关——拖游标不会换脸，换脸也不动游标 */}
+      <div className="field-label">舞台 · 球长什么样</div>
+      <p className="insp-hint">{`当前：${face}`}</p>
+
+      <div style={{ display: 'grid', gap: '6px' }}>
+        <label className="map-row">
+          <input
+            type="radio"
+            name="stage-map"
+            checked={!project.baseMapId && !project.baseRasterId}
+            onChange={() => clearStage()}
+          />
+          <span>引擎自带的地球贴图</span>
+        </label>
+        {project.maps.map(mapRow)}
+      </div>
+
+      <button className="btn" onClick={() => uploadMap()}>⬆ 上传底图</button>
+
+      <div className="field-label">地形（真实山川河流，栅格优先于底图）</div>
+      <div style={{ display: 'grid', gap: '6px' }}>
+        <button className="btn" onClick={() => openWorkshop()}>
+          {baseRaster ? '🖌 编辑地形' : '🖌 画一张地形'}
+        </button>
+        <button className="btn" onClick={() => generateRealEarth()}>🌐 从真实地球生成地形</button>
+        <button className="btn" onClick={() => importCities()}>🏙 导入真实城市（243）</button>
+      </div>
 
       <p className="insp-hint" style={{ marginTop: '10px' }}>
-        {tp
-          ? `当前切面：${tp.label} —— 单击球面内容查看详情；切换到底部时间轴的其他时间点浏览世界演变。`
-          : '还没有时间点：先在底部时间轴点「+」添加第一个时间点并上传底图。'}
+        单击球面内容查看详情；拖动底部游标，看地点与事件在时间里依次登场。
       </p>
     </div>
   );

@@ -10,14 +10,15 @@ import { session } from './session.js';
 export function initBridge() {
   const { subscribe } = useStore;
 
-  // 项目数据或切面变了 → 三层内容全量重建
-  subscribe((s) => s.derived, () => refreshLayers());
-  // 切换切面 → 换底图与地形（栅格需异步解码）
-  subscribe((s) => s.timeIndex, () => applyEra());
-  // 底图/地形被就地改动（改时间点、上传底图、工坊提交）→ 重应用当前切面
-  subscribe((s) => s.eraEpoch, () => applyEra());
+  // 内容真的变了 → 三层整层重建（新贴图、新几何）。放在 derived 前面，
+  // 这样同一次写入先重建再定在场，不会出现「刚建好就漏了一次开关」
+  subscribe((s) => s.contentRev, () => rebuildLayers());
+  // 游标走动或数据变了 → 重算「谁在场」。拖游标只走这一条，一个像素都不重画
+  subscribe((s) => s.derived, () => applyActiveLayers());
+  // 舞台变了（换底图、换地形、载入项目）→ 重新贴一次球面
+  subscribe((s) => s.stageEpoch, () => applyStage());
   // 几何本身要重建（改标注大小、换配色）
-  subscribe((s) => s.layerEpoch, () => refreshLayers());
+  subscribe((s) => s.layerEpoch, () => rebuildLayers());
   // 只有地形动了（画笔涂抹、脚本改高度）→ 把已有图层重新贴回地表即可
   subscribe((s) => s.layoutEpoch, () => relayoutLayers());
   // 选中变化 → 只改高亮，不动几何
@@ -38,131 +39,107 @@ export async function getGridCached(rmap) {
   return grid;
 }
 
-/** 预解上限：一张 512×256 的网格连画布约 1.7MB，别把整个项目都摊在内存里 */
-const PREHEAT_LIMIT = 6;
-
-/** 尽量在浏览器空闲时做；没有 requestIdleCallback 就退化成定时器 */
-const whenIdle = (fn) => (typeof requestIdleCallback === 'function'
-  ? requestIdleCallback(fn, { timeout: 3000 })
-  : setTimeout(fn, 200));
-
-let preheating = false;
+/** 事件可以没有地点；这类事件不上球，只进编年史 */
+const hasCoords = (e) => e.lat != null && e.lng != null;
 
 /**
- * 空闲时把别的时间点的栅格底图先解出来。
- * 一张底图的 PNG 解码 + 重新着色要一百毫秒上下，正好压在切面切换那一帧上，
- * 这就是「切过去卡一下」的最后一块：预解掉之后，切的时候只剩换纹理。
- * 一次只解一张、只在空闲时解，不跟画笔和相机抢主线程；离当前切面近的先解，
- * 因为用户多半是沿着时间轴一步步走。
+ * 内容变了：三层整层重建，没有项目时整层隐藏。
+ * 收的是项目里的全部内容，不是当前游标下在场的那批——在场与否改由 applyActiveLayers 单独负责，
+ * 于是重建一次之后，游标怎么走都不必再建。
  */
-export function preheatEras() {
-  if (preheating) return;
-  const s = useStore.getState();
-  const p = s.project;
-  if (!p) return;
-
-  const seen = new Set();
-  const ids = [];
-  for (let d = 1; d < p.timePoints.length && ids.length < PREHEAT_LIMIT; d++) {
-    for (const i of [s.timeIndex + d, s.timeIndex - d]) {
-      const tp = p.timePoints[i];
-      if (!tp) continue;
-      const rmap = P.rasterAt(p, i);
-      if (!rmap || seen.has(rmap.id)) continue;
-      seen.add(rmap.id);
-      if (!session.gridCache.has(rmap.id)) ids.push(rmap.id);
-    }
-  }
-  if (!ids.length) return;
-
-  preheating = true;
-  const step = () => {
-    const id = ids.shift();
-    const rmap = id && P.getRasterMap(useStore.getState().project, id);
-    if (!rmap) { preheating = false; return; } // 项目换了或底图删了，就此打住
-    getGridCached(rmap).then(() => whenIdle(step), () => { preheating = false; });
-  };
-  whenIdle(step);
-}
-
-/** 按当前切面重建条目/路线/区域三层；没有项目时整层隐藏 */
-export function refreshLayers() {
+export function rebuildLayers() {
   const s = useStore.getState();
   const p = s.project;
   const visible = !!p;
-  session.markers.group.visible = visible;
+  session.labels.group.visible = visible;
+  session.eventDot.group.visible = visible;
   session.routes.group.visible = visible;
   session.regions.group.visible = visible;
-  if (!p) return;
-  const i = s.timeIndex;
-  session.markers.refresh(P.activeItems(p, 'entry', i));
-  session.routes.refresh(P.activeItems(p, 'route', i));
-  session.regions.refresh(P.activeItems(p, 'region', i));
+  session.labels.build(p ? p.entries : []);
+  // 没有地点的事件不上球：它是一条正经事件，只是没有坐标，只进编年史。
+  // 这里先筛掉，否则会照 null 经纬度算出一个 NaN 位置的光点
+  session.eventDot.build(p ? p.events.filter(hasCoords) : []);
+  session.routes.build(p ? p.routes : []);
+  session.regions.build(p ? p.regions : []);
+  applyActiveLayers();
   applySelectionToLayers();
 }
 
 /**
+ * 重算「谁在场」，把不在场的藏起来。
+ * 与 rebuildLayers 的差别是「翻开关」与「重建」：贴图、几何、材质一律不动，
+ * 所以游标每扫过一次都可以放心调，成本只有 N 次布尔赋值。
+ */
+export function applyActiveLayers() {
+  const d = useStore.getState().derived;
+  session.labels.setActive(new Set(d.activeEntries.map((e) => e.id)));
+  // 光点跟的是选中而不是游标：从长卷里点开一条旧事件时，游标可能已经不在那一年了，
+  // 但点该亮还是要亮——所以这一层没有「在场」这回事
+  session.eventDot.setActive();
+  session.routes.setActive(new Set(d.activeRoutes.map((r) => r.id)));
+  session.regions.setActive(new Set(d.activeRegions.map((r) => r.id)));
+}
+
+/**
  * 内容一条没变、只是脚下的地形变了：把已有图层重新贴回地表。
- * 与 refreshLayers 的差别是「重建」与「重定位」——标注贴图、路线材质、区域颜色
+ * 与 rebuildLayers 的差别是「重建」与「重定位」——标注贴图、路线材质、区域颜色
  * 都原样留着，只重算半径。画笔每移动一下都会走到这里，必须便宜。
  */
 export function relayoutLayers() {
   if (!useStore.getState().project) return;
-  session.markers.relayout();
+  session.labels.relayout();
+  session.eventDot.relayout();
   session.routes.relayout();
   session.regions.relayout();
 }
 
 /**
- * 切面切换 / 底图地形变化：栅格优先于图片底图。
- * 幂等：目标（哪张栅格 / 哪张图片底图）与上一次相同就直接返回。
- * 一次 setTime 会同时改 derived 与 timeIndex，两个订阅都会触发；
- * 载入项目、工坊提交又会各自 touchEra 一次——没有这道闸，切一下要重来两三次。
+ * 舞台变了：把球那张脸重新贴一次，栅格优先于图片底图。
+ * 只在载入项目 / 换底图 / 换地形时跑，与游标无关——拖游标不换脸，只重刷内容层。
+ *
+ * 令牌是给异步解码兜底的：换栅格要等 PNG 解码，等待期间用户若又换了一张，
+ * 先回来的那次必须作废，否则 currentGrid 会停在前一张上，与球面显示的对不上。
  */
-export async function applyEra() {
+export async function applyStage() {
   const s = useStore.getState();
   const p = s.project;
-  const timeIndex = s.timeIndex;
-  const rmap = p ? P.rasterAt(p, timeIndex) : null;
-  const mapUrl = rmap ? null : (P.mapAt(p, timeIndex)?.dataUrl ?? null);
-  const key = rmap ? `raster:${rmap.id}` : `map:${mapUrl ?? ''}`;
-  const isTarget = (rec) => !!rec && rec.project === p && rec.key === key;
-  if (isTarget(session.appliedEra) || isTarget(session.applyingEra)) return;
+  const rmap = p ? P.getRasterMap(p, p.baseRasterId) : null;
+  const mapUrl = rmap ? null : (P.getMap(p, p.baseMapId)?.dataUrl ?? null);
 
-  const token = ++session.eraToken;
-  session.applyingEra = { project: p, key };
+  const token = ++session.stageToken;
+  session.applyingStage = true;
   try {
     if (!rmap) {
-      // 没有栅格地形：退回图片底图。这里不动 currentGrid——
-      // 内容照旧贴着上一次的地形，等新地形解码好再换，中途不会跳一下。
+      // 没有栅格地形：退回图片底图（可能也没有，那就是引擎自带的地球贴图）。
+      // 这里不动 currentGrid——内容照旧贴着上一次的地形，等新地形解码好再换，中途不会跳一下。
       session.currentGrid = null;
       session.globe.setMap(mapUrl);
       return;
     }
     const grid = await getGridCached(rmap);
-    if (token !== session.eraToken) return; // 等待期间又切了切面，丢弃这次结果
+    if (token !== session.stageToken) return; // 等待期间换过脸了，丢弃这次结果
     session.currentGrid = grid;
     session.globe.setRaster(grid);
   } catch (err) {
-    if (token !== session.eraToken) return;
+    if (token !== session.stageToken) return;
     session.currentGrid = null;
     useStore.getState().toast(`地形底图解码失败：${err.message}`);
     session.globe.setMap(mapUrl);
   } finally {
-    // 被后来者顶掉的那次不写状态，也不重排图层
-    if (token === session.eraToken) {
-      session.applyingEra = null;
-      session.appliedEra = { project: p, key };
+    // 被后来者顶掉的那次不重排图层，否则会把新地形的贴地半径算成旧的
+    if (token === session.stageToken) {
+      session.applyingStage = false;
       relayoutLayers();
-      preheatEras(); // 当前切面已经好了，趁空闲把别的切面也解出来
     }
   }
 }
 
 function applySelectionToLayers() {
   const sel = useStore.getState().selection;
-  const id = sel && sel.kind !== 'time' ? sel.id : null;
-  session.markers.setSelected(id);
+  const id = sel?.id ?? null;
+  session.labels.setSelected(sel?.kind === 'entry' ? id : null);
+  // 光点只认事件：选中地点、路线、区域时它必须消失，否则球上会留着一个无主的亮点
+  session.eventDot.setSelected(sel?.kind === 'event' ? id : null);
   session.routes.setSelected(id);
   session.regions.setSelected(id);
 }

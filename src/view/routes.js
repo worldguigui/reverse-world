@@ -40,7 +40,11 @@ export class RouteLayer {
     for (const { mat } of this.byId.values()) mat.resolution.set(w, h);
   }
 
-  refresh(routes) {
+  /**
+   * 重建全部路线。只有内容真的变了才调——每条都要重新 slerp 细分出一整串弧线顶点。
+   * 收全部路线而不是当前游标下在场的那批，此后游标怎么走都只翻可见性。
+   */
+  build(routes) {
     for (const { line, mat } of this.byId.values()) {
       line.geometry.dispose();
       this._bin.put(mat); // 几何可以丢，材质留着——见 material-bin.js
@@ -84,6 +88,11 @@ export class RouteLayer {
     }
   }
 
+  /** 只改「谁在场」；游标每走一步都会调，所以只翻 visible，弧线顶点一概不动 */
+  setActive(ids) {
+    for (const [id, { line }] of this.byId) line.visible = ids.has(id);
+  }
+
   _add(line) {
     line.layers.set(LAYER_CONTENT); // 单独一趟渲染，见 render-layers.js
     this.group.add(line);
@@ -97,7 +106,9 @@ export class RouteLayer {
 
   /** 射线拾取（Line2 的拾取按屏幕像素宽度计算） */
   pick(raycaster) {
-    const hits = raycaster.intersectObjects([...this.byId.values()].map((v) => v.line), false);
+    // 不在场的路线只是 visible=false，射线不看这个标志，得自己筛掉
+    const lines = [...this.byId.values()].map((v) => v.line).filter((l) => l.visible);
+    const hits = raycaster.intersectObjects(lines, false);
     return hits.length ? hits[0].object.userData.itemId : null;
   }
 
