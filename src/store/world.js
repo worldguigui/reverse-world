@@ -18,18 +18,17 @@ import { session } from '../session.js';
  * 引用必然更新。
  *
  * 只有事件多叠一道视图条件（在场 ∩ 属于当前视图）：章节与按人物筛管的是叙事，
- * 地点、路线、区域的存续区间照旧，不受影响。
+ * 路线与区域的存续区间照旧，不受影响。
  */
 export function buildDerived(project, cursor, viewFilter = null) {
   if (!project) {
     return {
       counts: null,
-      activeEntries: [], activeEvents: [], activeRoutes: [], activeRegions: [],
+      activeEvents: [], activeRoutes: [], activeRegions: [],
     };
   }
   return {
     counts: P.stats(project),
-    activeEntries: P.activeItems(project, 'entry', cursor),
     activeEvents: P.activeItems(project, 'event', cursor)
       .filter((e) => P.inView(viewFilter, e)),
     activeRoutes: P.activeItems(project, 'route', cursor),
@@ -98,7 +97,7 @@ export const createWorldSlice = (set, get) => ({
     }
     // 还有刻度却已经走到头：原地不动，别让游标滑到轴的边距上
     if (timeTicks(p, view).length) return;
-    // 一条刻度都没有（只有带区间的地点、路线、区域）：按定义域百分之一挪一步，
+    // 一条刻度都没有（只有带区间的路线与区域）：按定义域百分之一挪一步，
     // 否则方向键在整个世界里都是死的
     get().setCursor(nextTickYear(p, get().cursor, dir, view));
   },
@@ -114,12 +113,12 @@ export const createWorldSlice = (set, get) => ({
   newProject() {
     const p = get().project;
     const s = p ? P.stats(p) : null;
-    if (s && (s.entries || s.routes || s.regions || s.events)
+    if (s && (s.events || s.routes || s.regions)
         && !confirm('当前世界尚未导出，新建会覆盖自动保存的内容，确定？')) return;
     const fresh = P.createProject();
     set({
       project: fresh, cursor: 0, selection: null,
-      entryDraft: {}, drawCoords: [], pendingCoords: null,
+      eventDraft: {}, drawCoords: [], pendingCoords: null,
       // 换了世界就回到「全部」：上一个世界的章节 id 在新世界里毫无意义
       viewFilter: P.noView(),
     });
@@ -146,7 +145,7 @@ export const createWorldSlice = (set, get) => ({
     set({
       project, cursor, viewFilter,
       derived: buildDerived(project, cursor, viewFilter),
-      selection: null, entryDraft: {}, drawCoords: [], pendingCoords: null,
+      selection: null, eventDraft: {}, drawCoords: [], pendingCoords: null,
     });
     get().mutateProject(() => {});
     get().touchStage();
@@ -164,7 +163,7 @@ export const createWorldSlice = (set, get) => ({
 
   // ---------------------------------------------------------------- 内容
 
-  /** 改地点/事件/路线/区域：derived 一变，bridge 会重建三维图层 */
+  /** 改事件/路线/区域/人物/章节：derived 一变，bridge 会重建三维图层 */
   updateItem(kind, id, patch) {
     get().mutateProject((p) => P.updateItem(p, kind, id, patch));
   },
@@ -178,28 +177,8 @@ export const createWorldSlice = (set, get) => ({
     if (kind === 'character' && v.characterId === id) get().setViewFilter({ characterId: null });
   },
 
-  /** 新建地点：草稿 + 落点 → 地点，并飞过去。不填时间 = 常驻 */
-  commitEntry() {
-    const p = get().project;
-    const { pendingCoords: c, entryDraft: d } = get();
-    if (!p || !c) return;
-    const item = P.addItem(p, 'entry', {
-      title: d.title || '新地点',
-      description: d.description || '',
-      image: d.image ?? null,
-      lat: c.lat,
-      lng: c.lng,
-      from: d.from ?? null,
-      to: d.to ?? null,
-    });
-    set({ entryDraft: {}, selection: { kind: 'entry', id: item.id } });
-    get().setMode('browse');
-    get().mutateProject(() => {});
-    get().flyToItem('entry', item);
-  },
-
   /**
-   * 新建事件：与地点同一套流程，只是坐标可以没有。
+   * 新建事件：草稿 + 落点 → 事件，并飞过去。
    * 没点球面就是「纯叙事事件」——它照样是一条正经事件，只是不上球、只进编年史。
    *
    * 默认落在当前游标所在的那一年：新事件若不占一个刻度，它在时间轴上就是隐形的，
@@ -207,7 +186,7 @@ export const createWorldSlice = (set, get) => ({
    */
   commitEvent() {
     const p = get().project;
-    const { pendingCoords: c, entryDraft: d, cursor } = get();
+    const { pendingCoords: c, eventDraft: d, cursor } = get();
     if (!p) return;
     const item = P.addItem(p, 'event', {
       title: d.title || '新事件',
@@ -220,7 +199,7 @@ export const createWorldSlice = (set, get) => ({
       characters: d.characters ?? [],
       groupId: d.groupId ?? null,
     });
-    set({ entryDraft: {}, selection: { kind: 'event', id: item.id } });
+    set({ eventDraft: {}, selection: { kind: 'event', id: item.id } });
     get().setMode('browse');
     get().mutateProject(() => {});
     if (c) get().flyToItem('event', item);
@@ -303,19 +282,9 @@ export const createWorldSlice = (set, get) => ({
 
   // ---------------------------------------------------------------- 编程接口用
 
-  /** 当前游标下在场的地点（api.js#listEntries） */
-  activeEntries() {
-    return get().derived.activeEntries.map((e) => ({ ...e }));
-  },
-
   /** 当前游标下在场的事件（api.js#listEvents） */
   activeEvents() {
     return get().derived.activeEvents.map((e) => ({ ...e }));
-  },
-
-  addEntryViaApi(data) {
-    const item = get().mutateProject((p) => P.addItem(p, 'entry', data));
-    return item?.id;
   },
 
   addEventViaApi(data) {

@@ -149,7 +149,6 @@ export const createActionsSlice = (set, get) => ({
       sum.add(latLngToVec3(lat, lng, 1));
       n++;
     };
-    for (const it of p.entries) add(it.lat, it.lng);
     for (const it of p.events) add(it.lat, it.lng);
     for (const r of p.routes) for (const pt of r.points) add(pt.lat, pt.lng);
     for (const r of p.regions) for (const [lng, lat] of r.ring) add(lat, lng);
@@ -161,13 +160,13 @@ export const createActionsSlice = (set, get) => ({
     rig.flyToLatLng(lat, lng, { duration: 900 });
   },
 
-  /** 飞到某个内容的代表位置（路线的首个途经点、区域的第一个顶点） */
+  /** 飞到某个内容的代表位置（事件的坐标、路线的首个途经点、区域的第一个顶点） */
   flyToItem(kind, item) {
     let lat, lng;
-    if (kind === 'entry' || kind === 'event') { lat = item.lat; lng = item.lng; }
+    if (kind === 'event') { lat = item.lat; lng = item.lng; }
     else if (kind === 'route') { ({ lat, lng } = item.points[0] ?? {}); }
     else if (kind === 'region') { lat = item.ring[0]?.[1]; lng = item.ring[0]?.[0]; }
-    // 没有地点的事件、空路线、空环都飞不了，静默返回
+    // 没有坐标的纯叙事事件、空路线、空环都飞不了，静默返回
     if (lat == null || lng == null) return;
     get().flyTo(lat, lng);
   },

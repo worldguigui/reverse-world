@@ -70,7 +70,6 @@ export function rebuildLayers() {
  */
 export function applyActiveLayers() {
   const d = useStore.getState().derived;
-  // 地点不上球，游标扫过它时球面纹丝不动，所以这里没有它那一笔。
   // 光点跟的是选中而不是游标：从长卷里点开一条旧事件时，游标可能已经不在那一年了，
   // 但点该亮还是要亮——所以这一层没有「在场」这回事
   session.eventDot.setActive();
@@ -134,7 +133,7 @@ export async function applyStage() {
 function applySelectionToLayers() {
   const sel = useStore.getState().selection;
   const id = sel?.id ?? null;
-  // 光点只认事件：选中地点、路线、区域时它必须消失，否则球上会留着一个无主的亮点
+  // 光点只认事件：选中路线、区域或人物时它必须消失，否则球上会留着一个无主的亮点
   session.eventDot.setSelected(sel?.kind === 'event' ? id : null);
   session.routes.setSelected(id);
   session.regions.setSelected(id);

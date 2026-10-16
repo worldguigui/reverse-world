@@ -1,6 +1,6 @@
 # 世界图志 · 世界观时间轴工具
 
-> 基于 **Three.js + Vite** 的架空世界构建工具：把自己设计的平面地图或**真实地球地形**贴上球体，用**一根游标**串起世界的演变（沧海桑田），按经纬度放置**地点 / 事件 / 路线 / 势力区域**，还能用**地形工坊**像画等高线图一样捏出自己的山川河流。球面画地形、路线与区域，事件在时间轴与编年史上一条条翻。
+> 基于 **Three.js + Vite** 的架空世界构建工具：把自己设计的平面地图或**真实地球地形**贴上球体，用**一根游标**串起世界的演变（沧海桑田），按经纬度放置**事件 / 路线 / 势力区域**，还能用**地形工坊**像画等高线图一样捏出自己的山川河流。球面画地形、路线与区域，事件在时间轴与编年史上一条条翻。
 > 地球只是一个示例世界——它可以是任何世界。
 >
 > **文档体系**：本 README 分为「架构介绍」与「版本迭代记录」两部分；配套文档见 [`docs/README.md`](docs/README.md)（更新规则）、[`docs/ADR.md`](docs/ADR.md)（重大决策）、[`docs/DESIGN.md`](docs/DESIGN.md)（当前阶段方案）、[`docs/TEMP.md`](docs/TEMP.md)（临时需求）。所有文档遵循「**区域顶部插入**」更新策略，最新内容始终在顶部。
@@ -15,17 +15,17 @@
 - **前端框架**：React + Zustand，仅接管 UI 层与状态层（`core/`、`view/` 不进框架）；构建产物相对路径，可静态部署。
 - **命令**：`npm install` / `npm run dev`（http://localhost:5173）/ `npm run build`（dist/）。
 - **验证脚本**（`scripts/`，依赖本机 Edge + 已启动 dev server）：`node scripts/verify-terrain.mjs`（地形端到端）、`node scripts/ui-test.mjs`（UI 交互）、`node scripts/shot.mjs`（截图）。
-- **编程入口**：浏览器控制台 `window.world`（由 `src/api.js#installAPI` 挂载），提供 `help()/loadSample()/getCursor()/setCursor()/stepCursor()/jumpToEvent()/showChronicle()/generateRealEarth()/openWorkshop()/paintTerrain()/sampleTerrain()/addEntry()/addEvent()/flyTo()/where()/resetView()`，以及人物与章节的 `addCharacter()/listCharacters()/eventsOfCharacter()/addGroup()/listGroups()/eventsOfGroup()/filterByGroup()/filterByCharacter()/clearFilter()` 等。
+- **编程入口**：浏览器控制台 `window.world`（由 `src/api.js#installAPI` 挂载），提供 `help()/loadSample()/getCursor()/setCursor()/stepCursor()/jumpToEvent()/showChronicle()/generateRealEarth()/openWorkshop()/paintTerrain()/sampleTerrain()/listEvents()/addEvent()/addRoute()/addRegion()/flyTo()/where()/resetView()`，以及人物与章节的 `addCharacter()/listCharacters()/eventsOfCharacter()/addGroup()/listGroups()/eventsOfGroup()/filterByGroup()/filterByCharacter()/clearFilter()` 等。
 
 ### 2. 核心概念
 
-世界分四层，用剧场的说法各司其职：**舞台**（球长什么样，与时间无关）、**布景**（地点、路线、区域）、**演员**（事件）、**追光**（游标，此刻看哪一年）；**人物**是演员表上的名字，**章节**把戏分成几幕——这两样都不上台。
+世界分四层，用剧场的说法各司其职：**舞台**（球长什么样，与时间无关）、**布景**（路线、区域）、**演员**（事件）、**追光**（游标，此刻看哪一年）；**人物**是演员表上的名字，**章节**把戏分成几幕——这两样都不上台。
 
-- **世界项目** = 一张脸（图片底图 / 栅格地形，二选一）+ 内容（地点 / 事件 / 路线 / 区域 / 人物 / 章节），整体是一个可 JSON 序列化的对象（`src/core/project.js#createProject`）。
+- **世界项目** = 一张脸（图片底图 / 栅格地形，二选一）+ 内容（事件 / 路线 / 区域 / 人物 / 章节），整体是一个可 JSON 序列化的对象（`src/core/project.js#createProject`）。
 - **舞台只有一张脸**：球体不随时间换皮。`baseRasterId`（栅格地形）优先于 `baseMapId`（图片底图），两者都为空就用引擎自带的地球贴图。**拖游标不换脸**——这是刻意的，底图是一张图，它跟时间没有关系。
 - **游标**：一个**数值年**（`cursor`，负数为公元前，允许小数）。它不是项目数据，而是「此刻在看哪一年」，所以不进 `project`；拖动它只翻内容的可见性，一个像素都不重画。
-- **内容生命周期**：带时间的内容（地点 / 事件 / 路线 / 区域）都有 `from` / `to` 两个**年份**（留空 = 该端开放，两端都空就是「常驻」）。可见性判定唯一位置 `project.js#isActiveAt`（闭区间 `from <= cursor <= to`），四类内容共用这一条判据。
-- **事件与地点**：数据上两者同形（都带配图与存续区间、都有 `lat`/`lng`），差别在谁上球——**事件不铺点**：事件一多，球面会被点铺满，也会让人以为「点上去能选中」。事件的入口只有时间轴刻度与编年史长卷两处，球上只把**选中那一条**的坐标点亮成一枚光点，改选别人它就灭。**地点根本不上球**（见 v0.0.9）：球面只画地形、路线与区域，地点的入口是总览与编年史。另一条差别是**事件可以没有地点**（纯叙事事件不上球，只进编年史），且**事件是时间轴刻度的来源**（`core/timeline.js#timeTicks`）。
+- **内容生命周期**：带时间的内容（事件 / 路线 / 区域）都有 `from` / `to` 两个**年份**（留空 = 该端开放，两端都空就是「常驻」）。可见性判定唯一位置 `project.js#isActiveAt`（闭区间 `from <= cursor <= to`），三类内容共用这一条判据。
+- **事件**：一条事件是「哪一年发生了什么」，可以带坐标、也可以不带——**纯叙事事件不上球**，只进编年史（长卷里标注「无地点」）。**事件不铺点**：事件一多，球面会被点铺满，也会让人以为「点上去能选中」。事件的入口只有时间轴刻度与编年史长卷两处，球上只把**选中那一条**的坐标点亮成一枚光点，改选别人它就灭。事件还是**时间轴刻度的唯一来源**（`core/timeline.js#timeTicks`）——路线与区域虽然也带年份，但不画刻度。
 - **时间轴与编年史**：轴的定义域由内容自己的 `from`/`to` 算出来（`timeDomain`），没有任何需要人维护的槽位——给某条内容填上时间，轴就长出来一截。轴上不铺标题（挤在一起没法看），标题在**编年史长卷**里按时间铺开。
 - **人物与章节**：人物是事件的参与者，不是地点上的东西——所以不上球、没有存续区间，`born` / `died` 只是生平，不参与在场判定。章节是事件的归类，本身不带年份，标签上的范围（`1914–1919`）由组内事件的年份算出来。两者与事件的关联都**只写在事件那一侧**（`characters` / `groupId`），人物卡上那张「涉及的事件」是现算的——反向关系是求值，不是数据。
 - **视图条件**：`viewFilter = { groupId, characterId }` 决定「此刻在看什么」，两个都可空，同时给就是交集。指向章节时是真的翻章；按人物筛出的那一组是**算出来的**，用完就没了，不落盘、不进 `groups`。两者共用一条筛选路径——收窄换的只是「谁在场」，一个像素都不用重画。
@@ -37,7 +37,7 @@
 
 ```
 src/
-  main.js          组装、编辑模式状态机（browse/add-entry/add-event/draw-route/draw-region）、
+  main.js          组装、编辑模式状态机（browse/add-event/draw-route/draw-region）、
                   鼠标键盘交互、渲染循环（renderer.setAnimationLoop）
   config.js        画面设置（视角/光照/大气/星空/地形夸张/球面标记尺寸），localStorage 持久化
   utils.js         经纬度↔三维坐标、大圆弧插值、TweenManager 补间动画
@@ -53,7 +53,7 @@ src/
                    自动保存器、换底图的竞态令牌（stageToken）
   bridge.js        store → 三维的单向同步：订阅 contentRev/derived/stageEpoch/选中，重建图层、翻在场、重新贴脸
   core/            数据核心层（纯数据/纯算法，不依赖 three）
-    project.js     数据模型：图片底图/栅格底图/地点/事件/路线/区域/人物/章节 + 在场判定（isActiveAt）
+    project.js     数据模型：图片底图/栅格底图/事件/路线/区域/人物/章节 + 在场判定（isActiveAt）
                    + 视图条件（inView）与现算的反向查询（eventsOfCharacter / eventsOfGroup）
     timeline.js    时间轴：由内容的 from/to 算出定义域与刻度、年份写法、游标夹取与步进
     migrate.js     v1 → v2 迁移：时间点槽位模型 → 「一张脸 + 一根游标」，时间点变成事件
@@ -61,7 +61,7 @@ src/
     landmask.js    LandMask：二值海陆场 + 离岸距离（倒角距离变换）。只管「是陆是海」，可选
     realearth.js   真实地球：高程图 + 海陆掩膜合成、河流栅格化
     storage.js     IndexedDB 持久化 + 防抖自动保存 + .world.json 导出/导入
-    sample.js      示例世界（真实地形 + 一战六年：19 处地点、32 条事件、16 位人物）
+    sample.js      示例世界（真实地形 + 一战六年：32 条事件、16 位人物、1 条路线、1 块区域）
   view/            3D 视图层（引擎封装边界，对外只暴露业务语义方法）
     render-layers.js  渲染趟次编号：场景 / 深度掩膜 / 内容（见「一帧三趟」）
     material-bin.js   材质回收桶：整层重建时复用材质，避免 GL 程序被连坐销毁
@@ -74,7 +74,7 @@ src/
   ui/              UI 层（React）
     react/         面板组件 + mount.js（每面板一个 root）+ hooks.js（订阅派生信号）
       Toolbar / Timeline / Inspector / SettingsPanel / Workshop
-      panels/        检查器各子表单：地点 / 事件 / 路线 / 区域 / 人物卡 / 章节清单
+      panels/        检查器各子表单：事件 / 路线 / 区域 / 人物卡 / 章节清单
       Chronicle.jsx  编年史长卷：按时间铺开全部事件，跟着游标亮到哪读到哪；
                      顶上那排章节标签是视图条件的入口，收窄长卷、时间轴刻度与球上的事件
     registry.js    面板挂载表：容器 id → 组件
@@ -92,14 +92,14 @@ public/            静态资源：data/ne_50m_rivers.geojson（河网）、textu
 - **GPU 地形位移**：`view/globe.js#_buildSphere` 在 `MeshPhongMaterial.onBeforeCompile` 注入顶点着色器——高度纹理（R+G 打包 16-bit）用双线性采样（线性色空间、不生成 mipmap），`transformed += normalize(position) * unpackHeight(texture2D(uHeightTex, uv).rg) * uExaggeration`；法线用高度场邻域差分扰动。位移只在 GPU，射线拾取对逻辑球面（未位移的 `globe.sphere`），放置内容天然自洽。
 - **贴图对准**：`utils.js#latLngToVec3` 与 `SphereGeometry` 的 UV 展开一致。
 - **球面弦陷防护**：区域按边长 ≤2° 递归四分割（`view/regions.js#pushSubdivided`，深度上限 6），路线走大圆弧 slerp 细分（`view/routes.js#arcPositions`，≤2°/段）。
-- **球面拾取只有路线与区域**（`main.js#pickAt`）：走射线，两者都浮在地表之上，各自按地平线判据筛一遍（`raycaster` 不理会 `visible`）。**地点与事件都不在球上拾取**——球面只负责画，入口是总览、编年史与时间轴刻度。地点曾经走在球上（贴地四边形 + 屏幕空间查点），那是它自己的画法决定的，v0.0.9 拿掉之后这条路径一并不需要了。
+- **球面拾取只有路线与区域**（`main.js#pickAt`）：走射线，两者都浮在地表之上，各自按地平线判据筛一遍（`raycaster` 不理会 `visible`）。**事件不在球上拾取**——球面只负责画，事件的入口是时间轴刻度与编年史长卷。地名曾经在球上有自己的一套拾取（贴地四边形 + 屏幕空间查点），那是它的画法决定的；整层拿掉之后，这条路径也就不需要了。
 - **自由翻滚的相机**（`view/camera.js`）：OrbitControls 的球坐标把 `phi` 从相机位置 `acos` 出来，恒落在 `[0, π]`，绕极点时被夹住——这是表示法的限制，参数怎么调都过不去。所以旋转改由自己用四元数做 trackball：拖动时按「屏幕右 / 屏幕上」两个轴构造四元数，**同时**乘到相机的位置与 `up` 上。相机永远看原点、且 `up ⊥ 视线`，两者同步旋转后这个关系不变（OrbitControls 自己的坐标系里 `phi` 恒为 π/2，它的往返换算仍然精确），于是可以越过南北极、把地平线转歪。缩放仍交给 OrbitControls——距离计算与朝向无关，没必要重写。自转也改为绕世界 Y 轴（南北极）而非相机上方向：翻过球之后两者不一致，用后者会变成绕屏幕竖线打转。转晕了用 🧭 复位视角 / `world.resetView()` 回到正北朝上。
 - **工坊画布视图**（`ui/workshop-session.js`）：画布按「一格一 CSS 像素」写死尺寸，缩放平移全走 CSS `transform: translate() scale()`，**不动画布分辨率**——改分辨率等于重采样，图会糊。缩放锚点直接用画布自己的 `getBoundingClientRect()` 算：它返回的是**变换后**的矩形，于是 `toGrid` 那条「屏幕坐标 → 网格坐标」的换算在任意缩放下自动成立，不必手写变换的逆。
 - **栅格存储**：整张地形编码为一张 PNG（`core/raster.js#encodePNG`：R+G=16-bit 高度 [-4,4]，B=河流），IndexedDB 单条记录 500ms 防抖自动保存，导出为内嵌图片的单文件 `.world.json`（`core/storage.js`）。
 - **数据驱动渲染（三级信号 + 独立舞台信号）**：拖游标必须是零重建的，这一条决定了信号的切法。一条内容的**样子**只由它自己的数据决定，与游标在哪一年无关——所以游标一变，只需要翻一批开关。
-  - `store/world.js#contentRev`（**内容变了**：增删改地点/事件/路线/区域）→ `bridge.js#rebuildLayers()` 重建贴图、几何、材质；
+  - `store/world.js#contentRev`（**内容变了**：增删改事件/路线/区域/人物/章节）→ `bridge.js#rebuildLayers()` 重建贴图、几何、材质；
   - `store/world.js#derived`（**游标走了 / 视图收窄了**：同一批内容换了一批在场者）→ `bridge.js#applyActiveLayers()` 只翻 `visible`，成本是 N 次布尔赋值。筛选就叠在 `buildDerived` 里面（`activeEvents` 的输入是「在场 ∩ 属于当前视图」），所以翻章与拖游标走的是同一条路，`bridge.js` 一行都不用改；
-  - `store/ui.js#layoutEpoch`（**只是地形变了**：工坊画笔、`paintTerrain`）→ `bridge.js#relayoutLayers()` 把已有对象重新贴回新地表，derived 快照与全部地名贴图一概不动。
+  - `store/ui.js#layoutEpoch`（**只是地形变了**：工坊画笔、`paintTerrain`）→ `bridge.js#relayoutLayers()` 把已有对象重新贴回新地表，derived 快照与全部光点贴图一概不动。
   - 与此正交的是 `store/ui.js#stageEpoch`（**换脸了**：换底图、换地形、载入项目）→ `bridge.js#applyStage()`，与游标完全无关。`session.stageToken` 是异步解码的竞态守卫：换栅格要等 PNG 解码，等待期间用户若又换了一张，先回来的那次作废。
   - 实测：连续 400 步推游标共 19.2 ms（**0.048 ms/步**），路线的材质 / 纹理 UUID 全程不变——这就是「拖游标不卡」的根据。
 - **一帧三趟渲染**（`view/render-layers.js` 定义层号，`main.js#render` 按序渲染三遍）：
@@ -132,10 +132,10 @@ public/            静态资源：data/ne_50m_rivers.geojson（河网）、textu
 - 河流是画笔通路，不随坡向汇流（D8 算法待做）。
 - 跨 ±180° 勾画的区域三角剖分可能出错（`buildFillGeometry` 未拆线；`buildBorderGeometry` 已按短弧处理）。
 - 底图切换为硬切（交叉淡化待做）。
-- **地点不上球，于是球上看不到它**：地点是正经内容（`kind: 'entry'`，带经纬度与存续区间），编辑、总览、编年史、`world.addEntry()` 一处不少，只是球面不再画它——建完一个地点，球上不会有任何痕迹。这是 v0.0.9 刻意做的解耦：球面只画地形、路线与区域，地名印刷留待日后作为一层外挂接回来。**代价是「在球上点一个地方建地点」这条流失去了后半段反馈**：点下去表单照旧出现、地点照旧建成并被选中，只是画面上没有东西回应你。
+- **没有「地点」这一等实体**（见 v0.0.13）：地名印刷留待日后作为一层外挂（行政区图层）接回来。在那之前，一个地方要「在场」，写成一条事件——事件本来就有坐标、有配图、有存续区间，而地点与事件原先的差别只在谁上球、谁画刻度（v0.0.9 之后两者都不上球）。**代价是标一个位置就不再是件轻量的事**：事件一定会占掉时间轴上的一个刻度、并进编年史长卷，而只想在地图上点一个地名的人并不想讲一件事；另外事件是点、区域是面，一笔带过的地名也没法画成区域。
 - **同年多条事件时刻度叠在一起**：刻度按事件的年份落位，同一年里的几条落在同一个 x 上，鼠标只有最上面那一个点得中。逐条读的入口是底部的 ◀ ▶：按一下换一条，并把游标与检查器一起带过去。轴没有「槽位」这个概念，刻度叠置是这个模型的直接后果。
 - 轴是按年份**线性**铺开的，年份跨度大的世界会把内容稀疏的段落拉得很快（改成均匀分布是「非线性压缩轴」，属于另一个需求）。示例世界收在一战这六年里，正是为了让刻度排得开。
-- v1 项目导入时只保留**最后一张**底图与地形：v1 是逐时间点各存一套舞台，v2 的球只有一张脸，多出来的那几套会丢掉（内容本身一条不丢，时间点转成事件）。
+- v1 项目导入时只保留**最后一张**底图与地形，旧模型里的**地点**（`entries`）也不再保留：v1 是逐时间点各存一套舞台，v2 的球只有一张脸，多出来的那几套会丢掉；地点则是这一等实体本身已经取消，硬塞成事件只会把地名表混进叙事（事件 / 路线 / 区域 / 人物 / 章节一条不丢，时间点转成事件）。
 - 无单元测试框架（仅 scripts/ 三个 E2E）；`main.js#main` 仍是约 350 行的组装函数（UI 与状态已外移，剩下渲染基础、鼠标键盘交互与启动）。
 
 ---
@@ -143,6 +143,27 @@ public/            静态资源：data/ne_50m_rivers.geojson（河网）、textu
 ## 第二部分 · 版本迭代记录
 
 > 更新规则：**新版本条目插入本列表顶部**（最新在上），保持「从头检索先见最新」。历史条目只追加不改。
+
+### v0.0.13 取消「地点」这一等实体（2026-10-17）
+
+1. **症状**：「地点」活着的时候，球面上看不到它（v0.0.9 起球面只画地形、路线与区域），界面上也没有任何入口能再打开其中一条——建成一个地点就再也回不去了，只剩总览里一个数字。
+2. **先量再动**。把示例世界的 **19 处地点整个抽掉**，时间轴定义域是 `{min:1914, max:1919, start:1913.8, end:1919.2}`，与带着它们时**逐字节相同**——事件本来就铺满了同样的六年。另外两处：`selection = { kind: 'entry' }` 全项目只有**一处**写入（就是它自己的创建动作，`commitEntry`），`derived.activeEntries` 只被 `api.js#listEntries` 读过，而那个方法**一个 UI 消费者都没有**。三处加起来：它对系统行为的贡献是零。
+3. **改法**：`core/project.js` 的 `KINDS.entry` / `DEFAULTS.entry` / `ID_PREFIX.entry` / `stats.entries` / `createProject().entries`、`timeline.js` 的 `ALL_KINDS`、`store/world.js` 的 `commitEntry/activeEntries/addEntryViaApi`、`api.js` 的 `listEntries/addEntry`、`Toolbar.jsx` 的「📍 地点」模式、`main.js` 的 `add-entry` 拾取分支、`actions.js#aimAtContent` 里的 `p.entries` 那一行，全部拿掉；`EntryForm.jsx` 改名 `EventForm.jsx`（只剩事件这一条分支）；示例世界那 19 处地点连同 `place()` helper 一并删掉。顺带清掉几个「只有地点用」的残留名字：`entryDraft → eventDraft`、`.entry-img → .item-img`、`#entry-coords / #entry-image-btn → #event-*`。
+4. **v1 迁移不再搬 `entries`**：地点这一等实体已经取消，没有对应的新形状，硬塞成事件只会把一张地名表混进叙事。`migrate.js` 的文档注释里写明了这是有意的丢掉（连同逐时代的底图与地形）。
+5. **拿什么代替**：区域。它自带配图、坐标与存续区间，而且是如今**唯一能在球上点中**的东西——对地点严格占优，只差「点 vs 面」的轻重（一个一笔带过的地名画成多边形并不自然）。真要的是那种轻量地名，等行政区图层回来时一起接。
+6. **量到的副作用——配色池小了**：`nextColor` 的候选池是「全部带颜色的内容」，示例世界由 **69**（16 人物 + 32 事件 + 1 路线 + 1 区域 + 19 地点）降到 **50**。8 个颜色早被用满，于是落到兜底那条 `PALETTE[used.length % 8]` 上：在示例世界里新建一条内容，颜色由 `#ffd54d`（`PALETTE[5]`）变成 **`#ff6e6e`（`PALETTE[2]`）**。这是删掉 19 条内容换来的，不是缺陷。
+7. **验收**：`scripts/ui-test.mjs` **50 项**、`scripts/verify-terrain.mjs` **12 项**全绿，`npm run build` 通过、无运行时报错。两套靶子一起换了：原先靠「地点按各自的起始年依次登场」量切面显隐，现在换成事件；`listEntries()` 这个 API 已经没了，改用 `listEvents()`。UI 套件里新建的那条靶子顺手多钉了一条性质——**事件表单不填年份时认下游标所在的那一年**（游标停在 1919，新建的事件便不出现在 1914 的切面里）。
+
+### v0.0.12 「涉及人物」改成搜索下拉，只列已经挂上的（2026-10-17）
+
+1. **症状**：事件的「涉及人物」一栏，把项目里**所有**人物铺成一排可勾的 tag——人物一多，检查器里先长出一面别人的名字墙，真正要看的「这条事件都有谁」被淹在里面；而且没挂上的和挂上的只差一点描边颜色，扫一眼分不出。
+2. **量化**：示例世界 16 位人物、32 条事件，其中 29 条挂了人物、引用总数 44，平均每条 **1.52 位**（挂 1 位的 17 条 / 2 位的 9 条 / 3 位的 3 条）。旧控件等于用 16 个格子去回答一个平均 1.5 的问题。
+3. **改法**（`common.jsx#CharacterPicker`，新建事件与事件详情共用这一个组件，两边一起变）：**常态只列出已经挂上的那几位**——已选的留成 tag，点了从这条事件上摘掉；下面一根搜索框，敲了字才把候选浮出来，一个字都不敲就一个都不显示。没挂上的人物在界面上**完全不占位置**。
+4. **搜索认名字，也认别名**。16 位人物里 **10 位**带别名（德皇 / 法军总司令 / 俄国末代沙皇…），史料里同一个人常以称号出现，只按正名搜会搜不到。排序三级：**名字开头命中 → 名字中间命中 → 只命中别名**，同分的保持录入先后，最多 8 条。
+5. **已经挂上的从候选里排除**：不然搜自己会搜出自己，一点就是重复挂。
+6. **候选是浮层，不占位**——展开收起不会把检查器剩下那些字段顶来顶去。也**没写**「下面放不下就翻上去」那套：实测两种表单里这个字段下方始终有 **262px** 富余（新建事件那张表单整张高 616px，根本不滚动），而菜单最高 172px，一律向下展开就够。
+7. **两个坑写在注释里**：候选按钮上挂了 `onMouseDown` 阻止默认行为——**不能让候选把输入框的焦点抢走**，一失焦菜单就先收起来，紧接着那一下 click 落在一张已经不存在的列表上，点了白点；加完一位要把高亮位退回第一条，否则候选换了一批之后它会指到不存在的行上。键盘 ↑↓ 移动、Enter 选中、Esc 清空收起的照常。
+8. **实测**：`scripts/ui-test.mjs` **50 项**（原来按 chip 文本点击的两处用例改写成走搜索框＋真实鼠标，另加 3 项承重断言：空着时不展开候选、敲「皇储」按别名命中斐迪南大公、已挂上的不出现在候选里）、`scripts/verify-terrain.mjs` 12 项全绿，`npm run build` 通过、无运行时报错。
 
 ### v0.0.11 长卷高亮改认选中，不再按游标推（2026-10-16）
 

@@ -7,9 +7,10 @@
  * 迁移的目标是尽量不丢数据：
  *   - 球只剩一张脸 —— 取最后一个带栅格 / 带图的时间点，也就是「世界演进至今的样子」；
  *   - 内容的时间锚点由「时间点 id」换成「数值年」，找不到的锚点留空（等价于旧的开放端点）；
- *   - 旧时间点本身变成一条没有地点的事件 —— 它本来就是「那个时刻发生的事」，
- *     这样时间轴上仍有刻度，地点的存续区间也仍有意义。
- * 唯一真正丢掉的是逐时代的底图与地形。
+ *   - 旧时间点本身变成一条没有坐标的事件 —— 它本来就是「那个时刻发生的事」，
+ *     这样时间轴上仍有刻度。
+ * 真正丢掉的是逐时代的底图与地形，以及旧模型里的地点：地点这一等实体已经取消，
+ * 它们没有对应的新形状，硬塞成事件只会把「哪一年发生了什么」变成一张地名表。
  */
 
 /** v1 时间点 id → 它在时间轴上的序号；找不到（脏数据）按开放端点处理 */
@@ -37,7 +38,7 @@ export function migrateProject(raw) {
 
   const timePoints = Array.isArray(raw.timePoints) ? raw.timePoints.filter((t) => t?.id) : [];
 
-  // 旧时间点 → 无地点的瞬时事件。id 原样留着，它是不可解释的字符串，改名没有意义
+  // 旧时间点 → 只有年份、没有坐标的瞬时事件。id 原样留着，它是不可解释的字符串，改名没有意义
   const events = timePoints.map((tp, i) => ({
     id: tp.id,
     title: tp.label ?? `第 ${i + 1} 个时间点`,
@@ -64,7 +65,6 @@ export function migrateProject(raw) {
     baseMapId: lastOf(timePoints, 'mapId'),
     maps: raw.maps,
     rasterMaps: raw.rasterMaps,
-    entries: shift(raw.entries),
     events: [...shift(raw.events), ...events],
     routes: shift(raw.routes),
     regions: shift(raw.regions),

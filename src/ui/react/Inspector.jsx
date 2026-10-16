@@ -3,7 +3,7 @@ import { useProjectRevision } from './hooks.js';
 import { WelcomePanel } from './panels/WelcomePanel.jsx';
 import { OverviewPanel } from './panels/OverviewPanel.jsx';
 import { ItemEditor } from './panels/ItemEditor.jsx';
-import { EntryForm } from './panels/EntryForm.jsx';
+import { EventForm } from './panels/EventForm.jsx';
 import { DrawForm } from './panels/DrawForm.jsx';
 import { CharacterList, CharacterEditor } from './panels/CharacterEditor.jsx';
 import { ChapterList } from './panels/ChapterList.jsx';
@@ -19,9 +19,7 @@ export function Inspector() {
   useProjectRevision(); // 选中对象被改名或删除后要重画
 
   if (!project) return <WelcomePanel />;
-  // 地点与事件共用同一张放置表单，靠 key 强制重挂载，免得两者的草稿互相串
-  if (mode === 'add-entry') return <EntryForm key="add-entry" kind="entry" />;
-  if (mode === 'add-event') return <EntryForm key="add-event" kind="event" />;
+  if (mode === 'add-event') return <EventForm key="add-event" />;
   // 两种绘制模式是同一个组件，直接切换时 React 会复用实例、输入框留旧值，故用 key 强制重挂载
   if (mode === 'draw-route') return <DrawForm key="draw-route" kind="route" />;
   if (mode === 'draw-region') return <DrawForm key="draw-region" kind="region" />;
@@ -29,7 +27,7 @@ export function Inspector() {
   // 人物清单与人物卡是同一条入口的两页，都在这一个分支里
   if (selection.kind === 'characters') return <CharacterList />;
   if (selection.kind === 'groups') return <ChapterList />;
-  // 人物没有坐标也没有存续区间，与地点/事件那张表单差得远，单独一张卡
+  // 人物没有坐标也没有存续区间，与事件/路线/区域那几张卡差得远，单独一张
   if (selection.kind === 'character') return <CharacterEditor key={selection.id} id={selection.id} />;
 
   // 换一个选中对象就重挂载，各输入框自然取到新对象的值，不会残留上一个对象的内容

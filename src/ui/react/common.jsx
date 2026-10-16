@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useStore } from '../../store/index.js';
 
 /** 检查器里统一的「小标题 + 控件」排版 */
@@ -25,37 +26,145 @@ export function BackToOverview() {
 }
 
 /**
- * 「涉及人物」多选：把项目里的人物铺成一排可勾的tag，勾上即挂到这条事件上。
+ * 按关键词找人物，已经挂上的不再出现在候选里。
  *
- * 它是受控的——勾选结果由调用方写回数据，所以新建事件与编辑已有事件能共用一套，
- * 差别只在往草稿里写还是往事件上写。
+ * 名字开头命中的排在名字中间命中的前面，都排在只命中别名的前面：
+ * 敲「威尔逊」时正主该在第一条，而别名里带这两个字的另一位要沉到后面去。
+ * 同分的保持录入先后（sort 稳定），不再另排。
+ */
+function matchCharacters(characters, taken, query) {
+  const key = query.trim().toLowerCase();
+  if (!key) return [];
+  const scored = [];
+  for (const c of characters) {
+    if (taken.includes(c.id)) continue;
+    const name = c.name.toLowerCase();
+    const aliases = (c.aliases ?? []).map((a) => a.toLowerCase());
+    const rank = name.startsWith(key) ? 0
+      : name.includes(key) ? 1
+        : aliases.some((a) => a.includes(key)) ? 2 : -1;
+    if (rank >= 0) scored.push({ c, rank });
+  }
+  scored.sort((a, b) => a.rank - b.rank);
+  return scored.slice(0, 8).map((x) => x.c);
+}
+
+/**
+ * 「涉及人物」：常态只列出已经挂上的那几位，其余的去搜索里找。
  *
- * @param {string[]} ids 已勾选的人物 id
- * @param {(ids: string[]) => void} onChange 勾选变化后的完整清单
+ * 早先的写法是把项目里所有人物铺成一排可勾的 tag。人物一多，检查器里先长出一面
+ * 别人的名字墙，真正要看的「这条事件都有谁」被淹在里面；而且没挂上的人跟挂上的人
+ * 只差一点描边颜色，扫一眼分不出。现在反过来：已选的留成 tag，没选的只在敲了字之后
+ * 才作为候选浮出来，一个都不敲就一个都不显示。
+ *
+ * 名字与别名一起搜——史料里同一个人常以称号出现，只认正名会搜不到。
+ *
+ * 它是受控的——结果由调用方写回数据，所以新建事件（写草稿）与编辑已有事件（写数据）
+ * 共用一套，差别只在往哪儿写。
+ *
+ * @param {string[]} ids 已挂上的人物 id
+ * @param {(ids: string[]) => void} onChange 变化后的完整清单
  */
 export function CharacterPicker({ ids = [], onChange }) {
   const project = useStore((s) => s.project);
   const characters = project?.characters ?? [];
+  const [query, setQuery] = useState('');
+  const [focused, setFocused] = useState(false);
+  const [hit, setHit] = useState(0);
+
+  const picked = ids.map((id) => characters.find((c) => c.id === id)).filter(Boolean);
+  const cands = matchCharacters(characters, ids, query);
+  // 输着字且光标还在框里时才展开候选；面板一失焦就收，免得挡住下面的字段
+  const open = focused && query.trim().length > 0;
+
+  const add = (id) => {
+    onChange([...ids, id]);
+    setQuery('');
+    setHit(0); // 候选换了一批，高亮位要退回第一条，否则会指到不存在的那一行上
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      setQuery('');
+      e.currentTarget.blur();
+      return;
+    }
+    if (!cands.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHit((i) => (i + 1) % cands.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHit((i) => (i - 1 + cands.length) % cands.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      add(cands[Math.min(hit, cands.length - 1)].id);
+    }
+  };
+
   if (!characters.length) {
     return <p className="insp-hint">还没有人物。用顶栏的「🧝 人物」先录几位进来。</p>;
   }
+
   return (
-    <div className="chips">
-      {characters.map((c) => {
-        const on = ids.includes(c.id);
-        return (
-          <button
-            key={c.id}
-            type="button"
-            className={`chip${on ? ' on' : ''}`}
-            // 勾上的人用自己的配色描边，一眼看清一条事件里都有谁
-            style={on ? { borderColor: c.color, color: c.color } : undefined}
-            onClick={() => onChange(on ? ids.filter((x) => x !== c.id) : [...ids, c.id])}
-          >
-            {c.name}
-          </button>
-        );
-      })}
+    <div className="char-pick">
+      {picked.length === 0 ? (
+        <p className="insp-hint">还没有涉及人物，在下面搜一个名字。</p>
+      ) : (
+        <div className="chips">
+          {picked.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className="chip on"
+              // 挂上的人用自己的配色描边，一条事件里有谁一眼看清
+              style={{ borderColor: c.color, color: c.color }}
+              title="点一下从这条事件里移除"
+              onClick={() => onChange(ids.filter((x) => x !== c.id))}
+            >
+              <span className="chip-name">{c.name}</span>
+              <span className="chip-x">✕</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="char-search">
+        <input
+          className="inp"
+          type="text"
+          value={query}
+          placeholder="🔍 搜索人物（名字或别名）"
+          onChange={(e) => { setQuery(e.target.value); setHit(0); }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onKeyDown={onKeyDown}
+        />
+        {open && (
+          <div className="char-menu">
+            {cands.length === 0 ? (
+              <p className="char-none">没有匹配的人物</p>
+            ) : (
+              cands.map((c, i) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`char-opt${i === hit ? ' hit' : ''}`}
+                  // 按下时挡掉默认行为，别让候选抢走输入框的焦点：
+                  // 一失焦候选就收起来，紧接着的 click 落在一张已经不存在的列表上，点了白点
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setHit(i)}
+                  onClick={() => add(c.id)}
+                >
+                  <i className="char-dot" style={{ background: c.color }} />
+                  <span className="char-name">{c.name}</span>
+                  {c.aliases?.length > 0 && <span className="char-alias">{c.aliases.join('、')}</span>}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

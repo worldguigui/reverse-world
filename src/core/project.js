@@ -1,10 +1,11 @@
 /**
- * 世界观数据模型：项目 = 一张脸（舞台）+ 一批内容（地点 / 事件 / 路线 / 区域）。
+ * 世界观数据模型：项目 = 一张脸（舞台）+ 一批内容（事件 / 路线 / 区域）。
  * 纯函数式 CRUD（直接改传入的 project 对象并返回创建的实体），
  * 持久化、渲染都不在这里。
  *
  * 时间一律是数值年：可为负（公元前）、可为小数。内容的 from / to 为空表示该端开放，
- * 两端都空就是常驻——这就是「地点」的默认形态。切面不是一个槽位，而是拿游标去求值。
+ * 两端都空就是常驻——「常驻」是默认形态，不写时间的内容一直在场。
+ * 切面不是一个槽位，而是拿游标去求值。
  */
 import { migrateProject } from './migrate.js';
 
@@ -28,7 +29,6 @@ export function createProject({ name = '未命名世界', description = '' } = {
     baseMapId: null,    // 图片底图 id，空 = 用引擎自带的地球贴图
     maps: [],       // { id, name, dataUrl } 图片底图
     rasterMaps: [], // { id, name, w, h, dataUrl } 栅格底图（PNG：R=高度 G=河流）
-    entries: [],    // { id, title, description, image, lat, lng, color, from, to } 地点
     events: [],     // { id, title, description, image, lat, lng, color, from, to } 事件
                     //   lat / lng 为空 = 纯叙事事件：不上球、不渲染标注，只进编年史
     routes: [],     // { id, title, description, color, points: [{lat,lng}...], from, to }
@@ -55,7 +55,6 @@ export function normalizeProject(raw) {
   const okList = (v) => (Array.isArray(v) ? v : []);
   p.characters = okList(src.characters).filter(okItem)
     .map((c) => ({ ...c, aliases: toAliases(c.aliases) }));
-  p.entries = okList(src.entries).filter(okItem);
   // 事件的「涉及人物」与「所属章节」在旧文件里整个键都可能不在，读进来统一补齐，
   // 面板、筛选与渲染层拿到的永远是数组 / null，不必各自兜底
   p.events = okList(src.events).filter(okItem).map((ev) => ({
@@ -76,7 +75,6 @@ const toAliases = (v) => (v == null ? [] : (Array.isArray(v) ? v : [String(v)]))
  * 人物没有存续区间，章节只是一个归类——两者都不该占掉配色池的额度。
  */
 const KINDS = {
-  entry: { list: (p) => p.entries, timed: true, colored: true },
   event: { list: (p) => p.events, timed: true, colored: true },
   route: { list: (p) => p.routes, timed: true, colored: true },
   region: { list: (p) => p.regions, timed: true, colored: true },
@@ -120,14 +118,10 @@ export function getRasterMap(project, id) {
   return project.rasterMaps.find((m) => m.id === id) ?? null;
 }
 
-// ---------------------------------------------------------------- 地点/事件/路线/区域
+// ---------------------------------------------------------------- 事件/路线/区域
 
 const DEFAULTS = {
-  entry: (d) => ({
-    title: '新地点', description: '', image: null,
-    lat: 0, lng: 0, ...d,
-  }),
-  // 事件与地点同形，差别只在坐标可以缺省——缺省就是纯叙事事件，不上球。
+  // 坐标可以缺省——缺省就是纯叙事事件，不上球。
   // 每一条事件都常驻 characters / groupId 两个键（哪怕是空的），筛起来不必到处兜底
   event: (d) => ({
     title: '新事件', description: '', image: null,
@@ -148,7 +142,7 @@ const DEFAULTS = {
 };
 
 const ID_PREFIX = {
-  entry: 'e', event: 'ev', route: 'r', region: 'rg', character: 'ch', group: 'g',
+  event: 'ev', route: 'r', region: 'rg', character: 'ch', group: 'g',
 };
 
 export function addItem(project, kind, data = {}) {
@@ -249,7 +243,7 @@ export function eventsOfGroup(project, id) {
 // ---------------------------------------------------------------- 在场判定
 
 /**
- * 内容在游标时刻是否在场。两端为空即开放，所以「常驻地点」= 两个都留空。
+ * 内容在游标时刻是否在场。两端为空即开放，所以「常驻」= 两个都留空。
  * 缺省端用 ±Infinity 兜底，四种内容共用这一条判据。
  */
 export function isActiveAt(cursor, item) {
@@ -266,7 +260,6 @@ export function activeItems(project, kind, cursor) {
 /** 统计信息（检查器概览用） */
 export function stats(project) {
   return {
-    entries: project.entries.length,
     events: project.events.length,
     routes: project.routes.length,
     regions: project.regions.length,

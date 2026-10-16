@@ -2,16 +2,16 @@ import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { Labeled, BackToOverview, YearInput, CharacterPicker, GroupSelect } from '../common.jsx';
 
-const TITLES = { entry: '📍 地点', event: '⚡ 事件', route: '🛤 路线', region: '🏳 势力区域' };
+const TITLES = { event: '⚡ 事件', route: '🛤 路线', region: '🏳 势力区域' };
 
-/** 有配图的内容：事件和地点一样，都挂一张图 */
-const HAS_IMAGE = new Set(['entry', 'event']);
+/** 有配图的内容 */
+const HAS_IMAGE = new Set(['event']);
 
-/** 拿经纬度定位的内容：事件与地点同形，只是事件的坐标可以缺省 */
-const HAS_LATLNG = new Set(['entry', 'event']);
+/** 拿经纬度定位的内容：事件的坐标可以缺省，缺省就是纯叙事事件 */
+const HAS_LATLNG = new Set(['event']);
 
 /**
- * 地点 / 事件 / 路线 / 区域的查看与编辑。
+ * 事件 / 路线 / 区域的查看与编辑。
  * 调用方用 key={kind:id} 挂载，切换选中对象即重挂载，各字段自然取到新对象的值。
  */
 export function ItemEditor({ kind, id }) {
@@ -22,8 +22,7 @@ export function ItemEditor({ kind, id }) {
   const pickImage = useStore((s) => s.pickImage);
 
   const list = {
-    entry: project.entries, event: project.events,
-    route: project.routes, region: project.regions,
+    event: project.events, route: project.routes, region: project.regions,
   }[kind];
   const item = list?.find((it) => it.id === id);
   if (!item) return null;
@@ -39,7 +38,7 @@ export function ItemEditor({ kind, id }) {
           <div className="field-label">配图</div>
           {item.image ? (
             <div style={{ display: 'grid', gap: '6px' }}>
-              <img className="entry-img" src={item.image} alt="" />
+              <img className="item-img" src={item.image} alt="" />
               <button className="btn" onClick={() => patch({ image: null })}>移除配图</button>
             </div>
           ) : (
@@ -94,7 +93,7 @@ export function ItemEditor({ kind, id }) {
       {HAS_LATLNG.has(kind) && (
         <Labeled label="坐标">
           {item.lat == null || item.lng == null ? (
-            <span className="insp-hint">没有地点：不上球，只进编年史</span>
+            <span className="insp-hint">没有坐标：不上球，只进编年史</span>
           ) : (
             <span>
               <span className="insp-hint">{`${item.lat.toFixed(2)}°, ${item.lng.toFixed(2)}° `}</span>

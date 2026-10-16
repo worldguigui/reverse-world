@@ -25,10 +25,7 @@ export function installAPI({ ctx, project, cursor }) {
     showChronicle: (open = true) => ctx.setChronicleOpen(open),
 
     // —— 内容 ——
-    /** 当前游标下在场的地点 */
-    listEntries: () => ctx.activeEntries(),
-    addEntry: (data) => ctx.addEntryViaApi(data),
-    /** 当前游标下在场的事件（含没有地点的纯叙事事件） */
+    /** 当前游标下在场的事件（含没有坐标的纯叙事事件） */
     listEvents: () => ctx.activeEvents(),
     addEvent: (data) => ctx.addEventViaApi(data),
     addRoute: (data) => ctx.addRouteViaApi(data),
@@ -50,7 +47,7 @@ export function installAPI({ ctx, project, cursor }) {
     eventsOfGroup: (id) => ctx.eventsOfGroup(id),
     /** 当前视图条件 { groupId, characterId }，两者都空就是「全部」 */
     getViewFilter: () => ctx.currentView(),
-    /** 只看某一章（收窄长卷、时间轴刻度与球上的事件；地点路线区域不受影响） */
+    /** 只看某一章（收窄长卷、时间轴刻度与球上的事件；路线与区域不受影响） */
     filterByGroup: (id) => ctx.setViewFilter({ groupId: id ?? null, characterId: null }),
     /**
      * 只看某个人物涉及的事件。这一组是**算出来的**——不落盘、不进 chapters，
@@ -92,8 +89,6 @@ export function installAPI({ ctx, project, cursor }) {
       + 'world.getDomain()                               时间轴定义域，没有内容带时间时是 null\n'
       + 'world.stepCursor(±1) / jumpToEvent(id)          前后跳一个刻度 / 跳到某条事件\n'
       + 'world.showChronicle(true)                       摊开 / 收起编年史长卷\n'
-      + 'world.listEntries()                             当前游标下在场的地点\n'
-      + "world.addEntry({ title, lat, lng, from, to })    加地点（from/to 是年份，留空 = 常驻）\n"
       + 'world.listEvents()                              当前游标下在场的事件\n'
       + "world.addEvent({ title, lat, lng, from, to })    加事件（lat/lng 可省 = 纯叙事，不上球）\n"
       + "world.addRoute({ title, points: [{lat,lng}...] }) 加路线\n"

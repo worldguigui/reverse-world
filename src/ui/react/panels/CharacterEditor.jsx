@@ -93,7 +93,7 @@ export function CharacterEditor({ id }) {
       <div className="field-label">配图</div>
       {item.image ? (
         <div style={{ display: 'grid', gap: '6px' }}>
-          <img className="entry-img" src={item.image} alt="" />
+          <img className="item-img" src={item.image} alt="" />
           <button className="btn" onClick={() => patch({ image: null })}>移除配图</button>
         </div>
       ) : (

@@ -12,14 +12,14 @@ const MARGIN_RATIO = 0.04;
 /** 全部内容都挤在同一个时刻时，给一年宽，免得轴上所有刻度叠成一个点 */
 const FLAT_SPAN = 1;
 
-const ALL_KINDS = ['entry', 'event', 'route', 'region'];
+const ALL_KINDS = ['event', 'route', 'region'];
 
 /**
  * 时间轴的定义域；没有任何内容带时间时返回 null。
  * `min` / `max` 是内容里真实出现过的年份，`start` / `end` 是两端各让出一点边距之后的
  * 可拖动范围——把游标拖到端点时，最早 / 最晚的那条内容正好在边缘上，不至于贴死。
  *
- * 只看 from / to 两个端点，不看内容本身——所以带区间的地点即使不画刻度也一定落在域内，
+ * 只看 from / to 两个端点，不看内容本身——所以路线与区域虽然不画刻度，也一定落在域内，
  * 不会出现「录进去了却拖不到」的内容。
  */
 export function timeDomain(project) {
@@ -102,7 +102,7 @@ export function nextTickEvent(project, cursor, dir, view, anchorId = null) {
 
 /**
  * 往前后跳一个刻度，只回年份。轴上没有刻度时按定义域的百分之一挪一步，
- * 这样即使只有带区间的地点，方向键也仍然能动。
+ * 这样即使只有路线与区域，方向键也仍然能动。
  *
  * 收窄视图时跳的是**看得见**的那几个刻度：筛出某一章之后，方向键该在章内走。
  */

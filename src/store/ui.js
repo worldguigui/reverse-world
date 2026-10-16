@@ -8,16 +8,16 @@ import { buildDerived } from './world.js';
 export const blankDrawForm = () => ({ title: '', description: '', color: null, from: null, to: null });
 
 export const createUISlice = (set, get) => ({
-  mode: 'browse',        // browse | add-entry | add-event | draw-route | draw-region
+  mode: 'browse',        // browse | add-event | draw-route | draw-region
   // 检查器正在展示什么。kind='characters'（复数、没有 id）是人物清单那一页，
   // 让「翻列表」与「看某一个」共用同一份状态，不必再多一个开关去跟选中态对齐
-  selection: null,       // { kind: 'entry'|'event'|'route'|'region'|'character', id } | { kind: 'characters' | 'groups' }
+  selection: null,       // { kind: 'event'|'route'|'region'|'character', id } | { kind: 'characters' | 'groups' }
   // 「当前在看什么」是一个视图条件，不是数据：指向章节时 groupId 有值，
   // 按人物筛时 characterId 有值（那一组是算出来的，用完就没了，不落盘）。同时给就是交集。
   viewFilter: noView(),
-  pendingCoords: null,   // 放置地点/事件时点选的经纬度
+  pendingCoords: null,   // 放置事件时点选的经纬度
   drawCoords: [],        // 绘制路线/区域的 [[lng,lat]…]
-  entryDraft: {},        // 新建地点/事件草稿（换位置不丢内容）
+  eventDraft: {},        // 新建事件草稿（换位置不丢内容）
   drawForm: blankDrawForm(), // 绘制表单的字段值（球面加点、按 Enter 提交时都从这里取）
   workshopOpen: false,
   // 工坊的画笔参数与撤销可用态。网格、撤销栈太大，放在 ui/workshop-session.js 的模块级会话对象里
@@ -50,10 +50,10 @@ export const createUISlice = (set, get) => ({
     const patch = { mode };
     // 离开绘制模式：清空正在勾的点
     if (prev === 'draw-route' || prev === 'draw-region') patch.drawCoords = [];
-    // 离开放置模式：丢掉待放置坐标与草稿，免得地点和事件互相串内容
-    if (prev === 'add-entry' || prev === 'add-event') {
+    // 离开放置模式：丢掉待放置坐标与草稿，免得两次新建互相串内容
+    if (prev === 'add-event') {
       patch.pendingCoords = null;
-      patch.entryDraft = {};
+      patch.eventDraft = {};
     }
     // 每轮绘制重新开始，表单回到初始值（React 侧靠 key 重挂载生效）
     if (mode === 'draw-route' || mode === 'draw-region') patch.drawForm = blankDrawForm();
@@ -83,8 +83,8 @@ export const createUISlice = (set, get) => ({
   /** 落点由球面点击写入：放置表单要把坐标回显出来 */
   setPendingCoords(coords) { set({ pendingCoords: coords }); },
   addDrawPoint(point) { set((s) => ({ drawCoords: [...s.drawCoords, point] })); },
-  saveDraft(patch) { set((s) => ({ entryDraft: { ...s.entryDraft, ...patch } })); },
-  clearDraft() { set({ entryDraft: {} }); },
+  saveDraft(patch) { set((s) => ({ eventDraft: { ...s.eventDraft, ...patch } })); },
+  clearDraft() { set({ eventDraft: {} }); },
   saveDrawForm(patch) { set((s) => ({ drawForm: { ...s.drawForm, ...patch } })); },
 
   // ---------------------------------------------------------------- 浮层

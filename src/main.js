@@ -171,8 +171,8 @@ async function main() {
 
   /**
    * 球面拾取：只有区域与路线。
-   * 地点与事件都不在球上拾取——它们的入口是总览/编年史/时间轴刻度，
-   * 球面只负责画，不负责点。
+   * 事件不在球上拾取——它一多就会把球面铺满光点，也会让人以为「点上去能选中」；
+   * 事件的入口是时间轴刻度与编年史长卷，球上只把选中那一条的坐标点亮。
    */
   function pickAt(ndcVec) {
     raycaster.setFromCamera(ndcVec, camera);
@@ -214,7 +214,7 @@ async function main() {
 
     if (s.mode === 'browse') {
       s.select(pickAt(ndc));
-    } else if (s.mode === 'add-entry' || s.mode === 'add-event') {
+    } else if (s.mode === 'add-event') {
       const ll = pickSphere(ndc);
       if (ll) s.setPendingCoords({ lat: ll.lat, lng: ll.lng });
     } else if (s.mode === 'draw-route' || s.mode === 'draw-region') {

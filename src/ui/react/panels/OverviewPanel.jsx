@@ -2,15 +2,17 @@ import { useStore } from '../../../store/index.js';
 import { useProjectRevision } from '../hooks.js';
 import { Labeled } from '../common.jsx';
 
+// 数列得出来的东西：事件在长卷与刻度上、路线与区域在球上、人物在顶栏，每一格背后都有地方看。
+// 地点曾经也占一格，可它三处都没有入口——报一个数却无处可看，于是连同这一等实体一起拿掉。
 const STATS = [
-  ['entries', '地点'], ['events', '事件'],
+  ['events', '事件'],
   ['routes', '路线'], ['regions', '区域'],
   ['characters', '人物'],
 ];
 
 /**
  * 没有选中任何对象时的世界概览：名称、简介、统计格、舞台。
- * 这一页讲的是整个世界，所以没有「配图」——配图属于某一条地点或事件，属于具体的东西。
+ * 这一页讲的是整个世界，所以没有「配图」——配图属于某一条事件或某一个人物，属于具体的东西。
  */
 export function OverviewPanel() {
   const project = useStore((s) => s.project);
