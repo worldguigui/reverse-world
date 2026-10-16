@@ -172,14 +172,22 @@ export const createActionsSlice = (set, get) => ({
     get().flyTo(lat, lng);
   },
 
-  /** 跳到某条事件发生的那一年，并把它飞进视野 */
+  /**
+   * 跳到某条事件发生的那一年，并把镜头带到它那儿。
+   *
+   * 转过去的同时还要落到「事件档位」上（画面设置里那一档）：只转方向的话，
+   * 停在出厂视角点开是一条安静的球，放大到贴地时点开又只挪了挪中心，两头都没有「到了」的意思。
+   * 落到固定档位则不管从哪儿点开，看到的都是同一个尺度。
+   */
   jumpToEvent(id) {
     const p = get().project;
     const ev = p ? P.getItem(p, 'event', id) : null;
     if (!ev) return;
     if (typeof ev.from === 'number') get().setCursorYear(ev.from);
     get().select({ kind: 'event', id });
-    if (ev.lat != null && ev.lng != null) get().flyTo(ev.lat, ev.lng);
+    if (ev.lat != null && ev.lng != null) {
+      get().flyTo(ev.lat, ev.lng, { level: get().viewConfig.camera.eventLevel });
+    }
   },
 
   // ---------------------------------------------------------------- 其他

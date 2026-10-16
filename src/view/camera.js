@@ -185,23 +185,25 @@ export class CameraRig {
   }
 
   /**
-   * 把档位落成相机的实际状态，分两段：
+   * 档位落成相机的实际状态，分两段：
    *  - 推到底之前：只动相机，视场角保持出厂值；
    *  - 推到底之后：相机停住，剩下的倍数全交给视场角——「视角降到一定高度就只放大」。
    * 分界由 config.minDistance 定，dollyMax 就是相机推到底能到几倍。
    */
-  _applyLevel(level) {
+  _levelToState(level) {
     const refD = this.config.distance;
     const dollyMin = (refD - 1) / (this.config.maxDistance - 1); // 拉到最远档
     const dollyMax = (refD - 1) / (this.config.minDistance - 1); // 推到最近档
     const L = THREE.MathUtils.clamp(level, dollyMin, dollyMax * OPTICAL_MAX);
-    if (L <= dollyMax) {
-      this._setOptical(1);
-      this._setDistance(1 + (refD - 1) / L);
-    } else {
-      this._setDistance(this.config.minDistance);
-      this._setOptical(L / dollyMax);
-    }
+    if (L <= dollyMax) return { level: L, distance: 1 + (refD - 1) / L, optical: 1 };
+    return { level: L, distance: this.config.minDistance, optical: L / dollyMax };
+  }
+
+  /** 把档位落定：距离与视场角一起动，滚轮与按档位飞行都走这里 */
+  _applyLevel(level) {
+    const { distance, optical } = this._levelToState(level);
+    this._setOptical(optical);
+    this._setDistance(distance);
   }
 
   /** 沿当前视线把相机摆到离球心 d 处：只改远近，朝向与「上」都不动 */
@@ -247,27 +249,40 @@ export class CameraRig {
     this.controls.update();
   }
 
-  /** 当前视角对应的经纬度和距离 */
+  /** 当前视角对应的经纬度、距离与档位；档位是画面实际的放大倍数，滚轮与飞行都按它走 */
   getLatLngZoom() {
     const { lat, lng } = vec3ToLatLng(this.camera.position);
-    return { lat, lng, distance: this.camera.position.length() };
+    return { lat, lng, distance: this.camera.position.length(), level: this._level() };
   }
 
   /**
    * 飞到指定经纬度：相机方向沿球面大圆插值，距离同时渐变。
    * 只动位置、不动 camera.up——用户自己转出来的朝向由他自己复位。
+   *
+   * 给了 level 就按档位飞：距离与视场角都由档位推出来（见 _levelToState），
+   * 于是「点开一条事件」不只是把球转过去，画面也一起落到那个事件的尺度上，
+   * 不管点之前停在哪一档，落点都是同一个。两个都给时以 level 为准。
+   *
    * @param {number} lat
    * @param {number} lng
-   * @param {{ distance?: number, duration?: number }} opts
+   * @param {{ distance?: number, level?: number, duration?: number }} opts
    */
-  flyToLatLng(lat, lng, { distance = null, duration = 1400 } = {}) {
+  flyToLatLng(lat, lng, { distance = null, level = null, duration = 1400 } = {}) {
     this.onFlyStart?.(); // 飞行前通知外部（默认用来暂停自动旋转，否则飞到了又转走）
     const c = this.camera;
     const fromDir = c.position.clone().normalize();
     const fromDist = c.position.length();
+    const fromLevel = this._level();
     const toDir = latLngToVec3(lat, lng, 1).normalize();
-    const toDist = THREE.MathUtils.clamp(distance ?? fromDist, this.controls.minDistance, this.controls.maxDistance);
-    if (fromDir.distanceTo(toDir) < 1e-6 && Math.abs(fromDist - toDist) < 1e-6) return;
+    const toState = level != null ? this._levelToState(level) : null;
+    const toDist = toState
+      ? toState.distance
+      : THREE.MathUtils.clamp(distance ?? fromDist, this.controls.minDistance, this.controls.maxDistance);
+    // 档位不同的两处，距离可能一样（都在最近档上），所以要连档位一起比
+    const settled = fromDir.distanceTo(toDir) < 1e-6
+      && Math.abs(fromDist - toDist) < 1e-6
+      && (!toState || Math.abs(fromLevel - toState.level) < 1e-6);
+    if (settled) return;
 
     const qIdentity = new THREE.Quaternion();
     const qTarget = new THREE.Quaternion().setFromUnitVectors(fromDir, toDir);
@@ -280,6 +295,9 @@ export class CameraRig {
         qK.slerpQuaternions(qIdentity, qTarget, k);
         pos.copy(fromDir).applyQuaternion(qK).multiplyScalar(THREE.MathUtils.lerp(fromDist, toDist, k));
         c.position.copy(pos);
+        // 摆好位置后再按当前档位落定距离与视场角（上面那个距离的插值会被它盖掉）。
+        // 档位是乘法量：一路等比插过去，从哪一档起飞都是同样的收拢速度
+        if (toState) this._applyLevel(fromLevel * Math.pow(toState.level / fromLevel, k));
       },
     });
   }

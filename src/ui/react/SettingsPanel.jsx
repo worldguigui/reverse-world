@@ -127,6 +127,9 @@ export function SettingsPanel() {
       <Group title="📷 视角">
         <Slider label="视场角 FOV" value={config.camera.fov} min={20} max={90} step={1}
           onChange={(v) => set({ camera: { fov: v } })} />
+        {/* 点开一条事件时镜头落到哪一档，1 = 出厂视角，64 = 推到底再加满镜头倍率 */}
+        <Slider label="事件镜头档位" value={config.camera.eventLevel} min={1} max={64} step={1}
+          onChange={(v) => set({ camera: { eventLevel: v } })} />
         {/* 球可以往任意方向连续翻滚，转晕了就按这个把「上」掰回正北 */}
         <button className="btn" onClick={() => resetView()}>🧭 复位视角（正北朝上）</button>
         <Check label="自动旋转" checked={config.rotation.enabled}

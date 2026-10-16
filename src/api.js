@@ -105,8 +105,8 @@ export function installAPI({ ctx, project, cursor }) {
       + 'world.listCharacters()                        全部人物\n'
       + "world.addCharacter({ name, aliases, born, died })  加人物（born/died 留空 = 不详）\n"
       + 'world.eventsOfCharacter(id)                     某个人物涉及的事件\n'
-      + 'world.flyTo(lat, lng, { distance, duration })    飞到坐标\n'
-      + 'world.where() / resetView()                     当前视角 / 复位视角\n'
+      + 'world.flyTo(lat, lng, { level, distance, duration }) 飞到坐标（level = 落到哪一档）\n'
+      + 'world.where() / resetView()                     当前视角（经纬度/距离/档位）/ 复位视角\n'
       + 'world.openWorkshop() / generateRealEarth()       地形工坊 / 真实地球\n'
       + 'world.paintTerrain(lat, lng, { tool, size, strength, passes }) 涂画笔\n'
       + 'world.sampleTerrain(lat, lng)                    查询归一化高度\n'
