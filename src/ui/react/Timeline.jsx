@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useRef } from 'react';
 import { useStore } from '../../store/index.js';
 import { useProjectRevision } from './hooks.js';
 import { timeDomain, timeTicks, formatYear } from '../../core/timeline.js';
@@ -17,7 +17,7 @@ export function Timeline() {
   const jumpToEvent = useStore((s) => s.jumpToEvent);
   const toggleChronicle = useStore((s) => s.toggleChronicle);
   const viewFilter = useStore((s) => s.viewFilter);
-  useProjectRevision(); // 事件的年份 / 标题改了，刻度和读数都要跟着变
+  useProjectRevision(); // 事件的年份改了，轴上的刻度要跟着重排
 
   const trackRef = useRef(null);
   const dragging = useRef(false);
@@ -27,15 +27,6 @@ export function Timeline() {
   const ticks = timeTicks(project, viewFilter);
   const span = domain ? domain.end - domain.start : 0;
   const posOf = (year) => (span > 0 ? ((year - domain.start) / span) * 100 : 0);
-
-  // 游标之前最后发生的那条事件：轴上不铺标题（挤在一起没法看），改在这里报出「此刻讲到哪」
-  const latest = useMemo(() => {
-    let best = null;
-    for (const t of ticks) {
-      if (t.from <= cursor && (!best || t.from > best.from)) best = t;
-    }
-    return best;
-  }, [ticks, cursor]);
 
   if (!project || !domain) return null;
 
@@ -69,9 +60,12 @@ export function Timeline() {
       <Chronicle />
 
       <div className="tl-inner">
+        {/* 读数只报游标停在哪一年。「讲的是哪一条」由长卷高亮与检查器说了算——
+            这里再报一遍事件标题就是第三个信号，同年里挤着好几条时它挑不准，
+            反倒与另外两处打架 */}
         <div className="tl-readout" title="当前游标所在的年份">
           <span className="tl-year">{formatYear(cursor)}</span>
-          <span className="tl-near">{latest ? latest.title : '还没有事件'}</span>
+          {ticks.length === 0 && <span className="tl-near">还没有事件</span>}
         </div>
 
         <button className="tl-arrow" title="上一个刻度 (←)" onClick={() => stepCursor(-1)}>◀</button>

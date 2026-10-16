@@ -17,7 +17,8 @@ function spanText(span) {
  * 这里才有地方把「哪一年、发生了什么」写成一行行读给人听。
  * 没有地点的事件也在这里：它们不上球，但同属这个世界的叙事。
  *
- * 读法跟着游标走：还没走到的事件先淡着，讲到哪一条哪一条亮起来并自动滚进视野。
+ * 两条时间线索分工不同：**游标管远近**——还没走到的事件先淡着；**选中管焦点**——
+ * 亮起来并自动滚进视野的，是检查器里正在讲的那一条。
  *
  * 顶上那排标签是视图条件的唯一入口：点一章就只列这章。按人物筛出来的临时组也挂在这一排，
  * 但它不落盘——它是算出来的，用完点个叉就没了。
@@ -25,6 +26,7 @@ function spanText(span) {
 export function Chronicle() {
   const project = useStore((s) => s.project);
   const cursor = useStore((s) => s.cursor);
+  const selection = useStore((s) => s.selection);
   const open = useStore((s) => s.chronicleOpen);
   const jumpToEvent = useStore((s) => s.jumpToEvent);
   const setChronicleOpen = useStore((s) => s.setChronicleOpen);
@@ -40,17 +42,20 @@ export function Chronicle() {
   const byCharacter = viewFilter.characterId
     ? (project?.characters ?? []).find((c) => c.id === viewFilter.characterId) ?? null
     : null;
-  // 游标之前最后发生的那条事件，与时间轴上的读数取的是同一条。
-  // ticks 按年份升序，所以最后命中的那个就是答案，不必再比大小
-  let currentId = null;
-  for (const t of ticks) if (t.from <= cursor) currentId = t.id;
+  // 亮的是检查器里正在讲的那一条。
+  //
+  // 不能拿游标去推：游标是一个**纯年份**，同年里挤着好几条时它分不出是哪一条——
+  // 按「游标之前最后一条」去算，高亮会永远落在当年最后那一条上，而面板里显示的是
+  // 你点的那条，两条线索当场错开（示例世界里 32 条事件有 26 条对不上）。
+  // 选中的不是事件（点球面、选路线区域）时一条都不亮，游标那一路只负责让未到的淡着。
+  const currentId = selection?.kind === 'event' ? selection.id : null;
 
   const activeRef = useRef(null);
-  // 只在「讲到哪一条」真的换了时滚一次：回放时游标每帧都在动，
+  // 只在焦点真的换了、或长卷刚摊开时滚一次；
   // 逐帧调 scrollIntoView 会把长卷抖成一团
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
-  }, [currentId]);
+  }, [currentId, open]);
 
   if (!open || !project) return null;
 
