@@ -1,6 +1,6 @@
 /**
  * 画面设置（区别于「世界观数据」——那些存在项目文件里）。
- * 这里只管渲染观感：视角、光照、大气、星空、地名与光点的尺寸。
+ * 这里只管渲染观感：视角、光照、大气、星空、球面标记的尺寸。
  * localStorage 持久化，所有 GUI/API 修改的都是同一个 config 对象。
  */
 
@@ -10,7 +10,9 @@ export const DEFAULT_CONFIG = {
     lon: 105,          // 初始视角经度
     lat: 30,
     distance: 3.0,     // 相机到球心距离（球半径 = 1）
-    minDistance: 1.35,
+    // 最近档：再近地形就开始糊。屏幕上一个地形格约占 3.33 / (距离 - 1) 像素，
+    // 1.25 时约 13 像素，山形仍分得清；高度纹理是 2048 宽、赤道约 20km 一格
+    minDistance: 1.25,
     maxDistance: 8,
   },
   rotation: {
@@ -31,7 +33,6 @@ export const DEFAULT_CONFIG = {
   },
   stars: { enabled: true, count: 4000 },
   markers: {
-    labelPx: 15,       // 地名在屏幕上的高度（像素）：跟真实地图一样不随远近缩放
     dotPx: 18,         // 选中事件那个光点的直径（像素）
     routeWidth: 3,     // 路线像素宽度
     fillOpacity: 0.32, // 区域填充不透明度
@@ -40,11 +41,26 @@ export const DEFAULT_CONFIG = {
 
 const STORAGE_KEY = 'worldbuilding:view-config';
 
+/**
+ * 存档里的缩放上下限一律丢掉，以代码里的值为准。
+ *
+ * 这两项不是设置面板里能改的，只是借 config 放着方便取用；可它们照样会被存进
+ * localStorage，而合并时存档盖默认值——于是改了代码却不生效，看着像没改。
+ * 凡是「用户改不了、只吃代码」的项都照这个办法挡一道。
+ */
+function dropCodeOwnedKeys(saved) {
+  if (saved && saved.camera) {
+    delete saved.camera.minDistance;
+    delete saved.camera.maxDistance;
+  }
+  return saved;
+}
+
 export function loadViewConfig() {
   const config = structuredClone(DEFAULT_CONFIG);
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) mergeInto(config, JSON.parse(saved));
+    if (saved) mergeInto(config, dropCodeOwnedKeys(JSON.parse(saved)));
   } catch { /* 忽略坏数据 */ }
   return config;
 }

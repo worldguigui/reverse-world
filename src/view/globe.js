@@ -7,8 +7,12 @@ import { LAYER_MASK } from './render-layers.js';
  *  - 图片底图 setMap(dataUrl)：纯贴图，无起伏
  *  - 栅格底图 setRaster(grid)：颜色纹理 + 高度纹理，顶点着色器做真实位移，
  *    「画一笔山，球面上当场鼓起来」
- * 高度纹理强制 Linear + NearestFilter：不做双线性插值，
- *   保证"一个栅格就是垂直的一堵墙/一根柱子"的艺术化锐利效果完全成立。
+ * 高度纹理用线性色空间 + 双线性采样：
+ *  - 色空间必须是线性的，高度值才不会被 sRGB 曲线拉歪；
+ *  - 采样要插值：最近点采样把每一格铺成一整块平地、格与格之间高度直接跳变，
+ *    栅格细到省级尺度之后，这些方块就是斜看时满屏的硬块。
+ *    高度按 R+G 打包成 16-bit，双线性对它无害——解包是两通道的线性运算，
+ *    各自插值再解包，与先解包再插值只差一次逐通道取整。
  */
 export class Globe {
   /**
@@ -27,7 +31,9 @@ export class Globe {
     // 位移/法线着色器共享的 uniform（onBeforeCompile 里挂进程序）
     this._uHeightTex = { value: makeBlackTexture() };
     this._uExaggeration = { value: config.terrain.exaggeration };
-    this._uHeightTexel = { value: new THREE.Vector2(1 / 512, 1 / 256) };
+    // 一格的高度纹理步长，供着色器取邻域差分算法线；这里先按占位贴图（1×1）配一套，
+    // 真正上栅格时由 setRaster 按网格尺寸改写
+    this._uHeightTexel = { value: new THREE.Vector2(1, 1) };
     this._segments = null;
     this._colorTex = null;
     this._heightTex = null;
@@ -58,7 +64,7 @@ export class Globe {
           'uniform sampler2D uHeightTex;',
           'uniform float uExaggeration;',
           'uniform vec2 uHeightTexel;',
-          '// R+G 打包 16-bit 无符号 → 浮点 [-4, 4]；Linear/Nearest 采样保证栅格间不插值',
+          '// R+G 打包 16-bit 无符号 → 浮点 [-4, 4]',
           'float unpackHeight(vec2 rg) {',
           '  float u16 = dot(floor(rg * 255.0 + 0.5), vec2(256.0, 1.0));',
           '  return (u16 / 65535.0) * 8.0 - 4.0;',
@@ -152,11 +158,12 @@ export class Globe {
     this._colorTex.colorSpace = THREE.SRGBColorSpace;
     this._colorTex.anisotropy = this.maxAnisotropy;
     this._heightTex = new THREE.CanvasTexture(grid.heightCanvas);
-    // ⚠ 高度纹理用线性色空间 + 最近点采样 + 不生成 mipmap：
-    //   这样"一个栅格抬升=一个垂直悬崖"的艺术效果不会被 GPU 双线性插值磨成缓坡。
+    // 高度纹理用线性色空间 + 双线性采样（理由见文件头）
     this._heightTex.colorSpace = THREE.LinearSRGBColorSpace;
-    this._heightTex.magFilter = THREE.NearestFilter;
-    this._heightTex.minFilter = THREE.NearestFilter;
+    this._heightTex.magFilter = THREE.LinearFilter;
+    this._heightTex.minFilter = THREE.LinearFilter;
+    // 不生成 mipmap，缩小过滤就只能配 Linear：给了带 mipmap 的过滤器又不生成，
+    // WebGL 采到的是一张不完整的贴图，整颗球会变成黑的
     this._heightTex.generateMipmaps = false;
     this._uHeightTex.value = this._heightTex;
     this._uHeightTexel.value.set(1 / grid.w, 1 / grid.h);

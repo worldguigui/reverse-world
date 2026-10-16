@@ -10,7 +10,6 @@ export const session = {
   scene: null,
   camera: null,
   globe: null,
-  labels: null,         // 地名层：每条地点一块贴地的四边形，字画在上面
   eventDot: null,       // 事件光点层：整层只有一个点，跟着当前选中的事件走
   routes: null,
   regions: null,

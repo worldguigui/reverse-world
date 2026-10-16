@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import { latLngToVec3, vec3ToLatLng, TweenManager } from './utils.js';
 import { CameraRig } from './view/camera.js';
 import { Globe } from './view/globe.js';
-import { LabelLayer, EventDotLayer } from './view/markers.js';
+import { EventDotLayer } from './view/event-dot.js';
 import { RouteLayer } from './view/routes.js';
 import { RegionLayer } from './view/regions.js';
 import * as P from './core/project.js';
 import { TerrainGrid } from './core/raster.js';
-import { buildRealEarthGrid } from './core/realearth.js';
+import { buildRealEarthGrid, EARTH_RES } from './core/realearth.js';
 import { loadStoredProject, createAutoSaver } from './core/storage.js';
 import { createPanels } from './ui/registry.js';
 import * as W from './ui/workshop-session.js';
@@ -44,28 +44,24 @@ async function main() {
   // 画面设置随时可能被改，图层每次都现取当前值，不缓存对象引用
   const viewConfig = () => store.getState().viewConfig;
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
-  // 地点是印在球上的地名，事件是选中时亮起的一个光点——样子差得远，各起一层
-  const labels = new LabelLayer(globe.group, viewConfig, maxAniso);
   const eventDot = new EventDotLayer(globe.group, viewConfig, maxAniso);
   const routes = new RouteLayer(globe.group, viewConfig);
   const regions = new RegionLayer(globe.group, viewConfig);
   routes.setSize(innerWidth, innerHeight);
-  labels.setViewport(innerWidth, innerHeight);
   eventDot.setViewport(innerWidth, innerHeight);
 
   Object.assign(session, {
-    renderer, scene, camera, globe, labels, eventDot, routes, regions, rig, tweens,
+    renderer, scene, camera, globe, eventDot, routes, regions, rig, tweens,
     autosaver: createAutoSaver(500),
   });
 
-  // 标注/路线/区域贴着地形走。海面以下是负高度，只贴到海平面为止——
-  // 否则海上的地点会沉到球面以下（比深度掩膜还低），直接看不见。
+  // 光点/路线/区域贴着地形走。海面以下是负高度，只贴到海平面为止——
+  // 否则海上那条内容会沉到球面以下（比深度掩膜还低），直接看不见。
   const terrainRadius = (lat, lng) => {
     const grid = session.currentGrid;
     if (!grid) return 0;
     return Math.max(0, grid.sample(lat, lng)) * viewConfig().terrain.exaggeration;
   };
-  labels.terrainRadius = terrainRadius;
   eventDot.terrainRadius = terrainRadius;
   routes.terrainRadius = terrainRadius;
   regions.terrainRadius = terrainRadius;
@@ -87,7 +83,8 @@ async function main() {
       grid = await getGridCached(rmap);
       binding = { rmapId: rmap.id };
     } else {
-      grid = new TerrainGrid(512, 256);
+      // 白纸起步的画布与真实地球同分辨率：画到一半按「真实地球」不会突然换一档精度
+      grid = new TerrainGrid(EARTH_RES, EARTH_RES / 2);
       grid.fill(-0.45);
       s.toast('一片汪洋：拿画笔造出你的大陆吧');
     }
@@ -103,7 +100,7 @@ async function main() {
           else globe.updateRasterTextures();
           session.currentGrid = g;
           // 只重定位，不重建：这里每次指针移动都会被调用，
-          // 重建一遍标注贴图 + 路线 + 区域正是「地形编辑卡顿」的来源
+          // 重建一遍路线 + 区域正是「地形编辑卡顿」的来源
           relayoutLayers();
         },
         loadRealEarth: () => buildRealEarthGrid(grid.w),
@@ -172,11 +169,12 @@ async function main() {
 
   const toNdc = (e) => ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
 
+  /**
+   * 球面拾取：只有区域与路线。
+   * 地点与事件都不在球上拾取——它们的入口是总览/编年史/时间轴刻度，
+   * 球面只负责画，不负责点。
+   */
   function pickAt(ndcVec) {
-    // 地名走屏幕空间：它贴着地表，斜看时几乎侧对镜头，射线打不准
-    const entryId = labels.pick(ndcVec);
-    if (entryId) return { kind: 'entry', id: entryId };
-    // 事件不在球上拾取——入口只有时间轴刻度与编年史长卷
     raycaster.setFromCamera(ndcVec, camera);
     const regionId = regions.pick(raycaster);
     if (regionId) return { kind: 'region', id: regionId };
@@ -261,7 +259,6 @@ async function main() {
     if (!pointerDirty || s.mode !== 'browse' || !s.project) return;
     pointerDirty = false;
     const hit = pickAt(ndc);
-    labels.setHover(hit?.kind === 'entry' ? hit.id : null);
     regions.setHover(hit?.kind === 'region' ? hit.id : null);
     if (hit) {
       const item = P.getItem(s.project, hit.kind, hit.id);
@@ -295,7 +292,6 @@ async function main() {
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
     routes.setSize(innerWidth, innerHeight);
-    labels.setViewport(innerWidth, innerHeight);
     eventDot.setViewport(innerWidth, innerHeight);
   });
   addEventListener('beforeunload', () => session.autosaver.flush());
@@ -321,7 +317,7 @@ async function main() {
    * 一帧三趟，靠 render-layers.js 里的层号分工：
    *   ① 球体/大气/星空 —— 正常写颜色和深度
    *   ② 深度掩膜球（半径 1 的光滑正球，只写深度不写颜色）
-   *   ③ 地点/事件/路线/区域 —— 对着②留下的深度做测试
+   *   ③ 事件光点/路线/区域 —— 对着②留下的深度做测试
    * 于是内容不会被鼓起来的山挡住，转到球背面时又会被②挡住。
    * 末尾把相机层号复位成默认，免得影响拾取或别处。
    */
@@ -345,8 +341,7 @@ async function main() {
     tweens.update();
     globe.update?.(dt, camera);
     rig.update(dt); // 自转按真实秒数走，帧率高低都转一样快
-    // 地名的浓淡、大小与碰撞剔除都只跟相机有关，所以每帧现算，不走 store 的信号
-    labels.update(camera);
+    // 光点的大小只跟相机有关，所以每帧现算，不走 store 的信号
     eventDot.update(camera);
     processHover();
     render();

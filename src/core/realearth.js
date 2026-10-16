@@ -1,13 +1,12 @@
 import { TerrainGrid } from './raster.js';
 import { LandMask } from './landmask.js';
 import { loadImage } from '../utils/files.js';
-import { addItem } from './project.js';
 
 /**
  * 真实地球数据管线：三份数据各自成层，谁也不认识谁。
  *   高程图  → TerrainGrid.height（多高）
  *   海陆掩膜 → 哪一格是陆地、离岸多远（是陆是海）
- *   河网 / 城市 → 河流通道与地点标注
+ *   河网     → 河流通道
  * 「高程 + 海陆」在这里合成，但两边都不需要知道对方：raster 只认高度数值，
  * landmask 只认二值海陆，换掉任意一份都不牵动另一份，也不牵动渲染。
  * 数据文件在 public/data/、public/textures/（Natural Earth / three-globe，公共领域）。
@@ -16,7 +15,6 @@ import { addItem } from './project.js';
 const TOPO_URL = 'textures/earth-topology.png';
 const WATER_URL = 'textures/earth-water.png';
 const RIVERS_URL = 'data/ne_50m_rivers.geojson';
-const CITIES_URL = 'data/ne_110m_populated_places.geojson';
 
 /**
  * 真实地球预设的地形成色参数。只属于这一份预设——用户手画的世界不走这里，
@@ -34,11 +32,26 @@ const PRESET = {
 };
 
 /**
+ * 全局地形的栅格宽度（格）；高度取它的一半，经纬 360° 对 180°。
+ *
+ * 取的就是源图自己的尺寸：public/textures/earth-topology.png 是 2048×1024，
+ * 按这个数建栅格是 1:1 读图，不多占也不浪费，赤道上约 20km 一格。
+ * 再往上没有意义——源图里没有更多信息，放大只会让 PNG 与导出的 .world.json 一起发胖。
+ *
+ * 全项目只认这一个数：示例世界、菜单里的「生成真实地球」、工坊里的「真实地球」
+ * 都从这里取，免得三处各写一个数、改一处漏两处。
+ */
+export const EARTH_RES = 2048;
+
+/** 河流宽度的基准栅格宽度：下面的基础宽度是在这个宽度上调出来的，别处按比例缩放 */
+const RIVER_REF_W = 512;
+
+/**
  * 真实地球栅格：高程图与海陆掩膜各自解码 → 合成高度 → 河流栅格化。
  * 合成直接在目标分辨率上做，不再「先按原图建好再重采样」——
  * 重采样会把陆地最低高度和旁边海水的深度掺在一起，沿海又变回水下。
  */
-export async function buildRealEarthGrid(resolution = 512) {
+export async function buildRealEarthGrid(resolution = EARTH_RES) {
   const w = resolution;
   const h = Math.round(resolution / 2);
   const [elev, mask] = await Promise.all([
@@ -99,7 +112,7 @@ function landHeight(elev) {
 /** Natural Earth 河流 → 河流通路（只留干流，跳过湖中线；细活留给用户的画笔） */
 export async function rasterizeRivers(grid) {
   const geo = await fetch(RIVERS_URL).then((r) => r.json());
-  const k = grid.w / 512; // 宽度随分辨率缩放
+  const k = grid.w / RIVER_REF_W; // 宽度随分辨率缩放
   for (const feature of geo.features) {
     if (feature.properties?.featurecla === 'Lake Centerline') continue;
     const rank = feature.properties?.scalerank ?? 9;
@@ -143,33 +156,6 @@ function stampCircle(channel, w, h, cx, cy, radius) {
       }
     }
   }
-}
-
-/**
- * Natural Earth 城市点 → 普通地点标注（复用标注/检查器全套能力）。
- * 一座城市几千年都在那儿，所以不带时间——它们是常驻地点，与游标无关。
- */
-export async function importCitiesAsEntries(project, { minPop = 0 } = {}) {
-  const geo = await fetch(CITIES_URL).then((r) => r.json());
-  let n = 0;
-  for (const feature of geo.features) {
-    const p = feature.properties ?? {};
-    const pop = p.pop_max ?? 0;
-    if (pop < minPop) continue;
-    const [lng, lat] = feature.geometry?.coordinates ?? [];
-    if (lat == null) continue;
-    addItem(project, 'entry', {
-      title: p.name ?? '无名城',
-      description: `${p.featurecla ?? ''}${pop ? ` · 人口约 ${fmtPop(pop)}` : ''}`,
-      lat, lng,
-    });
-    n++;
-  }
-  return n;
-}
-
-function fmtPop(pop) {
-  return pop >= 1e6 ? `${(pop / 1e6).toFixed(1)}百万` : `${Math.round(pop / 1e4)}万`;
 }
 
 const lerp = (a, b, t) => a + (b - a) * t;

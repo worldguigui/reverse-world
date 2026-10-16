@@ -5,7 +5,7 @@ import { buildRealEarthGrid } from './realearth.js';
  * 示例世界：真实地球地形 + 第一次世界大战。
  *
  * 舞台只有一张脸（真实地球高程），全部叙事都落在 1914–1919 这六年里：
- *   - 地点是印在地图上的地名，各自带一个起始年，游标扫过去就一个接一个浮出来；
+ *   - 地点各自带一个起始年，游标扫过去就一个接一个进场（地点不上球，只在编年史与总览里见）；
  *   - 事件按年份排开，是时间轴刻度的全部来源；
  *   - 人物只挂在事件上，人物卡上那张「涉及的事件」是现算出来的；
  *   - 战线用一条路线与一条区域画出来，两者也只在这几年里在场。
@@ -13,15 +13,15 @@ import { buildRealEarthGrid } from './realearth.js';
  * 一战在轴上是六年，事件自然要密：一条一条排开，箭头才有的可翻。
  */
 export async function buildSampleProject() {
-  const res = 512;
   const p = P.createProject({
     name: '示例世界 · 一战',
     description: '以真实地球地形为底：从萨拉热窝的那一枪到凡尔赛宫的签字，六年之间的事件、地点与人物。',
   });
 
   // —— 舞台：一张脸。真实地球高程，不做任何人工改动 ——
-  const grid = await buildRealEarthGrid(res);
-  const rmap = P.addRasterMap(p, { name: '地球地形', w: res, h: res / 2, dataUrl: grid.encodePNG() });
+  // 尺寸不在这里定，取网格自己报上来的：分辨率只有一个出处，见 EARTH_RES
+  const grid = await buildRealEarthGrid();
+  const rmap = P.addRasterMap(p, { name: '地球地形', w: grid.w, h: grid.h, dataUrl: grid.encodePNG() });
   p.baseRasterId = rmap.id;
 
   // —— 章节：把散在欧洲各处的战场串成一段叙事 ——

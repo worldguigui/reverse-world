@@ -115,9 +115,7 @@ export function SettingsPanel() {
           onChange={(v) => set({ terrain: { exaggeration: v } })} />
       </Group>
 
-      <Group title="📍 地名与事件">
-        <Slider label="地名字号 px" value={config.markers.labelPx} min={9} max={36} step={1}
-          onChange={(v) => set({ markers: { labelPx: v } })} />
+      <Group title="📍 事件与路线">
         <Slider label="事件光点 px" value={config.markers.dotPx} min={8} max={44} step={1}
           onChange={(v) => set({ markers: { dotPx: v } })} />
         <Slider label="路线宽度 px" value={config.markers.routeWidth} min={1} max={8} step={0.5}

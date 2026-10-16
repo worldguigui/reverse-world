@@ -1,6 +1,6 @@
 # 世界图志 · 世界观时间轴工具
 
-> 基于 **Three.js + Vite** 的架空世界构建工具：把自己设计的平面地图或**真实地球地形**贴上球体，用**一根游标**串起世界的演变（沧海桑田），在球面上按经纬度放置**地点 / 事件 / 路线 / 势力区域**，还能用**地形工坊**像画等高线图一样捏出自己的山川河流。地点直接印成地图上的地名，事件在时间轴上一条条翻。
+> 基于 **Three.js + Vite** 的架空世界构建工具：把自己设计的平面地图或**真实地球地形**贴上球体，用**一根游标**串起世界的演变（沧海桑田），按经纬度放置**地点 / 事件 / 路线 / 势力区域**，还能用**地形工坊**像画等高线图一样捏出自己的山川河流。球面画地形、路线与区域，事件在时间轴与编年史上一条条翻。
 > 地球只是一个示例世界——它可以是任何世界。
 >
 > **文档体系**：本 README 分为「架构介绍」与「版本迭代记录」两部分；配套文档见 [`docs/README.md`](docs/README.md)（更新规则）、[`docs/ADR.md`](docs/ADR.md)（重大决策）、[`docs/DESIGN.md`](docs/DESIGN.md)（当前阶段方案）、[`docs/TEMP.md`](docs/TEMP.md)（临时需求）。所有文档遵循「**区域顶部插入**」更新策略，最新内容始终在顶部。
@@ -15,7 +15,7 @@
 - **前端框架**：React + Zustand，仅接管 UI 层与状态层（`core/`、`view/` 不进框架）；构建产物相对路径，可静态部署。
 - **命令**：`npm install` / `npm run dev`（http://localhost:5173）/ `npm run build`（dist/）。
 - **验证脚本**（`scripts/`，依赖本机 Edge + 已启动 dev server）：`node scripts/verify-terrain.mjs`（地形端到端）、`node scripts/ui-test.mjs`（UI 交互）、`node scripts/shot.mjs`（截图）。
-- **编程入口**：浏览器控制台 `window.world`（由 `src/api.js#installAPI` 挂载），提供 `help()/loadSample()/getCursor()/setCursor()/stepCursor()/jumpToEvent()/showChronicle()/generateRealEarth()/openWorkshop()/paintTerrain()/sampleTerrain()/importCities()/addEntry()/addEvent()/flyTo()/where()/resetView()`，以及人物与章节的 `addCharacter()/listCharacters()/eventsOfCharacter()/addGroup()/listGroups()/eventsOfGroup()/filterByGroup()/filterByCharacter()/clearFilter()` 等。
+- **编程入口**：浏览器控制台 `window.world`（由 `src/api.js#installAPI` 挂载），提供 `help()/loadSample()/getCursor()/setCursor()/stepCursor()/jumpToEvent()/showChronicle()/generateRealEarth()/openWorkshop()/paintTerrain()/sampleTerrain()/addEntry()/addEvent()/flyTo()/where()/resetView()`，以及人物与章节的 `addCharacter()/listCharacters()/eventsOfCharacter()/addGroup()/listGroups()/eventsOfGroup()/filterByGroup()/filterByCharacter()/clearFilter()` 等。
 
 ### 2. 核心概念
 
@@ -25,11 +25,11 @@
 - **舞台只有一张脸**：球体不随时间换皮。`baseRasterId`（栅格地形）优先于 `baseMapId`（图片底图），两者都为空就用引擎自带的地球贴图。**拖游标不换脸**——这是刻意的，底图是一张图，它跟时间没有关系。
 - **游标**：一个**数值年**（`cursor`，负数为公元前，允许小数）。它不是项目数据，而是「此刻在看哪一年」，所以不进 `project`；拖动它只翻内容的可见性，一个像素都不重画。
 - **内容生命周期**：带时间的内容（地点 / 事件 / 路线 / 区域）都有 `from` / `to` 两个**年份**（留空 = 该端开放，两端都空就是「常驻」）。可见性判定唯一位置 `project.js#isActiveAt`（闭区间 `from <= cursor <= to`），四类内容共用这一条判据。
-- **事件与地点**：数据上两者同形（都带配图与存续区间、都有 `lat`/`lng`），但在球上的待遇不同——**地点印成地名**（一块贴合球面的四边形，名字直接画在上面，随地球一起转），**事件不铺点**：事件一多，球面会被点铺满，也会让人以为「点上去能选中」。事件的入口只有时间轴刻度与编年史长卷两处，球上只把**选中那一条**的坐标点亮成一枚光点，改选别人它就灭。另一条差别是**事件可以没有地点**（纯叙事事件不上球，只进编年史），且**事件是时间轴刻度的来源**（`core/timeline.js#timeTicks`）。
+- **事件与地点**：数据上两者同形（都带配图与存续区间、都有 `lat`/`lng`），差别在谁上球——**事件不铺点**：事件一多，球面会被点铺满，也会让人以为「点上去能选中」。事件的入口只有时间轴刻度与编年史长卷两处，球上只把**选中那一条**的坐标点亮成一枚光点，改选别人它就灭。**地点根本不上球**（见 v0.0.9）：球面只画地形、路线与区域，地点的入口是总览与编年史。另一条差别是**事件可以没有地点**（纯叙事事件不上球，只进编年史），且**事件是时间轴刻度的来源**（`core/timeline.js#timeTicks`）。
 - **时间轴与编年史**：轴的定义域由内容自己的 `from`/`to` 算出来（`timeDomain`），没有任何需要人维护的槽位——给某条内容填上时间，轴就长出来一截。轴上不铺标题（挤在一起没法看），标题在**编年史长卷**里按时间铺开。
 - **人物与章节**：人物是事件的参与者，不是地点上的东西——所以不上球、没有存续区间，`born` / `died` 只是生平，不参与在场判定。章节是事件的归类，本身不带年份，标签上的范围（`1914–1919`）由组内事件的年份算出来。两者与事件的关联都**只写在事件那一侧**（`characters` / `groupId`），人物卡上那张「涉及的事件」是现算的——反向关系是求值，不是数据。
 - **视图条件**：`viewFilter = { groupId, characterId }` 决定「此刻在看什么」，两个都可空，同时给就是交集。指向章节时是真的翻章；按人物筛出的那一组是**算出来的**，用完就没了，不落盘、不进 `groups`。两者共用一条筛选路径——收窄换的只是「谁在场」，一个像素都不用重画。
-- **栅格地形**：等距圆柱投影高度网格（默认 512×256，可升 1024×512）+ 河流通路；高度用归一化单位（0=海平面，[-4,4] 设计范围）。渲染成「色带 + hillshade」贴图，**GPU 顶点位移让山从球面上真正隆起**。
+- **栅格地形**：等距圆柱投影高度网格（**2048×1024**，赤道约 20km/格，即高程源图的原生尺寸）+ 河流通路；高度用归一化单位（0=海平面，[-4,4] 设计范围）。渲染成「色带 + hillshade」贴图，**GPU 顶点位移让山从球面上真正隆起**。
 - **海陆掩膜（可选）**：一张二值「是陆是海」的图（`core/landmask.js`），只回答海陆判定，不参与高度。**不是强制规则**——自定义世界可以没有它，没有时按高度正负判海陆，与旧行为一致；真实地球预设自带一份 `public/textures/earth-water.png`，用来把低海拔城市从海里捞回来。
 - **地形工坊**：全屏栅格画笔（抬升/降低/抹平/河流，硬笔/软笔），笔刷最小可到**一格**，每笔实时反映到球体；画布支持滚轮缩放与拖动平移；撤销/重做；一键从真实地球生成。
 
@@ -39,7 +39,7 @@
 src/
   main.js          组装、编辑模式状态机（browse/add-entry/add-event/draw-route/draw-region）、
                   鼠标键盘交互、渲染循环（renderer.setAnimationLoop）
-  config.js        画面设置（视角/光照/大气/星空/地形夸张/地名与光点），localStorage 持久化
+  config.js        画面设置（视角/光照/大气/星空/地形夸张/球面标记尺寸），localStorage 持久化
   utils.js         经纬度↔三维坐标、大圆弧插值、TweenManager 补间动画
   utils/files.js   浏览器文件操作：loadImage（栅格与海陆掩膜各自取用，互不依赖）
   api.js           window.world 编程接口（自动化/未来后端驱动入口）
@@ -59,15 +59,14 @@ src/
     migrate.js     v1 → v2 迁移：时间点槽位模型 → 「一张脸 + 一根游标」，时间点变成事件
     raster.js      TerrainGrid：画笔（最小 1 格）/色带/hillshade/采样/重采样/PNG 编解码。只管「多高」
     landmask.js    LandMask：二值海陆场 + 离岸距离（倒角距离变换）。只管「是陆是海」，可选
-    realearth.js   真实地球：高程图 + 海陆掩膜合成、河流栅格化、城市导入
+    realearth.js   真实地球：高程图 + 海陆掩膜合成、河流栅格化
     storage.js     IndexedDB 持久化 + 防抖自动保存 + .world.json 导出/导入
     sample.js      示例世界（真实地形 + 一战六年：19 处地点、32 条事件、16 位人物）
   view/            3D 视图层（引擎封装边界，对外只暴露业务语义方法）
     render-layers.js  渲染趟次编号：场景 / 深度掩膜 / 内容（见「一帧三趟」）
     material-bin.js   材质回收桶：整层重建时复用材质，避免 GL 程序被连坐销毁
     globe.js       球体：GPU 高度位移 + 法线扰动 shader、深度掩膜球、大气辉光、星空、光照
-    markers.js     地名层（贴合球面的四边形，字头朝北，按视角浓淡 + 逐帧贪心碰撞剔除）；
-                   事件光点层（整层一枚 Sprite，只跟着选中的那条事件走）
+    event-dot.js   事件光点层（整层一枚 Sprite，只跟着选中的那条事件走）
     routes.js      路线层（大圆弧细分 + Line2 像素宽度）
     regions.js     区域层（earcut 剖分 + 球面递归细分防弦陷）
     camera.js      自由翻滚相机：四元数 trackball 管旋转、OrbitControls 只管缩放，
@@ -82,7 +81,7 @@ src/
     workshop-session.js  工坊会话：网格、撤销/重做栈、指针涂抹、画布视图（缩放/平移）
                          （大 buffer 不进 store）
 scripts/           headless Edge 端到端验证（verify-terrain / ui-test / shot）
-public/            静态资源：data/*.geojson（河流/城市）、textures/earth-topology.png（高程）、
+public/            静态资源：data/ne_50m_rivers.geojson（河网）、textures/earth-topology.png（高程）、
                    textures/earth-water.png（海陆掩膜）
 ```
 
@@ -90,10 +89,10 @@ public/            静态资源：data/*.geojson（河流/城市）、textures/e
 
 ### 4. 关键机制（架构要点）
 
-- **GPU 地形位移**：`view/globe.js#_buildSphere` 在 `MeshPhongMaterial.onBeforeCompile` 注入顶点着色器——高度纹理（R+G 打包 16-bit）按 `NearestFilter` 采样，`transformed += normalize(position) * unpackHeight(texture2D(uHeightTex, uv).rg) * uExaggeration`；法线用高度场邻域差分扰动。位移只在 GPU，射线拾取对逻辑球面（未位移的 `globe.sphere`），放置内容天然自洽。
+- **GPU 地形位移**：`view/globe.js#_buildSphere` 在 `MeshPhongMaterial.onBeforeCompile` 注入顶点着色器——高度纹理（R+G 打包 16-bit）用双线性采样（线性色空间、不生成 mipmap），`transformed += normalize(position) * unpackHeight(texture2D(uHeightTex, uv).rg) * uExaggeration`；法线用高度场邻域差分扰动。位移只在 GPU，射线拾取对逻辑球面（未位移的 `globe.sphere`），放置内容天然自洽。
 - **贴图对准**：`utils.js#latLngToVec3` 与 `SphereGeometry` 的 UV 展开一致。
 - **球面弦陷防护**：区域按边长 ≤2° 递归四分割（`view/regions.js#pushSubdivided`，深度上限 6），路线走大圆弧 slerp 细分（`view/routes.js#arcPositions`，≤2°/段）。
-- **拾取分两条路**（`main.js#pickAt`）：**地名走屏幕空间**——它贴着地表，斜看时几乎侧对镜头，射线很难打中，于是「正对着的点得中、边上的点不中」；改成拿每帧留下的屏幕落点与半宽半高直接查点（`view/markers.js#pick`），也就是真实地图那一套（按要素几何的投影查点，不靠字形本身）。被碰撞剔除、没印出来的地名不在候选里——它本来就看不见，点它没反应才对。**路线与区域仍走射线**，它们浮在地表之上，且自己按地平线判据筛一遍（`raycaster` 不理会 `visible`）。
+- **球面拾取只有路线与区域**（`main.js#pickAt`）：走射线，两者都浮在地表之上，各自按地平线判据筛一遍（`raycaster` 不理会 `visible`）。**地点与事件都不在球上拾取**——球面只负责画，入口是总览、编年史与时间轴刻度。地点曾经走在球上（贴地四边形 + 屏幕空间查点），那是它自己的画法决定的，v0.0.9 拿掉之后这条路径一并不需要了。
 - **自由翻滚的相机**（`view/camera.js`）：OrbitControls 的球坐标把 `phi` 从相机位置 `acos` 出来，恒落在 `[0, π]`，绕极点时被夹住——这是表示法的限制，参数怎么调都过不去。所以旋转改由自己用四元数做 trackball：拖动时按「屏幕右 / 屏幕上」两个轴构造四元数，**同时**乘到相机的位置与 `up` 上。相机永远看原点、且 `up ⊥ 视线`，两者同步旋转后这个关系不变（OrbitControls 自己的坐标系里 `phi` 恒为 π/2，它的往返换算仍然精确），于是可以越过南北极、把地平线转歪。缩放仍交给 OrbitControls——距离计算与朝向无关，没必要重写。自转也改为绕世界 Y 轴（南北极）而非相机上方向：翻过球之后两者不一致，用后者会变成绕屏幕竖线打转。转晕了用 🧭 复位视角 / `world.resetView()` 回到正北朝上。
 - **工坊画布视图**（`ui/workshop-session.js`）：画布按「一格一 CSS 像素」写死尺寸，缩放平移全走 CSS `transform: translate() scale()`，**不动画布分辨率**——改分辨率等于重采样，图会糊。缩放锚点直接用画布自己的 `getBoundingClientRect()` 算：它返回的是**变换后**的矩形，于是 `toGrid` 那条「屏幕坐标 → 网格坐标」的换算在任意缩放下自动成立，不必手写变换的逆。
 - **栅格存储**：整张地形编码为一张 PNG（`core/raster.js#encodePNG`：R+G=16-bit 高度 [-4,4]，B=河流），IndexedDB 单条记录 500ms 防抖自动保存，导出为内嵌图片的单文件 `.world.json`（`core/storage.js`）。
@@ -102,15 +101,15 @@ public/            静态资源：data/*.geojson（河流/城市）、textures/e
   - `store/world.js#derived`（**游标走了 / 视图收窄了**：同一批内容换了一批在场者）→ `bridge.js#applyActiveLayers()` 只翻 `visible`，成本是 N 次布尔赋值。筛选就叠在 `buildDerived` 里面（`activeEvents` 的输入是「在场 ∩ 属于当前视图」），所以翻章与拖游标走的是同一条路，`bridge.js` 一行都不用改；
   - `store/ui.js#layoutEpoch`（**只是地形变了**：工坊画笔、`paintTerrain`）→ `bridge.js#relayoutLayers()` 把已有对象重新贴回新地表，derived 快照与全部地名贴图一概不动。
   - 与此正交的是 `store/ui.js#stageEpoch`（**换脸了**：换底图、换地形、载入项目）→ `bridge.js#applyStage()`，与游标完全无关。`session.stageToken` 是异步解码的竞态守卫：换栅格要等 PNG 解码，等待期间用户若又换了一张，先回来的那次作废。
-  - 实测：连续 400 步推游标共 19.2 ms（**0.048 ms/步**），地名贴图 / 材质 / 纹理 UUID 全程不变——这就是「拖游标不卡」的根据。
+  - 实测：连续 400 步推游标共 19.2 ms（**0.048 ms/步**），路线的材质 / 纹理 UUID 全程不变——这就是「拖游标不卡」的根据。
 - **一帧三趟渲染**（`view/render-layers.js` 定义层号，`main.js#render` 按序渲染三遍）：
   1. `LAYER_SCENE` — 球体、大气辉光、星空，正常写颜色与深度；
   2. `LAYER_MASK` — 与球面同半径的光滑球（`globe.js#_buildOverlayMask`，`colorWrite: false`），只写深度。渲染前 `clearDepth()`，于是它盖掉的是一张「没有山、只有球」的理想深度图；
-  3. `LAYER_CONTENT` — 地名 / 事件光点 / 路线 / 区域贴着这张深度图做测试。
+  3. `LAYER_CONTENT` — 事件光点 / 路线 / 区域贴着这张深度图做测试。
   这样山挡不住内容（掩膜球没有隆起），而转到球背面仍会被正确遮挡（球体本身还在）。
 - **材质回收桶**（`view/material-bin.js`）：three 用引用计数管 GL 程序，整层重建时若把旧材质 `dispose()` 掉，程序会跟着销毁、下一帧重新编译链接（实测一次重建 275ms）。桶把退下来的材质留下来复用，程序就一直在。图层重建路径上必须走它。
 - **补间管理器的重入**（`utils.js#TweenManager`）：回调里可以再开动画（跳一条事件 = 设游标 + 选中 + 飞过去，最后那一步本身又是一段补间），所以 `update()` 不能就地过滤自己的数组——那样算完一圈会把回调期间新加的动画一起写掉，这次飞行就凭空消失了。实现改成先把待办挪出来、算完再收回，取消用 `dead` 标记传给还在手上的那批。
-- **状态与视图分离**：UI 状态全在 `store/` 里（可序列化），three 对象与 `TerrainGrid` 等大 buffer 在 `session.js`；`bridge.js` 单向订阅 store 驱动三维，React 组件单向订阅 store 渲染自己，两边不互查 DOM。地名每帧的屏幕落点、浓淡与碰撞剔除结果也**不进 store**：它们只跟相机有关，与内容无关，逐帧写入 store 等于每帧触发一次 React 重渲染。
+- **状态与视图分离**：UI 状态全在 `store/` 里（可序列化），three 对象与 `TerrainGrid` 等大 buffer 在 `session.js`；`bridge.js` 单向订阅 store 驱动三维，React 组件单向订阅 store 渲染自己，两边不互查 DOM。事件光点每帧的屏幕尺寸也**不进 store**：它只跟相机有关，与内容无关，逐帧写入 store 等于每帧触发一次 React 重渲染。
 
 ### 5. 数据来源
 
@@ -119,7 +118,6 @@ public/            静态资源：data/*.geojson（河流/城市）、textures/e
 | 高程预设 `earth-topology.png` | 运行时 fetch 本地静态文件 | `core/realearth.js#loadElevation` |
 | 海陆掩膜 `earth-water.png` | 运行时 fetch 本地静态文件 | `core/landmask.js#fromImage`（由 `core/realearth.js#buildRealEarthGrid` 调用） |
 | 河流 `ne_50m_rivers.geojson` | 运行时 fetch 本地静态文件 | `core/realearth.js#rasterizeRivers` |
-| 城市 `ne_110m_populated_places.geojson` | 运行时 fetch 本地静态文件 | `core/realearth.js#importCitiesAsEntries` |
 | 示例世界剧情 | 硬编码 | `core/sample.js#buildSampleProject` |
 | 画面设置 | localStorage | `config.js#loadViewConfig/saveViewConfig` |
 | 项目持久化 | IndexedDB | `core/storage.js#idbPut/idbGet/createAutoSaver` |
@@ -129,10 +127,12 @@ public/            静态资源：data/*.geojson（河流/城市）、textures/e
 ### 6. 已知限制
 
 - 高程预设仍用 8-bit 陆地 bump 图：陆地海拔精度有限，海洋深浅由「离岸距离」推导（大陆架坡度是算出来的，不是测出来的）。要真实测深得换 16-bit ETOPO，未来可升级——`core/raster.js` 只管高度，换数据源不牵动海陆掩膜与渲染。
+- **海岸线比地形粗一档**：高度网格升到 2048 之后，画面里最粗的东西变成了海陆边界——它来自 `public/textures/earth-water.png`，那张图只有 1024×512（一格 ≈ 39km），一格陆地还要再向外扩一格，于是省级视野下的海岸是一级级约 20 像素的台阶。海岸线的精度由掩膜图决定，与高度网格无关，要更细得换一张更高分辨率的掩膜（Natural Earth 有 10m/50m 的陆地多边形可以自己栅格化）。浅水色带（大陆架）的宽度也是从这个距离场推的，同样受它限制。
+- **再往里放大就是纯放大像素了**：相机推到球心 1.25 倍球半径即停住，之后靠收窄视场角继续放大，一直能放到 67 倍（见 v0.0.8）——倍数是给够的。但一个球只有一张 2048×1024 的纹理，收到最窄一档时一个地形格要摊到一百多屏幕像素，画面自然发糊、海陆边界凝成一格格台阶。要真看清地面，得让视野里那块地**另有更细的图**：按需取瓦片/补丁（视口内才拉高分辨率，视口外维持粗档），再配更高分辨率的高程源。真实地图服务能一路放大到这个程度，靠的正是每级一张更细的图加全球米级影像，不是过滤器更聪明。
 - 河流是画笔通路，不随坡向汇流（D8 算法待做）。
 - 跨 ±180° 勾画的区域三角剖分可能出错（`buildFillGeometry` 未拆线；`buildBorderGeometry` 已按短弧处理）。
 - 底图切换为硬切（交叉淡化待做）。
-- **地名贴地印刷的代价**：字是印在球面上的，斜看时会被压扁，所以按倾斜程度淡出，太斜就整个隐掉，不留一条糊掉的横线。挤在一起的地名靠每帧一次贪心碰撞剔除让位（正对镜头的优先留下），被剔除的那一块当帧既看不见**也点不中**——这是有意的，转一下视角它就回来了。
+- **地点不上球，于是球上看不到它**：地点是正经内容（`kind: 'entry'`，带经纬度与存续区间），编辑、总览、编年史、`world.addEntry()` 一处不少，只是球面不再画它——建完一个地点，球上不会有任何痕迹。这是 v0.0.9 刻意做的解耦：球面只画地形、路线与区域，地名印刷留待日后作为一层外挂接回来。**代价是「在球上点一个地方建地点」这条流失去了后半段反馈**：点下去表单照旧出现、地点照旧建成并被选中，只是画面上没有东西回应你。
 - **同年多条事件时刻度叠在一起**：刻度按事件的年份落位，同一年里的几条落在同一个 x 上，鼠标只有最上面那一个点得中。逐条读的入口是底部的 ◀ ▶：按一下换一条，并把游标与检查器一起带过去。轴没有「槽位」这个概念，刻度叠置是这个模型的直接后果。
 - 轴是按年份**线性**铺开的，年份跨度大的世界会把内容稀疏的段落拉得很快（改成均匀分布是「非线性压缩轴」，属于另一个需求）。示例世界收在一战这六年里，正是为了让刻度排得开。
 - v1 项目导入时只保留**最后一张**底图与地形：v1 是逐时间点各存一套舞台，v2 的球只有一张脸，多出来的那几套会丢掉（内容本身一条不丢，时间点转成事件）。
@@ -143,6 +143,32 @@ public/            静态资源：data/*.geojson（河流/城市）、textures/e
 ## 第二部分 · 版本迭代记录
 
 > 更新规则：**新版本条目插入本列表顶部**（最新在上），保持「从头检索先见最新」。历史条目只追加不改。
+
+### v0.0.9 地名层解耦；拖拽速度不再随缩放变化（2026-10-16）
+
+1. **球面上的地名整层拿掉**（原 `view/markers.js#LabelLayer` → 删除）。v0.0.6 把它做成「印在世界地图上」的样子，字贴地、字头朝北、按倾斜程度淡出、逐帧贪心碰撞剔除——这套东西完整地长在球体渲染里，与地点数据的关系只靠 `bridge.js` 那几行。现在整层撤回，`markers.js` 只剩事件光点，改名 `view/event-dot.js`；`config.markers.labelPx`、「📍 地名与事件」里那一项滑块、`session.labels` 一路清干净。**这样做是为了让它日后能当外挂层接回来**：地点是什么、在哪一年在场、点它选中谁，全在数据侧，球面只是它的一个视图。
+2. **地点数据一条不动**。`kind: 'entry'` 仍是与事件/路线/区域并列的一等内容：编年史、总览统计、检查器、放置表单、`world.addEntry()/listEntries()`、示例世界里那 19 处地点，一处没删。改的只是**它在球上有没有样子**。
+3. **球面拾取只剩路线与区域**（`main.js#pickAt`）。地点不再有可点的东西，那条为贴地四边形量身定做的屏幕空间查点路径（`LabelLayer#pick`）一并不需要了；拾取回到单一路径：射线打路线与区域。点地点所在处现在什么都不会选中，这是设计，不是漏。
+4. **城市导入整条链路删掉**（`core/realearth.js#importCitiesAsEntries` + `CITIES_URL`、`store/actions.js#importCities`、`world.importCities()`、「🏙 导入真实城市（243）」按钮、`public/data/ne_110m_populated_places.geojson`）。这是「地图城市地点暂不实现」那一半：真要做城市，路径是拿数据建地点 + 一层自己的渲染，而不是在球体模块里常驻一条 fetch。
+5. **拖拽转动速度不再随缩放变**（`view/camera.js#orbit` + `#_dragScale`）。原先每像素固定转 `2π/视口高` 那么多角度——角度固定，可同样的角度在放大之后让地表在屏幕上走过的像素多得多，于是**越放大转得越快**。探针实测：拖 1 像素，出厂视角地表走 **3.79 像素**，推到最里走 **255.4 像素**（67 倍）。改法是把速度按「一屏装下多少地表」定，那个量正比于 `(相机距离-1) × tan(视场角/2)`，除以它正好抵消——出厂视角下系数是 1，**手感与改动前一模一样**；实测 67 档全程恒为 3.79，连拖 40 步的累加也一致了。
+6. **验收**：`scripts/verify-terrain.mjs` 12 项、`scripts/ui-test.mjs` 45 项全绿，`npm run build` 通过、无运行时报错。UI 套件里原本靠地名层做靶子的三处断言换成了对等的东西：拖游标/收窄的「零重建」改看路线与区域的材质 UUID，点地点改为**验证点不中**（飞到「萨拉热窝」正上方点屏幕中心，什么都不该选中），另补一条「点区域内部选中它」把球面拾取的正向覆盖补回来——不然拿掉地名层会顺手把这块测试悄悄变成空转。顺带修了两处随之失真的文案：总览页提示与示例世界载入提示里的「地点依次登场」。
+
+### v0.0.8 相机推到底之后收镜头接着放大（2026-10-16）
+
+1. **推近分成两段：相机先推向球面，推到底之后相机停住，改收窄视场角继续放大**（`view/camera.js#_applyLevel`）。相机只能推到一定高度（球心外 1.25 倍球半径），再近就进到球里了；可「推镜头」与「放大」本来就是两件事——相机停住之后收窄视场角，画面照样接着放大。两段合成同一个**档位**（相对出厂视角在屏幕上看到的大小），滚轮一律按档位走，所以两段都是匀速的。实测从出厂视角一路推到顶：相机由距离 3.0 推到 1.25（**8 倍**），视场角由 45° 收到 5.6°（再 **8 倍**），**合计屏幕放大 67 倍**，全程每格滚轮稳定 **+10%**（相机段第 21 格到底，此后档位全走镜头）。
+2. **滚轮改由自己接管**（`view/camera.js#_onWheel`）。OrbitControls 的滚轮只会推拉相机，推到底就没有了，接不住「相机不动、只放大」这一段。它的滚轮监听挂在 canvas 的冒泡阶段，本类**先注册**即可用 `stopImmediatePropagation` 拦下来。`enableZoom` 保持打开，双指捏合照旧走 OrbitControls，不受影响。滚轮打断进行中 flyTo 的逻辑一并挪进这个处理函数——同一元素上的后续监听会被上面那个拦截一并挡住，再挂一个也收不到。
+3. **旧存档再也盖不掉代码里的缩放上下限**（`config.js#dropCodeOwnedKeys`）。这两项不是设置面板里能改的，只是借 `config` 放着方便取用，可它们照样会被存进 localStorage，而载入时是存档盖默认值——于是改了代码却不生效，看着像没改。凡是「用户改不了、只吃代码」的项都该照这个办法挡一道（`fov` 是用户可改的，仍然听存档）。
+4. **相机最近档 1.35 → 1.25**：相机多走一点，镜头就少收一点，同样倍数下画质更好。1.25 时一格地形约占 13 屏幕像素（原 9.5）。放大上限由 `view/camera.js#OPTICAL_MAX` 一个常量管着（现为 8，即视场角最窄到 45°/8 ≈ 5.6°）。
+5. **验收**：`scripts/verify-terrain.mjs` 与 `scripts/ui-test.mjs` 全绿、无运行时报错，`npm run build` 通过。滚轮梯子、原路退回、存档覆盖都用探针量过；最窄视场角下的截图确认地球边缘、大气与地名都正常，画面只是纯放大。**上手时踩到一个自己写的 bug**：档位公式里镜头倍率乘反了（收窄视场角是放大，该乘不该除），结果档位推上去又掉回来，卡在距离 1.25 与 1.275 之间来回跳、一格都进不去——探针打出来的梯子一眼就看出来了。
+
+### v0.0.7 地形升到原生分辨率（2026-10-16）
+
+1. **全局地形网格 512×256 → 2048×1024**（`core/realearth.js#EARTH_RES`）。1024 宽时一格是 0.7°（约 78km），贴近到省级视野就是满屏大方块；2048 是 0.176°（约 20km）。取的正是高程源图 `earth-topology.png` 自己的尺寸——按它建栅格是 1:1 读图，一个像素不多不少；再往上源图里也没有更多信息，只会让 PNG 与导出文件一起发胖。**分辨率只留一个出处**：示例世界、菜单里的「生成真实地球」、工坊里的「真实地球」原先各写一个 512，现在都从这一个常量取，免得改一处漏两处。
+2. **位移采样改双线性**（`view/globe.js#setRaster`）：`magFilter` / `minFilter` 由 `NearestFilter` 换成 `LinearFilter`（缩小过滤不能配 mipmap 档——`generateMipmaps` 是关的，那样会采到一张不完整的贴图，整颗球变黑）。高度是连续的场，最近点采样把每一格铺成一整块平地、格与格之间高度直接跳变。对 R+G 打包的 16-bit 高度无害：解包是两通道的线性运算，各自插值再解包与先解包再插值只差一次逐通道取整。**代价是工坊硬笔画的悬崖被磨掉一格**——原先「一格抬升 = 一堵垂直的墙」靠的正是最近点采样，现在那道墙变成了一格宽的斜面（赤道上约 20km 的水平距离）。这是要拿插值换锐利的地方，换算下来的取舍是：宁可墙软一格，也不要满屏方块。
+3. **量了一下谁才是主因**。三张同机位截图（阿尔卑斯，相机距离 1.5，一格约 11 屏幕像素）逐像素比：512+最近点 → 2048+双线性，**平均通道差 5.7，20.5% 的子像素差过 8**；2048+最近点 → 2048+双线性，平均差 1.1，**3.2% 差过 8**。也就是说方块主要是**分辨率**消掉的，双线性是收尾——单换采样方式救不了 512 的格子，单升分辨率则会在格边留一层台阶。
+4. **连带改动三处，都是分辨率的直接后果**：① 笔刷滑块上限跟着栅格宽度缩放（`ui/workshop-session.js#brushSizeMax`，512 宽时 48 格 = 2048 宽时 192 格），否则同一个「8 格」在新分辨率下盖住的地面只剩四分之一，像换了一支笔；落笔处再夹一次上限，兜住 store 里上一张网格留下的值。② 工坊白纸起步的画布同样改成 2048×1024，画到一半按「真实地球」不会突然换一档精度。③ 画布在适应窗口那一档从放大变成了缩小（拟合比例 0.588），`image-rendering` 不能再恒定 `pixelated`——最近点在缩小时会丢行丢列，让细线与色带抖成一片，现在只在放大档用最近点。
+5. **实测代价**：成色 178 → **536ms**；PNG 0.13 → **1.61MB**（示例世界的 1.21MB，正是工单预估的 1–2MB 区间）；重新解码载入 26 → **238ms**；工坊一份撤销快照 0.6 → **10MB**（上限仍是 8 步，一份栈约 80MB）。对示例世界的载入（本就要下载并解码 369KB 高程图与河网）来说这些都在噪声里。
+6. **验收**：`scripts/verify-terrain.mjs` 12 项全绿（珠峰采样由 0.74 升到 **0.94**——少了降采样的削顶），`scripts/ui-test.mjs` 45 项全绿，`npm run build` 通过，无运行时报错。
 
 ### v0.0.6 地图展示优化（2026-10-15）
 

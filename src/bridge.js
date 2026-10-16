@@ -17,7 +17,7 @@ export function initBridge() {
   subscribe((s) => s.derived, () => applyActiveLayers());
   // 舞台变了（换底图、换地形、载入项目）→ 重新贴一次球面
   subscribe((s) => s.stageEpoch, () => applyStage());
-  // 几何本身要重建（改标注大小、换配色）
+  // 几何本身要重建（改标记尺寸、换配色）
   subscribe((s) => s.layerEpoch, () => rebuildLayers());
   // 只有地形动了（画笔涂抹、脚本改高度）→ 把已有图层重新贴回地表即可
   subscribe((s) => s.layoutEpoch, () => relayoutLayers());
@@ -51,11 +51,9 @@ export function rebuildLayers() {
   const s = useStore.getState();
   const p = s.project;
   const visible = !!p;
-  session.labels.group.visible = visible;
   session.eventDot.group.visible = visible;
   session.routes.group.visible = visible;
   session.regions.group.visible = visible;
-  session.labels.build(p ? p.entries : []);
   // 没有地点的事件不上球：它是一条正经事件，只是没有坐标，只进编年史。
   // 这里先筛掉，否则会照 null 经纬度算出一个 NaN 位置的光点
   session.eventDot.build(p ? p.events.filter(hasCoords) : []);
@@ -72,7 +70,7 @@ export function rebuildLayers() {
  */
 export function applyActiveLayers() {
   const d = useStore.getState().derived;
-  session.labels.setActive(new Set(d.activeEntries.map((e) => e.id)));
+  // 地点不上球，游标扫过它时球面纹丝不动，所以这里没有它那一笔。
   // 光点跟的是选中而不是游标：从长卷里点开一条旧事件时，游标可能已经不在那一年了，
   // 但点该亮还是要亮——所以这一层没有「在场」这回事
   session.eventDot.setActive();
@@ -82,12 +80,11 @@ export function applyActiveLayers() {
 
 /**
  * 内容一条没变、只是脚下的地形变了：把已有图层重新贴回地表。
- * 与 rebuildLayers 的差别是「重建」与「重定位」——标注贴图、路线材质、区域颜色
+ * 与 rebuildLayers 的差别是「重建」与「重定位」——光点贴图、路线材质、区域颜色
  * 都原样留着，只重算半径。画笔每移动一下都会走到这里，必须便宜。
  */
 export function relayoutLayers() {
   if (!useStore.getState().project) return;
-  session.labels.relayout();
   session.eventDot.relayout();
   session.routes.relayout();
   session.regions.relayout();
@@ -137,7 +134,6 @@ export async function applyStage() {
 function applySelectionToLayers() {
   const sel = useStore.getState().selection;
   const id = sel?.id ?? null;
-  session.labels.setSelected(sel?.kind === 'entry' ? id : null);
   // 光点只认事件：选中地点、路线、区域时它必须消失，否则球上会留着一个无主的亮点
   session.eventDot.setSelected(sel?.kind === 'event' ? id : null);
   session.routes.setSelected(id);

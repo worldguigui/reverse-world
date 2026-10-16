@@ -23,8 +23,23 @@ export const workshop = {
   view: { zoom: 1, tx: 0, ty: 0 },
 };
 
-/** 撤销步数：网格越大，一份快照越贵 */
+/** 撤销步数：网格越大，一份快照越贵（快照 = 高度 + 河流两份数组） */
 const undoLimit = () => (workshop.grid?.w >= 1024 ? 8 : 15);
+
+/** 笔刷大小上限的基准格数，以及它是在多宽的栅格上调出来的 */
+const BRUSH_MAX_CELLS = 48;
+const BRUSH_REF_W = 512;
+
+/**
+ * 笔刷大小上限（格）。
+ *
+ * 「格」是相对单位：同样 48 格，栅格宽一倍，盖住的地面就只剩一半。
+ * 按栅格宽度缩放上限，滑块两端盖住的地面范围才与分辨率无关——
+ * 否则换一档分辨率，同一支笔就成了另一支笔。
+ */
+export const brushSizeMax = () => Math.round(
+  (BRUSH_MAX_CELLS * (workshop.grid?.w ?? BRUSH_REF_W)) / BRUSH_REF_W,
+);
 
 /** 把撤销/重做的可用态同步给按钮 */
 function syncFlags() {
@@ -75,7 +90,12 @@ const scaleOf = () => fitScale * workshop.view.zoom;
 function applyView() {
   const { canvas, view } = workshop;
   if (!canvas) return;
-  canvas.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${scaleOf()})`;
+  const s = scaleOf();
+  canvas.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${s})`;
+  // 一格一像素，放大时该用最近点：格子边界要像刀切一样清楚。
+  // 缩小时（画布比容器宽——分辨率一高，适应窗口那一档就是缩小）最近点会丢行丢列，
+  // 满是细线与色带的底图会抖成一片；这一档交回浏览器的平滑缩放。
+  canvas.style.imageRendering = s >= 1 ? 'pixelated' : 'auto';
 }
 
 /** 缩放倍数同步给顶栏读数。平移不动缩放，所以只有缩放路径调它 */
@@ -218,11 +238,12 @@ function toGrid(canvas, e) {
 
 /** 画一笔。画笔参数每次现取 store 里的值，免得闭包留住旧参数 */
 function paint(canvas, e) {
-  const { workshopTool: tool, workshopSize: size, workshopStrength: strength, workshopHard: hard } =
-    useStore.getState();
+  const st = useStore.getState();
+  // 笔刷大小是跨网格留在 store 里的，可能来自上一张更宽的网格；夹到当前上限再落笔
+  const size = Math.min(st.workshopSize, brushSizeMax());
   const [gx, gy] = toGrid(canvas, e);
   const g = workshop.grid;
-  const dirty = g.applyBrush(tool, gx, gy, size, strength, hard);
+  const dirty = g.applyBrush(st.workshopTool, gx, gy, size, st.workshopStrength, st.workshopHard);
   if (!dirty) return;
   g.renderColor(dirty);
   workshop.dirty = true;

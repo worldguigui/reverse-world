@@ -25,7 +25,7 @@ const CANVAS_STYLE = 'position:absolute;left:0;top:0;transform-origin:0 0;'
 export function Workshop({ container }) {
   const open = useStore((s) => s.workshopOpen);
   const tool = useStore((s) => s.workshopTool);
-  const size = useStore((s) => s.workshopSize);
+  const storedSize = useStore((s) => s.workshopSize);
   const strength = useStore((s) => s.workshopStrength);
   const hard = useStore((s) => s.workshopHard);
   const canUndo = useStore((s) => s.canUndo);
@@ -34,6 +34,11 @@ export function Workshop({ container }) {
   const setWorkshopBrush = useStore((s) => s.setWorkshopBrush);
   const [generating, setGenerating] = useState(false);
   const wrapRef = useRef(null);
+
+  // 上限跟着当前栅格的分辨率走（见 brushSizeMax）。store 里的值可能是上一张网格留下的，
+  // 读数与滑块都夹到当前上限，免得显示一个落不到的数
+  const sizeMax = W.brushSizeMax();
+  const size = Math.min(storedSize, sizeMax);
 
   // 容器常驻 DOM，只切 .hidden——不卸载，E2E 与样式都按这个来。
   // 这一步必须排在下面挂画布之前：容器还 display:none 时量不出尺寸，算不出适应窗口的比例。
@@ -116,7 +121,7 @@ export function Workshop({ container }) {
             <input
               type="range"
               min={1}
-              max={48}
+              max={sizeMax}
               value={size}
               onChange={(e) => setWorkshopBrush({ workshopSize: +e.target.value })}
             />

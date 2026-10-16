@@ -71,8 +71,6 @@ export function installAPI({ ctx, project, cursor }) {
     openWorkshop: () => ctx.openWorkshop(),
     /** 生成真实地球地形（高程+河流） */
     generateRealEarth: () => ctx.generateRealEarth(),
-    /** 导入真实城市（Natural Earth 243 城）为地点 */
-    importCities: () => ctx.importCities(),
     /** 采样某经纬度的归一化高度（-1..1，0=海平面），无地形返回 null */
     sampleTerrain: (lat, lng) => ctx.sampleTerrain(lat, lng),
     /** 在指定经纬度涂画笔：{ tool: 'raise'|'lower'|'smooth'|'river', size, strength, passes } */
@@ -110,7 +108,6 @@ export function installAPI({ ctx, project, cursor }) {
       + 'world.flyTo(lat, lng, { distance, duration })    飞到坐标\n'
       + 'world.where() / resetView()                     当前视角 / 复位视角\n'
       + 'world.openWorkshop() / generateRealEarth()       地形工坊 / 真实地球\n'
-      + 'world.importCities()                             导入真实城市\n'
       + 'world.paintTerrain(lat, lng, { tool, size, strength, passes }) 涂画笔\n'
       + 'world.sampleTerrain(lat, lng)                    查询归一化高度\n'
       + 'world.getProject() / exportProject()            项目读写\n'

@@ -20,7 +20,6 @@ export function OverviewPanel() {
   const clearStage = useStore((s) => s.clearStage);
   const openWorkshop = useStore((s) => s.openWorkshop);
   const generateRealEarth = useStore((s) => s.generateRealEarth);
-  const importCities = useStore((s) => s.importCities);
   useProjectRevision(); // 上传底图 / 改地形后这张脸的名字要跟着变
 
   const baseMap = project.maps.find((m) => m.id === project.baseMapId) ?? null;
@@ -99,11 +98,10 @@ export function OverviewPanel() {
           {baseRaster ? '🖌 编辑地形' : '🖌 画一张地形'}
         </button>
         <button className="btn" onClick={() => generateRealEarth()}>🌐 从真实地球生成地形</button>
-        <button className="btn" onClick={() => importCities()}>🏙 导入真实城市（243）</button>
       </div>
 
       <p className="insp-hint" style={{ marginTop: '10px' }}>
-        单击球面内容查看详情；拖动底部游标，看地点与事件在时间里依次登场。
+        单击球面上的路线与区域查看详情；拖动底部游标，看事件在时间里依次登场。
       </p>
     </div>
   );

@@ -3,7 +3,7 @@
  * 单纯的数据增删改放在 world 分片；这里放「一次要协调好几件事」的那些。
  */
 import * as P from '../core/project.js';
-import { buildRealEarthGrid, importCitiesAsEntries } from '../core/realearth.js';
+import { buildRealEarthGrid } from '../core/realearth.js';
 import { importProjectFile } from '../core/storage.js';
 import { buildSampleProject } from '../core/sample.js';
 import { session } from '../session.js';
@@ -52,7 +52,7 @@ export const createActionsSlice = (set, get) => ({
     if (!get().project) return;
     get().toast('正在下载/解码真实地球地形…');
     try {
-      const grid = await buildRealEarthGrid(512);
+      const grid = await buildRealEarthGrid();
       let rmap;
       get().mutateProject((p) => {
         rmap = P.addRasterMap(p, { name: '真实地球', w: grid.w, h: grid.h, dataUrl: grid.encodePNG() });
@@ -64,20 +64,6 @@ export const createActionsSlice = (set, get) => ({
       get().toast('真实地球地形已生成——喜马拉雅就在那里，试试用工坊改造它');
     } catch (err) {
       get().toast(`真实地球生成失败：${err.message}`);
-    }
-  },
-
-  /** 导入真实城市（含人口）为地点。城市不带时间，全是常驻地点 */
-  async importCities() {
-    const p = get().project;
-    if (!p) return;
-    get().toast('正在导入真实城市…');
-    try {
-      const n = await importCitiesAsEntries(p);
-      get().mutateProject(() => {}); // 数据已被就地写入，这里只需重建快照与保存
-      get().toast(`已导入 ${n} 座城市（含人口，球面点选可查看）`);
-    } catch (err) {
-      get().toast(`城市导入失败：${err.message}`);
     }
   },
 
@@ -99,12 +85,12 @@ export const createActionsSlice = (set, get) => ({
     const cx = ((lng + 180) / 360) * g.w;
     const cy = ((90 - lat) / 180) * g.h;
     // 每一笔返回的脏区都一样（同一个圆心、同一个半径），最后那个就是并集；
-    // 拿它去重绘颜色画布，省掉整张 512×256 的全量重算
+    // 拿它去重绘颜色画布，省掉整张网格的全量重算
     let dirty = null;
     for (let i = 0; i < passes; i++) dirty = g.applyBrush(tool, cx, cy, size, strength);
     g.renderColor(dirty);
     // 这里刻意不走 mutateProject：它会连 derived 快照一起重建，而 bridge 一见 derived
-    // 变化就把标注/路线/区域整层重做（50 张标注贴图全部重画）——内容一条没变，
+    // 变化就把路线/区域整层重做——内容一条没变，
     // 纯属白干。stats 不含地形像素，跳过重建不会让面板显示过期数据。
     const rmap = P.getRasterMap(p, p.baseRasterId);
     if (rmap) rmap.dataUrl = g.encodePNG();
@@ -119,7 +105,7 @@ export const createActionsSlice = (set, get) => ({
   async loadSample() {
     const p = await buildSampleProject();
     get().loadProjectInto(p);
-    get().toast('示例世界已载入：拖动底部游标，看一战的地点与事件依次登场');
+    get().toast('示例世界已载入：拖动底部游标，看一战的事件依次登场');
   },
 
   async importFile(file) {
