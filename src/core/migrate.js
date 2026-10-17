@@ -1,15 +1,15 @@
 /**
  * 旧项目迁移。
  *
- * v1 的模型是「时间点槽位容器」：每个时间点自带一张底图 / 一套地形，内容是第几个槽位上的东西。
- * v2 换成了「一张脸 + 一根游标」：球只有一张底图，内容自带数值年份，切面由游标求值得到。
+ * v1 的模型是「时间点槽位容器」：每个时间点自带一张地图 / 一套地形，内容是第几个槽位上的东西。
+ * v2 换成了「一张脸 + 一根游标」：球只有一张地图，内容自带数值年份，切面由游标求值得到。
  *
  * 迁移的目标是尽量不丢数据：
- *   - 球只剩一张脸 —— 取最后一个带栅格 / 带图的时间点，也就是「世界演进至今的样子」；
+ *   - 球只剩一张脸 —— 取最后一个带栅格地形的时间点，也就是「世界演进至今的样子」；
  *   - 内容的时间锚点由「时间点 id」换成「数值年」，找不到的锚点留空（等价于旧的开放端点）；
  *   - 旧时间点本身变成一条没有坐标的事件 —— 它本来就是「那个时刻发生的事」，
  *     这样时间轴上仍有刻度。
- * 真正丢掉的是逐时代的底图与地形，以及旧模型里的地点：地点这一等实体已经取消，
+ * 真正丢掉的是逐时代的地图与地形、旧版的图片底图，以及旧模型里的地点：地点这一等实体已经取消，
  * 它们没有对应的新形状，硬塞成事件只会把「哪一年发生了什么」变成一张地名表。
  */
 
@@ -20,7 +20,7 @@ function yearOf(timePoints, tpId, fallback) {
   return i === -1 ? fallback : i;
 }
 
-/** 取最后一个带该字段的时间点的对应底图 id —— 世界演进至今的那张脸 */
+/** 取最后一个带该字段的时间点的对应地图 id —— 世界演进至今的那张脸 */
 function lastOf(timePoints, field) {
   for (let i = timePoints.length - 1; i >= 0; i--) {
     if (timePoints[i]?.[field]) return timePoints[i][field];
@@ -62,8 +62,6 @@ export function migrateProject(raw) {
     name: raw.name,
     description: raw.description,
     baseRasterId: lastOf(timePoints, 'rmapId'),
-    baseMapId: lastOf(timePoints, 'mapId'),
-    maps: raw.maps,
     rasterMaps: raw.rasterMaps,
     events: [...shift(raw.events), ...events],
     routes: shift(raw.routes),

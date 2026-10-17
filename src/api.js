@@ -64,9 +64,9 @@ export function installAPI({ ctx, project, cursor }) {
     resetView: () => ctx.resetView(),
 
     // —— 地形 ——
-    /** 打开地形工坊 */
+    /** 打开地图工坊 */
     openWorkshop: () => ctx.openWorkshop(),
-    /** 生成真实地球地形（高程 + 水） */
+    /** 生成真实地球地图（高程 + 水） */
     generateRealEarth: () => ctx.generateRealEarth(),
     /** 采样某经纬度的归一化高度（-1..1，0=海平面），无地形返回 null */
     sampleTerrain: (lat, lng) => ctx.sampleTerrain(lat, lng),
@@ -102,7 +102,7 @@ export function installAPI({ ctx, project, cursor }) {
       + 'world.eventsOfCharacter(id)                     某个人物涉及的事件\n'
       + 'world.flyTo(lat, lng, { level, distance, duration }) 飞到坐标（level = 落到哪一档）\n'
       + 'world.where() / resetView()                     当前视角（经纬度/距离/档位）/ 复位视角\n'
-      + 'world.openWorkshop() / generateRealEarth()       地形工坊 / 真实地球\n'
+      + 'world.openWorkshop() / generateRealEarth()       地图工坊 / 真实地球\n'
       + 'world.paintTerrain(lat, lng, { tool, size, strength, passes }) 涂画笔\n'
       + 'world.sampleTerrain(lat, lng)                    查询归一化高度\n'
       + 'world.getProject() / exportProject()            项目读写\n'

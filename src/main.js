@@ -66,18 +66,18 @@ async function main() {
   routes.terrainRadius = terrainRadius;
   regions.terrainRadius = terrainRadius;
 
-  // ---------------------------------------------------------- 地形工坊面板
+  // ---------------------------------------------------------- 地图工坊面板
   /**
-   * 打开地形工坊。球只有一张脸，所以工坊改的就是这一次性的全局地形：
-   * 已有栅格底图就直接编辑它，没有就先给一片汪洋。
+   * 打开地图工坊。球只有一张脸，所以工坊改的就是这一次性的全局地图：
+   * 已有地图就直接编辑它，没有就先给一片汪洋。
    */
   async function openWorkshopPanel() {
     const s = store.getState();
     const p = s.project;
-    if (!p) { s.toast('先新建一个世界再画地形'); return; }
+    if (!p) { s.toast('先新建一个世界再画地图'); return; }
 
     let grid;
-    let binding = null; // 直接编辑已存在的栅格底图时记下它的 id
+    let binding = null; // 直接编辑已存在的地图时记下它的 id
     const rmap = P.getRasterMap(p, p.baseRasterId);
     if (rmap) {
       grid = await getGridCached(rmap);
@@ -116,14 +116,14 @@ async function main() {
             if (rmapId) {
               P.getRasterMap(proj, rmapId).dataUrl = png;
             } else {
-              rmapId = P.addRasterMap(proj, { name: '地形', w: g.w, h: g.h, dataUrl: png }).id;
+              rmapId = P.addRasterMap(proj, { name: '地图', w: g.w, h: g.h, dataUrl: png }).id;
               proj.baseRasterId = rmapId;
             }
             // 刚编好的网格就在手上，直接回填缓存：下次打开工坊或贴地都不必再解一次 PNG
             session.gridCache.set(rmapId, g);
           });
           st.setWorkshopOpen(false);
-          st.toast('地形已保存');
+          st.toast('地图已保存');
         },
         onCancel() {
           // 工坊是在缓存里那份网格上就地改的，取消时必须把它丢掉重新解码，

@@ -20,7 +20,7 @@ export async function buildSampleProject() {
   // —— 舞台：一张脸。真实地球高程，不做任何人工改动 ——
   // 尺寸不在这里定，取网格自己报上来的：分辨率只有一个出处，见 EARTH_RES
   const grid = await buildRealEarthGrid();
-  const rmap = P.addRasterMap(p, { name: '地球地形', w: grid.w, h: grid.h, dataUrl: grid.encodePNG() });
+  const rmap = P.addRasterMap(p, { name: '真实地球', w: grid.w, h: grid.h, dataUrl: grid.encodePNG() });
   p.baseRasterId = rmap.id;
 
   // —— 章节：把散在欧洲各处的战场串成一段叙事 ——

@@ -54,47 +54,6 @@ export class LandMask {
   }
 
   /**
-   * 每格到最近陆地的距离（单位：格），陆地本身为 0。
-   * 倒角距离变换两趟扫描近似欧氏距离：真实地球预设拿它给海洋分大陆架深浅——
-   * 高程图在海上没有信息（纯黑），离岸多远是唯一可用的深度线索。
-   * @returns {Float32Array}
-   */
-  distanceToLand() {
-    const { w, h, land } = this;
-    const d = new Float32Array(w * h);
-    const INF = 1e9;
-    for (let i = 0; i < d.length; i++) d[i] = land[i] ? 0 : INF;
-    const D1 = 1, D2 = Math.SQRT2;
-    // 正向：左上 → 右下
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = y * w + x;
-        if (d[i] === 0) continue;
-        let v = d[i];
-        if (x > 0) v = Math.min(v, d[i - 1] + D1);
-        if (y > 0) v = Math.min(v, d[i - w] + D1);
-        if (x > 0 && y > 0) v = Math.min(v, d[i - w - 1] + D2);
-        if (x < w - 1 && y > 0) v = Math.min(v, d[i - w + 1] + D2);
-        d[i] = v;
-      }
-    }
-    // 反向：右下 → 左上
-    for (let y = h - 1; y >= 0; y--) {
-      for (let x = w - 1; x >= 0; x--) {
-        const i = y * w + x;
-        if (d[i] === 0) continue;
-        let v = d[i];
-        if (x < w - 1) v = Math.min(v, d[i + 1] + D1);
-        if (y < h - 1) v = Math.min(v, d[i + w] + D1);
-        if (x < w - 1 && y < h - 1) v = Math.min(v, d[i + w + 1] + D2);
-        if (x > 0 && y < h - 1) v = Math.min(v, d[i + w - 1] + D2);
-        d[i] = v;
-      }
-    }
-    return d;
-  }
-
-  /**
    * 从蒙版图构建。图会先缩放到 w×h（用画布的高质量缩放，等同于盒式滤波）。
    * @param {string} dataUrl
    * @param {object} [opts]
@@ -103,12 +62,11 @@ export class LandMask {
    * @param {number} [opts.threshold=0.5] 亮度阈值
    * @param {'auto'|'white'|'black'} [opts.polarity='auto'] 哪一侧是陆地。
    *   auto = 取少数派为陆地（地球陆地约占 29%，海洋占多数）。
-   * @param {number} [opts.grow=0] 陆地向外扩的格数
    *
    * 掩膜自己保有自己的分辨率（默认就是图的分辨率），采样到栅格分辨率的事交给
    * isLand()——它是「多数表决」而不是「最近邻」，栅格比掩膜粗时小岛才不会被丢。
    */
-  static async fromImage(dataUrl, { w, h, threshold = 0.5, polarity = 'auto', grow = 0 } = {}) {
+  static async fromImage(dataUrl, { w, h, threshold = 0.5, polarity = 'auto' } = {}) {
     const img = await loadImage(dataUrl);
     w = Math.max(2, Math.round(w ?? img.width));
     h = Math.max(2, Math.round(h ?? img.height));
@@ -133,35 +91,7 @@ export class LandMask {
     const land = new Uint8Array(n);
     for (let i = 0; i < n; i++) land[i] = (lum[i] >= threshold) === whiteIsLand ? 1 : 0;
 
-    const mask = new LandMask(w, h, land);
-    for (let i = 0; i < grow; i++) mask._grow();
-    return mask;
-  }
-
-  /**
-   * 陆地外扩一格（3×3 八邻域取最大）。用途有两个：
-   * 一是抹掉原图在陆地上画的细河线（降采样后它们会变成一串「内陆海」）；
-   * 二是让紧贴海岸的城市（上海、伦敦、纽约）落在陆地上而不是水面上——
-   * 1024 宽时一格才 0.35°，外扩一格在球面上看不出来。
-   */
-  _grow() {
-    const { w, h, land } = this;
-    const next = new Uint8Array(w * h);
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const above = Math.max(0, y - 1) * w;
-        const here = y * w;
-        const below = Math.min(h - 1, y + 1) * w;
-        const left = Math.max(0, x - 1);
-        const right = Math.min(w - 1, x + 1);
-        next[here + x] = (
-          land[above + left] || land[above + x] || land[above + right] ||
-          land[here + left] || land[here + x] || land[here + right] ||
-          land[below + left] || land[below + x] || land[below + right]
-        ) ? 1 : 0;
-      }
-    }
-    this.land = next;
+    return new LandMask(w, h, land);
   }
 }
 

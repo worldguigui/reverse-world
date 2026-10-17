@@ -20,6 +20,6 @@ export const session = {
 
   currentGrid: null,    // 舞台的 TerrainGrid（贴地采样 / 画笔 / 工坊）；没有地形时为 null
   gridCache: new Map(), // rmapId → TerrainGrid（工坊编辑后回填）
-  stageToken: 0,        // 换脸的序号：连换两张底图时用来丢弃过期的那次异步解码结果
+  stageToken: 0,        // 换脸的序号：连换两张地图时用来丢弃过期的那次异步解码结果
   applyingStage: false, // 正在解码贴图中，供「要不要等它」判断
 };

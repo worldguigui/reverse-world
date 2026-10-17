@@ -36,7 +36,7 @@ export const createUISlice = (set, get) => ({
   // —— 变更信号 ——
   // 手写 DOM 面板不会自己重绘，得有人告诉它「数据变了、该重画了」。这里把这件事记成
   // 一次计数，具体含义由 bridge 决定；React 接管的区域不再依赖它。
-  stageEpoch: 0,  // 舞台（底图 / 地形）被就地改动，需重新贴一次球面
+  stageEpoch: 0,  // 舞台（地图 / 地形）被就地改动，需重新贴一次球面
   layerEpoch: 0,  // 三维图层该重建了（贴图、材质、配色）
   layoutEpoch: 0, // 内容没变、只有脚下的地形变了 → 重新贴地即可
   touchStage() { set((s) => ({ stageEpoch: s.stageEpoch + 1 })); },

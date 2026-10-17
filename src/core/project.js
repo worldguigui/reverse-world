@@ -24,11 +24,9 @@ export function createProject({ name = '未命名世界', description = '' } = {
     version: PROJECT_VERSION,
     name,
     description,
-    // 舞台：球自己的那张脸，与时间无关，各最多一张；栅格优先于图片
-    baseRasterId: null, // 栅格底图 id（工坊可编辑的那种），空 = 没有地形起伏
-    baseMapId: null,    // 图片底图 id，空 = 用引擎自带的地球贴图
-    maps: [],       // { id, name, dataUrl } 图片底图
-    rasterMaps: [], // { id, name, w, h, dataUrl, format } 栅格底图（format 2：R+G=高度、B=水）
+    // 舞台：球自己的那张脸，与时间无关，最多一张
+    baseRasterId: null, // 地图 id（工坊可编辑的那种），空 = 深色空球
+    rasterMaps: [], // { id, name, w, h, dataUrl, format } 地图（format 2：R+G=高度、B=水）
     events: [],     // { id, title, description, image, lat, lng, color, from, to } 事件
                     //   lat / lng 为空 = 纯叙事事件：不上球、不渲染标注，只进编年史
     routes: [],     // { id, title, description, color, points: [{lat,lng}...], from, to }
@@ -45,9 +43,7 @@ export function normalizeProject(raw) {
   if (!raw || typeof raw !== 'object') throw new Error('不是合法的项目对象');
   const src = raw.version === PROJECT_VERSION ? raw : migrateProject(raw);
   const p = createProject({ name: src.name, description: src.description });
-  p.baseMapId = src.baseMapId ?? null;
   p.baseRasterId = src.baseRasterId ?? null;
-  p.maps = Array.isArray(src.maps) ? src.maps.filter((m) => m?.id && typeof m.dataUrl === 'string') : [];
   p.rasterMaps = Array.isArray(src.rasterMaps)
     ? src.rasterMaps.filter((m) => m?.id && typeof m.dataUrl === 'string' && m.w > 0 && m.h > 0)
     : [];
@@ -98,24 +94,14 @@ function nextColor(project) {
 
 // ---------------------------------------------------------------- 舞台
 
-export function addMap(project, { name = '底图', dataUrl }) {
-  const map = { id: uid('map'), name, dataUrl };
-  project.maps.push(map);
-  return map;
-}
-
 /**
- * 栅格地形。format 是 PNG 的通道约定：2 = R+G 高度、B 水；
+ * 地图。format 是 PNG 的通道约定：2 = R+G 高度、B 水；
  * 没有这个字段的是旧项目（B 是河流），解码时按旧规则迁移。
  */
-export function addRasterMap(project, { name = '地形底图', w, h, dataUrl }) {
+export function addRasterMap(project, { name = '地图', w, h, dataUrl }) {
   const map = { id: uid('rm'), name, w, h, dataUrl, format: 2 };
   project.rasterMaps.push(map);
   return map;
-}
-
-export function getMap(project, id) {
-  return project.maps.find((m) => m.id === id) ?? null;
 }
 
 export function getRasterMap(project, id) {

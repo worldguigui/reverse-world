@@ -15,7 +15,7 @@ export function initBridge() {
   subscribe((s) => s.contentRev, () => rebuildLayers());
   // 游标走动或数据变了 → 重算「谁在场」。拖游标只走这一条，一个像素都不重画
   subscribe((s) => s.derived, () => applyActiveLayers());
-  // 舞台变了（换底图、换地形、载入项目）→ 重新贴一次球面
+  // 舞台变了（换地图、载入项目）→ 重新贴一次球面
   subscribe((s) => s.stageEpoch, () => applyStage());
   // 几何本身要重建（改标记尺寸、换配色）
   subscribe((s) => s.layerEpoch, () => rebuildLayers());
@@ -31,7 +31,7 @@ export function initBridge() {
   subscribe((s) => s.toasts, () => renderToast());
 }
 
-/** 解码并缓存栅格底图（同一张只解码一次，工坊编辑后会回填） */
+/** 解码并缓存地图（同一张只解码一次，工坊编辑后会回填） */
 export async function getGridCached(rmap) {
   if (session.gridCache.has(rmap.id)) return session.gridCache.get(rmap.id);
   // format 决定 B 通道是水还是旧版的河流；旧项目没有这个字段，交给解码器自行识别
@@ -91,8 +91,8 @@ export function relayoutLayers() {
 }
 
 /**
- * 舞台变了：把球那张脸重新贴一次，栅格优先于图片底图。
- * 只在载入项目 / 换底图 / 换地形时跑，与游标无关——拖游标不换脸，只重刷内容层。
+ * 舞台变了：把球那张脸重新贴一次。
+ * 只在载入项目 / 换地图时跑，与游标无关——拖游标不换脸，只重刷内容层。
  *
  * 令牌是给异步解码兜底的：换栅格要等 PNG 解码，等待期间用户若又换了一张，
  * 先回来的那次必须作废，否则 currentGrid 会停在前一张上，与球面显示的对不上。
@@ -101,16 +101,14 @@ export async function applyStage() {
   const s = useStore.getState();
   const p = s.project;
   const rmap = p ? P.getRasterMap(p, p.baseRasterId) : null;
-  const mapUrl = rmap ? null : (P.getMap(p, p.baseMapId)?.dataUrl ?? null);
 
   const token = ++session.stageToken;
   session.applyingStage = true;
   try {
     if (!rmap) {
-      // 没有栅格地形：退回图片底图（可能也没有，那就是引擎自带的地球贴图）。
-      // 这里不动 currentGrid——内容照旧贴着上一次的地形，等新地形解码好再换，中途不会跳一下。
+      // 没有地图：深色空球。内容跟着回到球面，不再贴着上一张地图的高度。
       session.currentGrid = null;
-      session.globe.setMap(mapUrl);
+      session.globe.setBlank();
       return;
     }
     const grid = await getGridCached(rmap);
@@ -120,8 +118,8 @@ export async function applyStage() {
   } catch (err) {
     if (token !== session.stageToken) return;
     session.currentGrid = null;
-    useStore.getState().toast(`地形底图解码失败：${err.message}`);
-    session.globe.setMap(mapUrl);
+    useStore.getState().toast(`地图解码失败：${err.message}`);
+    session.globe.setBlank();
   } finally {
     // 被后来者顶掉的那次不重排图层，否则会把新地形的贴地半径算成旧的
     if (token === session.stageToken) {

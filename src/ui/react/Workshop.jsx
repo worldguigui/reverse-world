@@ -36,7 +36,7 @@ const CANVAS_STYLE = 'position:absolute;left:0;top:0;transform-origin:0 0;'
   + 'image-rendering:pixelated;cursor:crosshair;background:#000;touch-action:none;display:block;';
 
 /**
- * 底图工坊：全屏栅格绘制。
+ * 地图工坊：全屏栅格绘制。
  * 面板外壳与控件由 React 渲染，画笔涂抹与撤销仍是命令式（见 ui/workshop-session.js）。
  * @param {{ container: HTMLElement }} props 常驻的 #workshop 容器，用来切 .hidden
  */
@@ -108,7 +108,7 @@ export function Workshop({ container }) {
   return (
     <div className="workshop">
       <div className="wk-top glass">
-        <span className="wk-title">🖌 底图工坊</span>
+        <span className="wk-title">🖌 地图工坊</span>
         <span className="wk-dim">{`${grid.w}×${grid.h} 栅格 · 画完切到主视图看球体效果`}</span>
         <span className="wk-dim">{`缩放 ${Math.round(zoom * 100)}%`}</span>
         <button className="btn btn-mini" title="恢复「整张地图铺满窗口」" onClick={() => W.fitView()}>

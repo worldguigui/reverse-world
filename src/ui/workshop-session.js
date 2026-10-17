@@ -9,7 +9,7 @@ import { useStore } from '../store/index.js';
 
 export const workshop = {
   grid: null,        // 正在编辑的 TerrainGrid（由打开方决定是克隆还是直接绑定）
-  binding: null,     // 直接编辑已存在的栅格底图时记下 { rmapId }
+  binding: null,     // 直接编辑已存在的地图时记下 { rmapId }
   hooks: null,       // { onChange, onCommit, onCancel, loadRealEarth }
   undoStack: [],
   redoStack: [],
@@ -103,7 +103,7 @@ function applyView() {
   canvas.style.transform = transform;
   // 一格一像素，放大时该用最近点：格子边界要像刀切一样清楚。
   // 缩小时（画布比容器宽——分辨率一高，适应窗口那一档就是缩小）最近点会丢行丢列，
-  // 满是细线与色带的底图会抖成一片；这一档交回浏览器的平滑缩放。
+  // 满是细线与色带的地图会抖成一片；这一档交回浏览器的平滑缩放。
   canvas.style.imageRendering = rendering;
   // 掩膜是叠在同一位置上的另一张画布，必须跟画布共享同一套平移与缩放
   if (maskCanvas) {

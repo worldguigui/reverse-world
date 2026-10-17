@@ -8,49 +8,19 @@ import { importProjectFile } from '../core/storage.js';
 import { buildSampleProject } from '../core/sample.js';
 import { session } from '../session.js';
 import { latLngToVec3, vec3ToLatLng } from '../utils.js';
-import { fileToDataUrl, pickFile } from '../utils/files.js';
+import { pickFile } from '../utils/files.js';
 
 /** 工坊面板的打开方式由 main.js 在组装期注入（它需要拿三维句柄做实时预览） */
 let hooks = { openWorkshop: () => {} };
 export function setViewHooks(next) { hooks = { ...hooks, ...next }; }
 
 export const createActionsSlice = (set, get) => ({
-  // ---------------------------------------------------------------- 舞台：底图与地形
+  // ---------------------------------------------------------------- 舞台：地图与地形
 
-  /**
-   * 选图上传为图片底图，并立刻把它贴到球上。
-   * 底图是项目级的——球只有一张脸，换底图就是换脸，与游标在哪一年无关。
-   */
-  async uploadMap() {
-    const file = await pickFile('image/*');
-    if (!file) return;
-    try {
-      const dataUrl = await fileToDataUrl(file, 4096); // 底图保留高分辨率
-      let map;
-      get().mutateProject((p) => {
-        map = P.addMap(p, { name: file.name.replace(/\.[^.]+$/, ''), dataUrl });
-        p.baseMapId = map.id;
-        p.baseRasterId = null; // 栅格优先，不摘掉它就永远看不到这张图
-      });
-      get().touchStage();
-      get().toast(`底图「${map.name}」已上传`);
-    } catch (err) {
-      get().toast(`底图上传失败：${err.message}`);
-    }
-  },
-
-  /** 球回到引擎自带的地球贴图：图片底图与栅格地形一并摘掉 */
-  clearStage() {
-    if (!get().project) return;
-    get().mutateProject((p) => { p.baseMapId = null; p.baseRasterId = null; });
-    get().touchStage();
-    get().toast('已换回自带的地球贴图');
-  },
-
-  /** 下载并解码真实地球高程与水，作为全局地形 */
+  /** 下载并解码真实地球高程与水，作为全局地图 */
   async generateRealEarth() {
     if (!get().project) return;
-    get().toast('正在下载/解码真实地球地形…');
+    get().toast('正在下载/解码真实地球地图…');
     try {
       const grid = await buildRealEarthGrid();
       let rmap;
@@ -61,7 +31,7 @@ export const createActionsSlice = (set, get) => ({
       // 先填缓存再换舞台，贴图时就能直接命中，不必再解一次码
       session.gridCache.set(rmap.id, grid);
       get().touchStage();
-      get().toast('真实地球地形已生成——喜马拉雅就在那里，试试用工坊改造它');
+      get().toast('真实地球地图已生成——喜马拉雅就在那里，试试用工坊改造它');
     } catch (err) {
       get().toast(`真实地球生成失败：${err.message}`);
     }

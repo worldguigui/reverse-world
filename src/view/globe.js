@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { LAYER_MASK } from './render-layers.js';
 
 /**
- * 世界之球：可换底图的球体 + 大气辉光 + 星空 + 固定光照。
- * 两种底图：
- *  - 图片底图 setMap(dataUrl)：纯贴图，无起伏
- *  - 栅格底图 setRaster(grid)：颜色纹理 + 高度纹理，顶点着色器做真实位移，
+ * 世界之球：一张地图 + 大气辉光 + 星空 + 固定光照。
+ * 地图有两种状态：
+ *  - 无地图 setBlank()：深色空球，高度全是海平面，没有任何起伏
+ *  - 有地图 setRaster(grid)：颜色纹理 + 高度纹理，顶点着色器做真实位移，
  *    「画一笔山，球面上当场鼓起来」
  * 高度纹理用线性色空间 + 双线性采样：
  *  - 色空间必须是线性的，高度值才不会被 sRGB 曲线拉歪；
@@ -26,10 +26,13 @@ export class Globe {
     this.maxAnisotropy = maxAnisotropy;
     this.group = new THREE.Group();
     scene.add(this.group);
-    this._loader = new THREE.TextureLoader();
+    // 空球与无位移共用的两张 1×1 贴图：始终有 map 和 uHeightTex，
+    // 着色器从构造起就走同一条分支，换地图时不会触发重编译
+    this._blankTex = makeBlankTexture();
+    this._flatHeightTex = makeBlackTexture();
 
     // 位移/法线着色器共享的 uniform（onBeforeCompile 里挂进程序）
-    this._uHeightTex = { value: makeBlackTexture() };
+    this._uHeightTex = { value: this._flatHeightTex };
     this._uExaggeration = { value: config.terrain.exaggeration };
     // 一格的高度纹理步长，供着色器取邻域差分算法线；这里先按占位贴图（1×1）配一套，
     // 真正上栅格时由 setRaster 按网格尺寸改写
@@ -48,9 +51,8 @@ export class Globe {
   }
 
   _buildSphere() {
-    this.placeholderTex = makePlaceholderTexture();
     this.sphereMat = new THREE.MeshPhongMaterial({
-      map: this.placeholderTex,
+      map: this._blankTex,
       shininess: 6,
       specular: new THREE.Color(0x111111),
     });
@@ -123,27 +125,22 @@ export class Globe {
   }
 
   /**
-   * 换底图时刻意不碰 sphereMat.needsUpdate。
+   * 换地图时刻意不碰 sphereMat.needsUpdate。
    * three 里 needsUpdate 会让材质 version++，下一帧整个地形着色器要重新编译并链接——
-   * 实测一次 100ms 以上，正好落在换底图那一帧上，就是「换一次底图卡一下」的来源。
+   * 实测一次 100ms 以上，正好落在换地图那一帧上，就是「换一次地图卡一下」的来源。
    * 这里换的只是 map 与几个 uniform，着色器分支（有没有贴图）从构造起就没变过，
    * 根本不需要重编译；真要改分支，改的是 onBeforeCompile 本身，那时才该 needsUpdate。
    */
 
-  /** 图片底图（无地形） */
-  setMap(dataUrl) {
-    const apply = (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = this.maxAnisotropy;
-      this.sphereMat.map = tex;
-      this._uHeightTex.value = makeBlackTexture();
-    };
-    if (!dataUrl) { apply(this.placeholderTex); return; }
-    this._loader.load(dataUrl, apply, undefined, (err) => console.error('[globe] 底图加载失败', err));
+  /** 没有地图：深色空球，高度回到海平面 */
+  setBlank() {
+    this._disposeRasterTextures();
+    this.sphereMat.map = this._blankTex;
+    this._uHeightTex.value = this._flatHeightTex;
   }
 
   /**
-   * 栅格底图：颜色画布 + 高度画布同时上球。
+   * 有地图：颜色画布 + 高度画布同时上球。
    * 工坊绘制过程中反复调用 updateRasterTextures() 即可实时看到山体变形。
    */
   setRaster(grid) {
@@ -152,8 +149,7 @@ export class Globe {
       this.sphere.geometry.dispose();
       this.sphere.geometry = this._makeGeometry(segW);
     }
-    this._colorTex?.dispose();
-    this._heightTex?.dispose();
+    this._disposeRasterTextures();
     this._colorTex = new THREE.CanvasTexture(grid.colorCanvas);
     this._colorTex.colorSpace = THREE.SRGBColorSpace;
     this._colorTex.anisotropy = this.maxAnisotropy;
@@ -174,6 +170,13 @@ export class Globe {
   updateRasterTextures() {
     if (this._colorTex) this._colorTex.needsUpdate = true;
     if (this._heightTex) this._heightTex.needsUpdate = true;
+  }
+
+  _disposeRasterTextures() {
+    this._colorTex?.dispose();
+    this._heightTex?.dispose();
+    this._colorTex = null;
+    this._heightTex = null;
   }
 
   _buildAtmosphere() {
@@ -302,7 +305,7 @@ export class Globe {
   }
 }
 
-/** 1x1 占位高度纹理：R+G 解包后 ≈ 0（海平面无位移），用于图片底图模式 */
+/** 1x1 无位移高度纹理：R+G 解包后 ≈ 0（海平面），空球与无地图时使用 */
 function makeBlackTexture() {
   const tex = new THREE.DataTexture(new Uint8Array([127, 255, 0, 255]), 1, 1);
   tex.colorSpace = THREE.LinearSRGBColorSpace;
@@ -313,41 +316,13 @@ function makeBlackTexture() {
   return tex;
 }
 
-/** 经纬网格占位底图（canvas 生成） */
-function makePlaceholderTexture() {
-  const w = 1024, h = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, '#101a33');
-  grad.addColorStop(0.5, '#16223f');
-  grad.addColorStop(1, '#101a33');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = 'rgba(120, 160, 255, 0.22)';
-  ctx.lineWidth = 1;
-  for (let lng = 0; lng <= 360; lng += 15) {
-    ctx.beginPath();
-    ctx.moveTo((lng / 360) * w, 0);
-    ctx.lineTo((lng / 360) * w, h);
-    ctx.stroke();
-  }
-  for (let lat = -75; lat <= 75; lat += 15) {
-    const y = ((90 - lat) / 180) * h;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(w, y);
-    ctx.stroke();
-  }
-  ctx.strokeStyle = 'rgba(140, 180, 255, 0.4)';
-  ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); ctx.stroke();
-  ctx.fillStyle = 'rgba(160, 190, 255, 0.5)';
-  ctx.font = '22px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('尚无底图 · 在右侧「编辑地形」里画一张，或从真实地球生成', w / 2, h / 2 - 30);
-  const tex = new THREE.CanvasTexture(canvas);
+/** 1x1 深色空球贴图：没有地图时球体仍然有 map，着色器分支不变 */
+function makeBlankTexture() {
+  const tex = new THREE.DataTexture(new Uint8Array([12, 20, 34, 255]), 1, 1);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
   return tex;
 }

@@ -24,8 +24,8 @@ export function ProjectMenu({ onClose }) {
       {item('📁 新建空白世界', newProject)}
       {item('✨ 载入示例世界', loadSample)}
       <div className="menu-sep" />
-      {item('🖌 地形工坊', () => openWorkshop())}
-      {item('🌐 真实地球地形', () => generateRealEarth())}
+      {item('🖌 地图工坊', () => openWorkshop())}
+      {item('🌐 真实地球地图', () => generateRealEarth())}
       <div className="menu-sep" />
       {item('📂 导入项目 (.world.json)', () => pickFile('.json,application/json').then((f) => f && importFile(f)))}
       {item('💾 导出项目', exportProject)}
