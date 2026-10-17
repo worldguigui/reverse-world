@@ -40,16 +40,17 @@
 src/
   main.js          组装、编辑模式状态机（browse/add-event/draw-route/draw-region）、
                   鼠标键盘交互、渲染循环（renderer.setAnimationLoop）
-  config.js        画面设置（视角/光照/大气/星空/地形夸张/球面标记尺寸），localStorage 持久化
+  config.js        画面设置（视角/光照/大气/星空/地形夸张/球面标记尺寸），localStorage 持久化；
+                   出厂 FOV 与缩放上下限只吃代码，载入时丢掉存档里的旧值
   utils.js         经纬度↔三维坐标、大圆弧插值、TweenManager 补间动画
   utils/files.js   浏览器文件操作：loadImage（栅格与海陆掩膜各自取用，互不依赖）
   api.js           window.world 编程接口（自动化/未来后端驱动入口）
   store/           状态层（Zustand，唯一状态源，全部可序列化）
     ui.js          交互态：编辑模式、选中、绘制中数据、草稿、浮层开关、提示条、工坊缩放读数、
-                   layoutEpoch/touchLayout（「只有地形变了」信号，区别于内容变化）
+                   当前镜头档位、layoutEpoch/touchLayout（「只有地形变了」信号，区别于内容变化）
     world.js       世界数据：project + 游标所在的那一年 + derived 派生快照（在场者）+ mutateProject 写入收口
     view.js        画面设置：viewConfig 与 setViewConfig/applyView
-    actions.js     复合动作：新建/载入/导出、飞行/复位视角、工坊、地形生成、示例世界、文件导入、跳事件
+    actions.js     复合动作：新建/载入/导出、飞行/复位视角/设置档位、工坊、地形生成、示例世界、文件导入、跳事件
   session.js       非序列化运行态：renderer/scene/相机/图层、当前网格、栅格解码缓存、
                    自动保存器、换地图的竞态令牌（stageToken）
   bridge.js        store → 三维的单向同步：订阅 contentRev/derived/stageEpoch/选中，重建图层、翻在场、重新贴脸
@@ -71,7 +72,7 @@ src/
     routes.js      路线层（大圆弧细分 + Line2 像素宽度）
     regions.js     区域层（earcut 剖分 + 球面递归细分防弦陷）
     camera.js      自由翻滚相机：四元数 trackball 管旋转、OrbitControls 只管缩放，
-                   + flyTo 球面飞行、resetView 复位视角
+                   + 档位缩放（推近相机 → 收窄视场角）、档位变化回调、flyTo 球面飞行、resetView
   ui/              UI 层（React）
     react/         面板组件 + mount.js（每面板一个 root）+ hooks.js（订阅派生信号）
       Toolbar / Timeline / Inspector / SettingsPanel / Workshop
@@ -146,6 +147,14 @@ public/            静态资源：data/ne_50m_rivers.geojson（河网）、textu
 ## 第二部分 · 版本迭代记录
 
 > 更新规则：**新版本条目插入本列表顶部**（最新在上），保持「从头检索先见最新」。历史条目只追加不改。
+
+### v0.0.16 面板 FOV 并入滚轮档位（2026-10-18）
+
+1. **问题**：设置面板里的「视场角 FOV」和鼠标滚轮调的不是同一个量——前者改的是出厂基准视场角（20–90°），后者改的是当前缩放档位；两者最终都会改 `camera.fov`，但一个改基准、一个改倍率，同样拖动画面大小却讲不清。
+2. **改法**：删掉可调的基准 FOV。设置面板里换成**「视角档位（与滚轮同步）」**，数字与「事件镜头档位」同一套 **1–64**；滑块与滚轮读写同一个当前档位，滚轮转了滑块跟着走，拖滑块走的是滚轮同一条 `CameraRig#_applyLevel`。`CameraRig` 新增 `setLevel()` 与 `onLevelChange` 回调，`store` 新增 `cameraLevel`；飞行、复位、阻尼只改相机位置时，`update()` 每帧比对档位并按阈值回调，滑块不会停在旧值。
+3. **出厂镜头固定 45°**：`config.camera.fov` 仍是代码里的出厂值，但不再由面板修改；旧存档里的 `camera.fov` 在 `dropCodeOwnedKeys` 里丢掉，以前存下的 20°/90° 不会再改基准。实际视场角 = 45° / 镜头倍率；1–8 档只推相机（距离 3 → 1.25），8–64 档相机停住、视场角收到 **5.625°**。
+4. **档位不落盘**：它是镜头状态，不是画面设置；刷新页面回到 1 档。滚轮仍可拉远到出厂之外（档位约 **0.286**、相机距离 8），面板范围固定 1–64，这种时候滑块停在 1。
+5. **实测**（`scripts/verify-t011.mjs`）：初始 1 档 / 45° / 距离 3；滑块 64 → **5.625° / 距离 1.25**；滑块 8 → **45° / 距离 1.25**；滚轮一格 **1 → 1.1** 且滑块跟随；滚轮拉远到底 **0.2857**（距离 8）；复位回 **1 / 45° / 距离 3**；刷新回 1 档；旧存档 `fov: 20` 被丢弃，出厂仍是 **45°**。`npm run build` 通过，`scripts/ui-test.mjs` 全绿，无运行时报错。
 
 ### v0.0.15 地图即底图；掩膜升到原生分辨率，海底不再是平板（2026-10-17）
 
