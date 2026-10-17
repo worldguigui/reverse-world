@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../../store/index.js';
+import { STARS_COUNT_MIN, STARS_COUNT_MAX } from '../../config.js';
 
 /** 浮点累加会出现 0.30000000000000004，显示前按步长精度收一下 */
 const fmt = (v) => Number(Number(v).toFixed(3));
@@ -103,7 +104,7 @@ export function SettingsPanel() {
           onChange={(v) => set({ atmosphere: { strength: v } })} />
         <Check label="星空" checked={config.stars.enabled}
           onChange={(v) => set({ stars: { enabled: v } })} />
-        <Slider label="星星数量" value={config.stars.count} min={0} max={12000} step={100} commit="release"
+        <Slider label="星星数量" value={config.stars.count} min={STARS_COUNT_MIN} max={STARS_COUNT_MAX} step={1} commit="release"
           onChange={(v) => set({ stars: { count: v } })} />
       </Group>
 

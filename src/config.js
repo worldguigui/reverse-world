@@ -4,6 +4,10 @@
  * localStorage 持久化，所有 GUI/API 修改的都是同一个 config 对象。
  */
 
+/** 星星数量的取值范围：设置面板滑块与旧存档载入共用，改这里一处即可 */
+export const STARS_COUNT_MIN = 0;
+export const STARS_COUNT_MAX = 1999;
+
 export const DEFAULT_CONFIG = {
   camera: {
     // 出厂镜头的视场角。设置面板不再改它：现在滑块和滚轮共用「档位」，
@@ -37,7 +41,7 @@ export const DEFAULT_CONFIG = {
     color: '#5d8bff',  // 异世界可以换成绿/紫
     strength: 1.1,
   },
-  stars: { enabled: true, count: 4000 },
+  stars: { enabled: true, count: STARS_COUNT_MAX },
   markers: {
     dotPx: 18,         // 选中事件那个光点的直径（像素）
     routeWidth: 3,     // 路线像素宽度
@@ -69,6 +73,11 @@ export function loadViewConfig() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) mergeInto(config, dropCodeOwnedKeys(JSON.parse(saved)));
   } catch { /* 忽略坏数据 */ }
+  // 上限可能随版本收紧：旧存档里更大的数量在这里夹回当前范围
+  config.stars.count = Math.min(
+    STARS_COUNT_MAX,
+    Math.max(STARS_COUNT_MIN, Math.round(config.stars.count)),
+  );
   return config;
 }
 
