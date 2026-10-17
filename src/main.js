@@ -149,6 +149,10 @@ async function main() {
   setViewHooks({ openWorkshop: openWorkshopPanel });
   initBridge();
 
+  // 档位变化（滚轮、拖动面板滑块、飞行、复位）同步给设置面板
+  rig.onLevelChange = (level) => store.getState().syncCameraLevel(level);
+  // 自转的每一帧把同样的旋转交给星场，背景星空在屏幕上不跟着转
+  rig.onAutoSpin = (q) => globe.spinStars(q);
   // 飞行开始时暂停自动旋转，避免「飞到了又被转走」
   rig.onFlyStart = () => {
     if (store.getState().viewConfig.rotation.enabled) {

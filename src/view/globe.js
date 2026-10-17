@@ -41,6 +41,8 @@ export class Globe {
     this._colorTex = null;
     this._heightTex = null;
     this._lastStarsCount = config.stars.count;
+    // 自转时相机转了多少，星场也转多少；重建星场后要沿用这个累积量，否则星空会跳一下
+    this._starsSpin = new THREE.Quaternion();
 
     this._buildSphere();
     this._buildOverlayMask();
@@ -279,7 +281,17 @@ export class Globe {
       opacity: 0.95,
       depthWrite: false,
     }));
+    this.stars.quaternion.copy(this._starsSpin);
     this.scene.add(this.stars);
+  }
+
+  /**
+   * 自动旋转时把星场和相机一起转。
+   * 星空在屏幕上保持不动，看起来只有地球在转；相机的朝向因此始终对着同一片星空。
+   */
+  spinStars(q) {
+    this._starsSpin.premultiply(q);
+    this.stars.quaternion.copy(this._starsSpin);
   }
 
   setConfig(config = this.config) {

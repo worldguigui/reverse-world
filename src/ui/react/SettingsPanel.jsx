@@ -6,7 +6,8 @@ const fmt = (v) => Number(Number(v).toFixed(3));
 
 /**
  * 「画面设置」面板：只影响渲染观感，不写进项目文件。
- * 整份设置就是 store 里的 viewConfig，控件直接读写它；各项的取值范围与步长沿用原有约定。
+ * 大部分控件直接读写 store 里的 viewConfig；视角档位是当前镜头状态，
+ * 与滚轮共用同一个数，所以走单独的 cameraLevel，不落盘。
  */
 
 /** 分组小标题 */
@@ -22,8 +23,9 @@ function Group({ title, children }) {
 /**
  * 滑块。commit='release' 用于代价高的设置（如重建星场）：
  * 拖动过程中只更新本地显示，松手才真正写进 store。
+ * format 只改显示文本，不改提交的值。
  */
-function Slider({ label, value, min, max, step, commit = 'live', onChange }) {
+function Slider({ label, value, min, max, step, commit = 'live', format = fmt, onChange }) {
   const [draft, setDraft] = useState(value);
   // 数值被外部改掉（如飞行暂停了自动旋转）时跟上；拖动期间 value 没变，不会打断手上的操作
   useEffect(() => setDraft(value), [value]);
@@ -34,7 +36,7 @@ function Slider({ label, value, min, max, step, commit = 'live', onChange }) {
     <label className="set-row">
       <span className="set-row-top">
         <span>{label}</span>
-        <span className="set-val">{fmt(shown)}</span>
+        <span className="set-val">{format(shown)}</span>
       </span>
       <input
         type="range"
@@ -77,6 +79,8 @@ export function SettingsPanel() {
   const setViewConfig = useStore((s) => s.setViewConfig);
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
   const resetView = useStore((s) => s.resetView);
+  const cameraLevel = useStore((s) => s.cameraLevel);
+  const setCameraLevel = useStore((s) => s.setCameraLevel);
   // 收起时整个渲染成空，容器靠 #settings:empty 隐掉（与检查器同一套办法）
   if (!open) return null;
 
@@ -125,8 +129,13 @@ export function SettingsPanel() {
       </Group>
 
       <Group title="📷 视角">
-        <Slider label="视场角 FOV" value={config.camera.fov} min={20} max={90} step={1}
-          onChange={(v) => set({ camera: { fov: v } })} />
+        {/* 与滚轮共用「当前档位」：拖动滑块就是缩放，滚轮转了滑块也跟着走。
+            数字与「事件镜头档位」同一套 1–64；滚轮拉远超过出厂（档位 <1）时滑块停在 1。 */}
+        <Slider label="视角档位（与滚轮同步）" value={cameraLevel}
+          min={1} max={64} step={0.01}
+          format={(v) => Math.max(1, Math.round(v))}
+          onChange={(v) => setCameraLevel(v)} />
+        <p className="insp-hint">与滚轮共用同一个档位：1 = 出厂视角，64 = 最紧。</p>
         {/* 点开一条事件时镜头落到哪一档，1 = 出厂视角，64 = 推到底再加满镜头倍率 */}
         <Slider label="事件镜头档位" value={config.camera.eventLevel} min={1} max={64} step={1}
           onChange={(v) => set({ camera: { eventLevel: v } })} />

@@ -15,6 +15,9 @@ export const createUISlice = (set, get) => ({
   // 「当前在看什么」是一个视图条件，不是数据：指向章节时 groupId 有值，
   // 按人物筛时 characterId 有值（那一组是算出来的，用完就没了，不落盘）。同时给就是交集。
   viewFilter: noView(),
+  // 当前镜头档位：1 = 出厂视角，64 = 相机推到底再收满镜头。
+  // 滚轮与设置面板滑块读写同一个数，不写进设置存档。
+  cameraLevel: 1,
   pendingCoords: null,   // 放置事件时点选的经纬度
   drawCoords: [],        // 绘制路线/区域的 [[lng,lat]…]
   eventDraft: {},        // 新建事件草稿（换位置不丢内容）
@@ -78,6 +81,9 @@ export const createUISlice = (set, get) => ({
   currentView() {
     return { ...get().viewFilter };
   },
+
+  /** 镜头把实际落定的档位报回来（滚轮、飞行、复位都会触发），滑块据此跟随 */
+  syncCameraLevel(level) { set({ cameraLevel: level }); },
 
   // ---------------------------------------------------------------- 放置 / 绘制
 

@@ -97,6 +97,15 @@ export const createActionsSlice = (set, get) => ({
   resetView() { session.rig?.resetView(); },
 
   /**
+   * 设置面板的档位滑块：不走 viewConfig，直接落到与滚轮相同的当前档位。
+   * 镜头会夹取并回调实际值，滑块以回调为准。
+   */
+  setCameraLevel(level) {
+    const applied = session.rig?.setLevel(level);
+    get().syncCameraLevel(applied ?? level);
+  },
+
+  /**
    * 把镜头对准内容实际占着的那片地方。
    *
    * 载入一份世界之后必须做这件事：初始视角是画面设置里的固定经纬度，

@@ -23,6 +23,9 @@ const ZOOM_STEP = 1.10;
  */
 const OPTICAL_MAX = 8;
 
+/** 档位变化小于这个量就不往外报，避免飞行/阻尼时每帧都写一遍外部状态 */
+const LEVEL_EPS = 1e-4;
+
 // 拖拽/自转每帧都会跑到，这几个量复用，免得一分钟里堆出几千个临时对象
 const _right = new THREE.Vector3();
 const _up = new THREE.Vector3();
@@ -92,6 +95,8 @@ export class CameraRig {
     domElement.addEventListener('pointercancel', this._onUp);
 
     this.setConfig(config);
+    // 外部（设置面板）用 onLevelChange 拿到当前档位；初始值在这里对齐，不触发回调
+    this._lastLevel = this._level();
   }
 
   setConfig(config = this.config) {
@@ -204,6 +209,29 @@ export class CameraRig {
     const { distance, optical } = this._levelToState(level);
     this._setOptical(optical);
     this._setDistance(distance);
+    this._syncLevel();
+  }
+
+  /**
+   * 外部直接落到某一档（设置面板的滑块）。与滚轮共用 _applyLevel，
+   * 所以「拖滑块」和「滚一格」改的是同一个量，不是另一套视角参数。
+   */
+  setLevel(level) {
+    this.tweens.cancel('camera'); // 用户开始调视角，进行中的飞行让位
+    this.onUserInterrupt?.();
+    this._applyLevel(level);
+    return this._level();
+  }
+
+  /**
+   * 把当前档位报给外部。飞行、复位、阻尼都只改相机位置，不经过 _applyLevel，
+   * 所以每帧在 update() 里也查一次；超过阈值才回调，避免空闲时刷状态。
+   */
+  _syncLevel() {
+    const level = this._level();
+    if (Math.abs(level - this._lastLevel) < LEVEL_EPS) return;
+    this._lastLevel = level;
+    this.onLevelChange?.(level);
   }
 
   /** 沿当前视线把相机摆到离球心 d 处：只改远近，朝向与「上」都不动 */
@@ -245,8 +273,12 @@ export class CameraRig {
       _qSpin.setFromAxisAngle(WORLD_UP, this.config.speed * (Math.PI / 180) * dt);
       this.camera.position.applyQuaternion(_qSpin);
       this.camera.up.applyQuaternion(_qSpin);
+      // 星场拿同一个旋转一起转：相机画面转了，星空在屏幕上仍原样停着。
+      // 手动拖动镜头不走这里，星空照常跟着视角走。
+      this.onAutoSpin?.(_qSpin);
     }
     this.controls.update();
+    this._syncLevel(); // 位置被飞行/复位/惯性改动时，档位也跟着变
   }
 
   /** 当前视角对应的经纬度、距离与档位；档位是画面实际的放大倍数，滚轮与飞行都按它走 */

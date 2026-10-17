@@ -6,6 +6,8 @@
 
 export const DEFAULT_CONFIG = {
   camera: {
+    // 出厂镜头的视场角。设置面板不再改它：现在滑块和滚轮共用「档位」，
+    // 档位 1 就落在这个视场角上，往后再由推近相机与收窄镜头接着放大。
     fov: 45,
     lon: 105,          // 初始视角经度
     lat: 30,
@@ -46,9 +48,9 @@ export const DEFAULT_CONFIG = {
 const STORAGE_KEY = 'worldbuilding:view-config';
 
 /**
- * 存档里的缩放上下限一律丢掉，以代码里的值为准。
+ * 存档里的缩放上下限与出厂视场角一律丢掉，以代码里的值为准。
  *
- * 这两项不是设置面板里能改的，只是借 config 放着方便取用；可它们照样会被存进
+ * 这几项不是设置面板里能改的，只是借 config 放着方便取用；可它们照样会被存进
  * localStorage，而合并时存档盖默认值——于是改了代码却不生效，看着像没改。
  * 凡是「用户改不了、只吃代码」的项都照这个办法挡一道。
  */
@@ -56,6 +58,7 @@ function dropCodeOwnedKeys(saved) {
   if (saved && saved.camera) {
     delete saved.camera.minDistance;
     delete saved.camera.maxDistance;
+    delete saved.camera.fov;
   }
   return saved;
 }
