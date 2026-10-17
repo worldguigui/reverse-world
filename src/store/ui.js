@@ -21,10 +21,11 @@ export const createUISlice = (set, get) => ({
   drawForm: blankDrawForm(), // 绘制表单的字段值（球面加点、按 Enter 提交时都从这里取）
   workshopOpen: false,
   // 工坊的画笔参数与撤销可用态。网格、撤销栈太大，放在 ui/workshop-session.js 的模块级会话对象里
-  workshopTool: 'raise',   // raise | lower | smooth | river
+  workshopTool: 'raise',   // raise | lower | smooth | water | dry
   workshopSize: 8,
   workshopStrength: 0.08,
   workshopHard: true,      // true=硬笔（无扩散），false=软笔（高斯）
+  workshopShowWater: false, // 画布是否改看黑白水陆掩膜（只影响预览）
   workshopZoom: 1,         // 画布缩放倍数（1 = 适应窗口），只给顶栏读数用
   canUndo: false,
   canRedo: false,
@@ -95,7 +96,8 @@ export const createUISlice = (set, get) => ({
   resetWorkshopBrush() {
     set({
       workshopTool: 'raise', workshopSize: 8, workshopStrength: 0.08,
-      workshopHard: true, workshopZoom: 1, canUndo: false, canRedo: false,
+      workshopHard: true, workshopShowWater: false, workshopZoom: 1,
+      canUndo: false, canRedo: false,
     });
   },
   setWorkshopBrush(patch) { set(patch); },

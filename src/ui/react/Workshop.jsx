@@ -2,13 +2,31 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../store/index.js';
 import * as W from '../workshop-session.js';
 
-/** 四种画笔：id、按钮文案、悬停说明 */
-const TOOLS = [
-  ['raise', '⛰ 抬升', '点一下，一个区域变高——山脉就是这么做出来的'],
-  ['lower', '🌊 降低', '压低地形，涂沉大陆、挖出海盆地'],
-  ['smooth', '🪄 抹平', '把崎岖的区域磨平'],
-  ['river', '💧 河流', '拖动画出河流，宽度由笔刷大小决定'],
+/**
+ * 五支画笔，按「写哪个通道」分成两组。
+ * 形态组只改高度（球面的凹凸），水组只改水的浓度（颜色），两组互不影响：
+ * 蓝色高山、绿色盆地都是许画出来的，不必符合物理。
+ */
+const TOOL_GROUPS = [
+  ['形态', [
+    ['raise', '⛰ 抬升', '点一下，一个区域变高——山脉就是这么做出来的'],
+    ['lower', '⬇ 压低', '压低地形，挖出海盆地、崖壁与峡谷'],
+    ['smooth', '🪄 抹平', '把崎岖的区域磨平'],
+  ]],
+  ['水', [
+    ['water', '💧 加水', '给格子涂上水色：海洋、湖泊与细长的河流都用它'],
+    ['dry', '🏝 去水', '把水擦掉，露出下面的陆地色'],
+  ]],
 ];
+
+/** 当前画笔写哪个通道：水笔只改颜色，形态笔只改几何 */
+const TOOL_WRITES = {
+  raise: '写入：高度（球面起伏）',
+  lower: '写入：高度（球面起伏）',
+  smooth: '写入：高度（球面起伏）',
+  water: '写入：水（只改颜色，不动高度）',
+  dry: '写入：水（只改颜色，不动高度）',
+};
 
 /**
  * 画布本身是网格自带的节点，塞进来后按「一格一 CSS 像素」摆好，缩放交给 transform。
@@ -31,6 +49,7 @@ export function Workshop({ container }) {
   const canUndo = useStore((s) => s.canUndo);
   const canRedo = useStore((s) => s.canRedo);
   const zoom = useStore((s) => s.workshopZoom);
+  const showWater = useStore((s) => s.workshopShowWater);
   const setWorkshopBrush = useStore((s) => s.setWorkshopBrush);
   const [generating, setGenerating] = useState(false);
   const wrapRef = useRef(null);
@@ -57,6 +76,9 @@ export function Workshop({ container }) {
       if (canvas.parentNode === wrap) wrap.removeChild(canvas);
     };
   }, [open]);
+
+  // 掩膜画布由 attachCanvas 顺带建好；开关只切它的显隐，打开时补画一次
+  useEffect(() => { if (open) W.syncMaskView(); }, [showWater, open]);
 
   // 快捷键：Esc 取消，Ctrl+Z / Ctrl+Y 撤销重做
   useEffect(() => {
@@ -93,6 +115,13 @@ export function Workshop({ container }) {
           ⤢ 适应窗口
         </button>
         <span style={{ flex: 1 }} />
+        <button
+          className={showWater ? 'btn active' : 'btn'}
+          title="把画布切换成黑白水陆掩膜：黑=陆地，白=水（只影响预览，不改数据）"
+          onClick={() => setWorkshopBrush({ workshopShowWater: !showWater })}
+        >
+          👁 水陆掩膜
+        </button>
         <button className="btn" disabled={!canUndo} onClick={() => W.undo()}>↶ 撤销</button>
         <button className="btn" disabled={!canRedo} onClick={() => W.redo()}>↷ 重做</button>
         <button className="btn" onClick={() => W.resetOcean()}>重置为海洋</button>
@@ -105,16 +134,22 @@ export function Workshop({ container }) {
 
       <div className="wk-body">
         <div className="wk-side glass">
-          {TOOLS.map(([id, label, tip]) => (
-            <button
-              key={id}
-              className={`wk-tool${tool === id ? ' active' : ''}`}
-              title={tip}
-              onClick={() => setWorkshopBrush({ workshopTool: id })}
-            >
-              {label}
-            </button>
+          {TOOL_GROUPS.map(([group, items]) => (
+            <div key={group} className="wk-group">
+              <div className="wk-group-label">{group}</div>
+              {items.map(([id, label, tip]) => (
+                <button
+                  key={id}
+                  className={`wk-tool${tool === id ? ' active' : ''}`}
+                  title={tip}
+                  onClick={() => setWorkshopBrush({ workshopTool: id })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           ))}
+          <div className="wk-dim">{TOOL_WRITES[tool]}</div>
 
           <div className="wk-slider">
             <span className="field-label">笔刷大小 </span><b>{size} 格</b>
@@ -147,6 +182,9 @@ export function Workshop({ container }) {
           </button>
 
           <p className="insp-hint">
+            形态笔改高低，水笔改颜色，两个通道互不影响——蓝色高山、绿色盆地都画得出来。
+            细的水笔一拖就是河流，海与湖就是大片的水。打开顶栏「水陆掩膜」检查水的分布。
+            <br />
             硬笔=半径内全强度，画垂直悬崖/方柱/笔直边界；软笔=高斯自然山脉。按住拖动连续涂抹。
             <br />
             <b>滚轮</b>缩放（以光标为中心），<b>Shift+左键 / 中键 / 右键拖动</b>平移。

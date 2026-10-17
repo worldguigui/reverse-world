@@ -66,11 +66,11 @@ export function installAPI({ ctx, project, cursor }) {
     // —— 地形 ——
     /** 打开地形工坊 */
     openWorkshop: () => ctx.openWorkshop(),
-    /** 生成真实地球地形（高程+河流） */
+    /** 生成真实地球地形（高程 + 水） */
     generateRealEarth: () => ctx.generateRealEarth(),
     /** 采样某经纬度的归一化高度（-1..1，0=海平面），无地形返回 null */
     sampleTerrain: (lat, lng) => ctx.sampleTerrain(lat, lng),
-    /** 在指定经纬度涂画笔：{ tool: 'raise'|'lower'|'smooth'|'river', size, strength, passes } */
+    /** 在指定经纬度涂画笔：{ tool: 'raise'|'lower'|'smooth'|'water'|'dry', size, strength, passes } */
     paintTerrain: (lat, lng, opts) => ctx.paintTerrain(lat, lng, opts),
 
     // —— 项目 ——

@@ -85,7 +85,7 @@ async function main() {
     } else {
       // 白纸起步的画布与真实地球同分辨率：画到一半按「真实地球」不会突然换一档精度
       grid = new TerrainGrid(EARTH_RES, EARTH_RES / 2);
-      grid.fill(-0.45);
+      grid.fill(-0.45, 255); // 一片汪洋：高度压到海平面以下，整张表写满水
       s.toast('一片汪洋：拿画笔造出你的大陆吧');
     }
 

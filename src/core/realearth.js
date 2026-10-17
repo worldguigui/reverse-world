@@ -3,12 +3,12 @@ import { LandMask } from './landmask.js';
 import { loadImage } from '../utils/files.js';
 
 /**
- * 真实地球数据管线：三份数据各自成层，谁也不认识谁。
+ * 真实地球数据管线：三份原料各自成层，谁也不认识谁。
  *   高程图  → TerrainGrid.height（多高）
- *   海陆掩膜 → 哪一格是陆地、离岸多远（是陆是海）
- *   河网     → 河流通道
- * 「高程 + 海陆」在这里合成，但两边都不需要知道对方：raster 只认高度数值，
- * landmask 只认二值海陆，换掉任意一份都不牵动另一份，也不牵动渲染。
+ *   海陆掩膜 → 合成时写进 water（哪里有水）
+ *   河网     → 也写进 water（河流就是一条窄水）
+ * 「高度取海拔、水取掩膜」在这里合成；河流随后盖上去。landmask 只认二值海陆，
+ * 换掉任意一份都不牵动另一份，也不牵动渲染。
  * 数据文件在 public/data/、public/textures/（Natural Earth / three-globe，公共领域）。
  */
 
@@ -98,6 +98,8 @@ function composeTerrain(elev, mask, w, h) {
     grid.height[i] = land[i]
       ? landHeight(elev[i])
       : -lerp(PRESET.shoreDepth, PRESET.oceanDepth, smoothstep(Math.min(1, dist[i] / shelf)));
+    // 水陆是独立的另一张表：这里只按掩膜写满水，不回头从高度符号推导
+    grid.water[i] = land[i] ? 0 : 255;
   }
   grid.renderColor();
   return grid;
@@ -127,7 +129,7 @@ export async function rasterizeRivers(grid) {
   }
 }
 
-/** 折线刷进 river 通道：相邻经纬点之间插值步进，逐点盖圆章 */
+/** 折线刷进水通道：相邻经纬点之间插值步进，逐点盖圆章。河流只是窄一点的海洋 */
 function stampPolyline(grid, coords, radius) {
   const toCell = ([lng, lat]) => [
     ((lng + 180) / 360) * grid.w,
@@ -139,7 +141,7 @@ function stampPolyline(grid, coords, radius) {
     const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (radius * 0.6)));
     for (let s = 0; s <= steps; s++) {
       const t = s / steps;
-      stampCircle(grid.river, grid.w, grid.h, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, radius);
+      stampCircle(grid.water, grid.w, grid.h, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, radius);
     }
   }
 }

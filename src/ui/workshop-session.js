@@ -19,11 +19,14 @@ export const workshop = {
 
   canvas: null,      // 正在画的那张画布（网格自带，挂进 .wk-stage）
   wrap: null,        // 画布容器，缩放/平移都相对它算
+  maskCanvas: null,  // 水陆掩膜预览：黑=陆地，白=水
+  maskCtx: null,
+  maskImage: null,   // 掩膜的 ImageData，随网格尺寸重建
   // 视图：zoom 是相对「适应窗口」的倍数，tx/ty 是画布左上角相对容器的偏移（屏幕像素）
   view: { zoom: 1, tx: 0, ty: 0 },
 };
 
-/** 撤销步数：网格越大，一份快照越贵（快照 = 高度 + 河流两份数组） */
+/** 撤销步数：网格越大，一份快照越贵（快照 = 高度 + 水两份数组） */
 const undoLimit = () => (workshop.grid?.w >= 1024 ? 8 : 15);
 
 /** 笔刷大小上限的基准格数，以及它是在多宽的栅格上调出来的 */
@@ -59,6 +62,7 @@ export function beginWorkshop({ grid, binding = null, hooks }) {
   workshop.dirty = false;
   workshop.previewed = false;
   workshop.view = { zoom: 1, tx: 0, ty: 0 };
+  workshop.maskImage = null;
   fitted = false;
   syncFlags();
 }
@@ -70,6 +74,9 @@ export function endWorkshop() {
   workshop.undoStack = [];
   workshop.redoStack = [];
   workshop.painting = false;
+  workshop.maskCanvas = null;
+  workshop.maskCtx = null;
+  workshop.maskImage = null;
 }
 
 // ---------------------------------------------------------------- 画布视图（缩放 / 平移）
@@ -88,14 +95,21 @@ const scaleOf = () => fitScale * workshop.view.zoom;
 
 /** 把视图状态写到画布上。画布是网格自带的节点，只能命令式改样式 */
 function applyView() {
-  const { canvas, view } = workshop;
+  const { canvas, maskCanvas, view } = workshop;
   if (!canvas) return;
   const s = scaleOf();
-  canvas.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${s})`;
+  const transform = `translate(${view.tx}px, ${view.ty}px) scale(${s})`;
+  const rendering = s >= 1 ? 'pixelated' : 'auto';
+  canvas.style.transform = transform;
   // 一格一像素，放大时该用最近点：格子边界要像刀切一样清楚。
   // 缩小时（画布比容器宽——分辨率一高，适应窗口那一档就是缩小）最近点会丢行丢列，
   // 满是细线与色带的底图会抖成一片；这一档交回浏览器的平滑缩放。
-  canvas.style.imageRendering = s >= 1 ? 'pixelated' : 'auto';
+  canvas.style.imageRendering = rendering;
+  // 掩膜是叠在同一位置上的另一张画布，必须跟画布共享同一套平移与缩放
+  if (maskCanvas) {
+    maskCanvas.style.transform = transform;
+    maskCanvas.style.imageRendering = rendering;
+  }
 }
 
 /** 缩放倍数同步给顶栏读数。平移不动缩放，所以只有缩放路径调它 */
@@ -172,7 +186,7 @@ const canvasReady = () => !!(workshop.canvas && workshop.wrap && workshop.grid);
 
 // ---------------------------------------------------------------- 撤销 / 重做
 
-const snapshot = () => ({ h: workshop.grid.height.slice(), r: workshop.grid.river.slice() });
+const snapshot = () => ({ h: workshop.grid.height.slice(), w: workshop.grid.water.slice() });
 
 function pushUndo() {
   workshop.undoStack.push(snapshot());
@@ -184,8 +198,9 @@ function pushUndo() {
 function restore(snap) {
   const g = workshop.grid;
   g.height.set(snap.h);
-  g.river.set(snap.r);
+  g.water.set(snap.w);
   g.renderColor();
+  drawMask();
   workshop.hooks.onChange(g);
 }
 
@@ -207,7 +222,8 @@ export function redo() {
 
 export function resetOcean() {
   pushUndo();
-  workshop.grid.fill(-0.45);
+  workshop.grid.fill(-0.45, 255);
+  drawMask();
   workshop.dirty = true;
   workshop.hooks.onChange(workshop.grid);
 }
@@ -217,8 +233,51 @@ export async function copyFromRealEarth() {
   pushUndo();
   const real = await workshop.hooks.loadRealEarth();
   workshop.grid.copyFrom(real);
+  drawMask();
   workshop.dirty = true;
   workshop.hooks.onChange(workshop.grid);
+}
+
+// ---------------------------------------------------------------- 水陆掩膜预览
+
+/**
+ * 把水通道画成黑白图：黑=陆地，白=水。
+ * 只在打开「查看水陆掩膜」时画；传 rect 只重绘脏区，和颜色画布一样便宜。
+ */
+function drawMask(rect) {
+  const { maskCanvas, maskCtx, grid } = workshop;
+  if (!maskCanvas || !maskCtx || !grid) return;
+  if (!useStore.getState().workshopShowWater) return;
+  if (!workshop.maskImage || workshop.maskImage.width !== grid.w || workshop.maskImage.height !== grid.h) {
+    workshop.maskImage = maskCtx.createImageData(grid.w, grid.h);
+  }
+  const img = workshop.maskImage;
+  const data = img.data;
+  const x0 = rect ? Math.max(0, rect[0] - 1) : 0;
+  const y0 = rect ? Math.max(0, rect[1] - 1) : 0;
+  const x1 = rect ? Math.min(grid.w - 1, rect[0] + rect[2] + 1) : grid.w - 1;
+  const y1 = rect ? Math.min(grid.h - 1, rect[1] + rect[3] + 1) : grid.h - 1;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const i = y * grid.w + x;
+      const v = grid.water[i];
+      const o = i * 4;
+      data[o] = v;
+      data[o + 1] = v;
+      data[o + 2] = v;
+      data[o + 3] = 255;
+    }
+  }
+  maskCtx.putImageData(img, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+}
+
+/** 开关切换后同步掩膜画布的显隐；React 只负责改 store 里的布尔量 */
+export function syncMaskView() {
+  const { maskCanvas } = workshop;
+  if (!maskCanvas) return;
+  const on = useStore.getState().workshopShowWater;
+  maskCanvas.style.display = on ? 'block' : 'none';
+  if (on) drawMask();
 }
 
 // ---------------------------------------------------------------- 指针绘制
@@ -246,6 +305,7 @@ function paint(canvas, e) {
   const dirty = g.applyBrush(st.workshopTool, gx, gy, size, st.workshopStrength, st.workshopHard);
   if (!dirty) return;
   g.renderColor(dirty);
+  drawMask(dirty);
   workshop.dirty = true;
   workshop.hooks.onChange(g);
 }
@@ -266,7 +326,20 @@ export function attachCanvas(canvas, wrap) {
   // 一格一个 CSS 像素；缩放全靠 transform，不动 canvas 的分辨率（那会重采样，糊）
   canvas.style.width = `${workshop.grid.w}px`;
   canvas.style.height = `${workshop.grid.h}px`;
+  // 水陆掩膜是叠在颜色画布上的第二张画布：同一套平移缩放，像素一一对应。
+  // 每格一个 CSS 像素，和颜色画布一致；显隐由 syncMaskView 按开关切换
+  const mask = document.createElement('canvas');
+  mask.width = workshop.grid.w;
+  mask.height = workshop.grid.h;
+  mask.style.cssText = 'position:absolute;left:0;top:0;transform-origin:0 0;'
+    + 'pointer-events:none;display:none;'
+    + `width:${workshop.grid.w}px;height:${workshop.grid.h}px;`;
+  wrap.appendChild(mask);
+  workshop.maskCanvas = mask;
+  workshop.maskCtx = mask.getContext('2d', { willReadFrequently: true });
+  workshop.maskImage = null;
   fitView();
+  syncMaskView();
 
   let panning = null; // 正在平移时记上一个指针位置
 
@@ -331,8 +404,12 @@ export function attachCanvas(canvas, wrap) {
     canvas.removeEventListener('pointercancel', onUp);
     canvas.removeEventListener('wheel', onWheel);
     canvas.removeEventListener('contextmenu', onContext);
+    mask.remove();
     workshop.canvas = null;
     workshop.wrap = null;
+    workshop.maskCanvas = null;
+    workshop.maskCtx = null;
+    workshop.maskImage = null;
   };
 }
 

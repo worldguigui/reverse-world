@@ -47,7 +47,7 @@ export const createActionsSlice = (set, get) => ({
     get().toast('已换回自带的地球贴图');
   },
 
-  /** 下载并解码真实地球高程+河流，作为全局地形 */
+  /** 下载并解码真实地球高程与水，作为全局地形 */
   async generateRealEarth() {
     if (!get().project) return;
     get().toast('正在下载/解码真实地球地形…');

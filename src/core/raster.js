@@ -1,14 +1,16 @@
 /**
- * 栅格地形引擎：高度网格 + 河流通路 + 画笔 + 色带渲染 + 采样 + PNG 编解码。
- * 高度用「归一化单位」：0 = 海平面，负 = 海洋深度，正 = 陆地海拔，设计范围 [-4, 4]
- * （clamp 仅在写入 PNG/heightCanvas 时保证编码可逆，画笔运算是无 clamp 纯累加）。
- * 画笔支持「软笔（高斯衰减） / 硬笔（方波硬边，不扩散到邻居，可画垂直悬崖）」两种模式。
- * 高度纹理/PNG 编码：R+G 打包 16-bit（[-4,4]），B=河流；
- *   兼容旧 8-bit 格式（R=高度8bit [-1,1], G=河流, B=0）——通过"所有像素 B=0"检测。
- * 纯数据 + canvas，不依赖 three。
+ * 栅格地形引擎：高度 + 水的双通道网格，加上画笔、色带渲染、采样与 PNG 编解码。
+ * 两个通道互相独立，谁也不再由谁推导：
+ *   height  多高（归一化单位，设计范围 [-4, 4]）——只决定球面几何
+ *   water   水有多满（0..255）——只决定颜色
+ * 高度 0.8 + 水 255 就是一座蓝色的高山；高度 -0.2 + 水 0 就是一个绿色盆地。
+ * 水用连续值而不是开关：海洋是 255，河流的软边可以是 80、40，线才不会锯成台阶。
  *
- * 只负责「多高」。「是陆是海」是另一份可选数据，见 core/landmask.js——
- * 两者互不认识，真实地球预设也只是把它们拼在一起用。
+ * 画笔支持「软笔（高斯衰减） / 硬笔（方波硬边，不扩散到邻居，可画垂直悬崖）」两种模式。
+ * PNG 编码：R+G 打包 16-bit 高度，B=水，alpha 留空。
+ *   兼容两种旧格式：上古版 R=8bit 高度、G=河流、B=0；次新版 R+G 高度、B=河流。
+ *   解码旧格式时把河流并进 water，再按高度符号补出海洋，画面与当时一致。
+ * 纯数据 + canvas，不依赖 three。
  */
 import { loadImage } from '../utils/files.js';
 
@@ -26,7 +28,7 @@ export class TerrainGrid {
     this.w = w;
     this.h = h;
     this.height = new Float32Array(w * h);
-    this.river = new Uint8Array(w * h); // 0 无河，255 最粗
+    this.water = new Uint8Array(w * h); // 0 = 陆地，255 = 满水
     this.colorCanvas = document.createElement('canvas');
     this.colorCanvas.width = w;
     this.colorCanvas.height = h;
@@ -45,10 +47,12 @@ export class TerrainGrid {
   // ---------------------------------------------------------------- 画笔
 
   /**
-   * 在格点 (cx, cy) 应用画笔。
-   * @param {'raise'|'lower'|'smooth'|'river'} kind
+   * 在格点 (cx, cy) 应用画笔。每支笔只碰自己的通道：
+   *   raise / lower / smooth → height
+   *   water / dry            → water
+   * @param {'raise'|'lower'|'smooth'|'water'|'dry'} kind
    * @param {number} radius 半径（格）。1 = 只落当前这一格（最小笔刷）
-   * @param {number} strength 强度（厚度），raise/lower 为归一化高度增量
+   * @param {number} strength 强度（厚度）：高度笔是归一化高度增量，水笔是水的增量
    * @param {boolean} [hard=false]  true=硬笔（方波硬边，半径内全 strength，不做高斯扩散）
    * @returns {[x,y,w,h]|null 受影响矩形（渲染脏区）
    */
@@ -80,10 +84,11 @@ export class TerrainGrid {
         } else if (kind === 'smooth') {
           const avg = this._neighborAvg(x, y);
           this.height[i] += (avg - this.height[i]) * Math.min(1, strength * 6) * fall;
-        } else if (kind === 'river') {
-          const v = Math.min(255, this.river[i] + Math.round(255 * Math.min(1, strength * 10) * fall));
-          this.river[i] = v;
-          this.height[i] -= 0.008 * fall; // 轻微下切出河床
+        } else if (kind === 'water' || kind === 'dry') {
+          // 水笔只写水通道，不动高度：想画平的海就再拿压低笔，两件事各管各的
+          const delta = Math.round(255 * Math.min(1, strength * 10) * fall);
+          const v = this.water[i] + (kind === 'water' ? delta : -delta);
+          this.water[i] = v < 0 ? 0 : v > 255 ? 255 : v;
         }
       }
     }
@@ -103,18 +108,18 @@ export class TerrainGrid {
     return n ? sum / n : this.height[this.idx(x, y)];
   }
 
-  /** 全部填海 / 全部填地 */
-  fill(value) {
+  /** 整张网格填成同一个高度与同一个水量。重置为海洋 = fill(-0.45, 255) */
+  fill(value, waterValue = 0) {
     this.height.fill(value);
-    this.river.fill(0);
+    this.water.fill(waterValue);
     this.renderColor();
   }
 
-  // ---------------------------------------------------------------- 渲染（色带 + hillshade + 河流）
+  // ---------------------------------------------------------------- 渲染（色带 + hillshade + 水色）
 
   /** 重绘颜色画布；传 rect=[x,y,w,h] 只重绘脏区 */
   renderColor(rect) {
-    const { w, h, height, river } = this;
+    const { w, h, height, water } = this;
     const img = this._image;
     const data = img.data;
     const hImg = this._heightImage;
@@ -141,32 +146,31 @@ export class TerrainGrid {
         let shade = (0.45 - gx * 0.55 - gy * 0.55) / Math.sqrt(gx * gx + gy * gy + 1);
         shade = 0.76 + 0.34 * Math.max(-0.3, Math.min(1, shade));
 
-        let r, g, b;
-        if (hh <= 0) {
-          // 海洋：浅→深
-          const t = Math.min(1, -hh / 0.55);
-          r = lerp(46, 8, t); g = lerp(122, 26, t); b = lerp(160, 66, t);
-          shade = 1; // 海面不打光
-        } else {
-          // 陆地色带（超 1 的部分全按雪白峰顶算）
-          [r, g, b] = landColor(hh);
-        }
-        const rv = river[i];
-        if (rv > 0) {
-          const a = Math.min(1, rv / 200);
-          r = lerp(r, 52, a); g = lerp(g, 118, a); b = lerp(b, 216, a);
-        }
+        // 陆地色与水的颜色各算一份，再按水的浓度混合。
+        // 水越低于海平面越深；高于海平面的水保持最浅的一档，靠光影表现形状。
+        const [lr, lg, lb] = landColor(hh);
+        const t = Math.min(1, Math.max(0, -hh / 0.55));
+        const wr = lerp(46, 8, t);
+        const wg = lerp(122, 26, t);
+        const wb = lerp(160, 66, t);
+        const wet = water[i] / 255;
+        const r = lerp(lr, wr, wet);
+        const g = lerp(lg, wg, wet);
+        const b = lerp(lb, wb, wet);
+        // 海平面以下的水是平的海面，不打光；高于海平面的水和陆地一样吃光
+        const light = lerp(shade, 1, hh <= 0 ? wet : 0);
+
         const o = i * 4;
-        data[o] = r * shade;
-        data[o + 1] = g * shade;
-        data[o + 2] = b * shade;
+        data[o] = r * light;
+        data[o + 1] = g * light;
+        data[o + 2] = b * light;
         data[o + 3] = 255;
         // 写入高度纹理：R+G 打包 16-bit，clamp 到编码可逆范围仅在这一步
         const tEnc = clampN((hh - H_MIN) / H_SPAN, 0, 1);
         const u16 = Math.round(tEnc * 65535);
         hData[o] = (u16 >>> 8) & 0xff;
         hData[o + 1] = u16 & 0xff;
-        hData[o + 2] = river[i];
+        hData[o + 2] = water[i];
         hData[o + 3] = 255;
       }
     }
@@ -199,7 +203,7 @@ export class TerrainGrid {
         const gx = ((x + 0.5) / newW) * this.w - 0.5;
         const v = bilinearArray(this.height, this.w, this.h, gx, gy);
         next.height[y * newW + x] = v;
-        next.river[y * newW + x] = bilinearArray(this.river, this.w, this.h, gx, gy);
+        next.water[y * newW + x] = bilinearArray(this.water, this.w, this.h, gx, gy);
       }
     }
     next.renderColor();
@@ -209,7 +213,7 @@ export class TerrainGrid {
   clone() {
     const g = new TerrainGrid(this.w, this.h);
     g.height.set(this.height);
-    g.river.set(this.river);
+    g.water.set(this.water);
     g.renderColor();
     return g;
   }
@@ -218,18 +222,18 @@ export class TerrainGrid {
   copyFrom(other) {
     const src = (other.w !== this.w || other.h !== this.h) ? other.resample(this.w, this.h) : other;
     this.height.set(src.height);
-    this.river.set(src.river);
+    this.water.set(src.water);
     this.renderColor();
   }
 
-  /** 海洋占比（诊断用） */
+  /** 水的占比（诊断用） */
   oceanRatio() {
     let n = 0;
-    for (let i = 0; i < this.height.length; i++) if (this.height[i] <= 0) n++;
-    return n / this.height.length;
+    for (let i = 0; i < this.water.length; i++) if (this.water[i] > 127) n++;
+    return n / this.water.length;
   }
 
-  /** 编码为 PNG dataURL：R+G=16-bit 高度（[-4,4]），B=河流 */
+  /** 编码为 PNG dataURL：R+G=16-bit 高度（[-4,4]），B=水 */
   encodePNG() {
     const cv = document.createElement('canvas');
     cv.width = this.w; cv.height = this.h;
@@ -241,15 +245,21 @@ export class TerrainGrid {
       const o = i * 4;
       img.data[o] = (u16 >>> 8) & 0xff;
       img.data[o + 1] = u16 & 0xff;
-      img.data[o + 2] = this.river[i];
+      img.data[o + 2] = this.water[i];
       img.data[o + 3] = 255;
     }
     ctx.putImageData(img, 0, 0);
     return cv.toDataURL('image/png');
   }
 
-  /** 从 PNG dataURL 解码（新格式 R+G=16bit 高度 B=河流；兼容旧格式 R=8bit 高度 G=河流 B=0） */
-  static async fromPNG(dataUrl) {
+  /**
+   * 从 PNG dataURL 解码。
+   * format=2：R+G=16bit 高度，B=水。
+   * 没给 format 时按旧格式识别：B 全 0 视为上古版（R=8bit 高度、G=河流），
+   * 否则视为次新版（R+G=16bit 高度、B=河流）。旧格式的河流并进 water，
+   * 再按高度符号补出海洋——那时「高度 ≤ 0 就是海」，画面与当时一致。
+   */
+  static async fromPNG(dataUrl, format = null) {
     const img = await loadImage(dataUrl);
     const cv = document.createElement('canvas');
     cv.width = img.width; cv.height = img.height;
@@ -257,20 +267,27 @@ export class TerrainGrid {
     ctx.drawImage(img, 0, 0);
     const data = ctx.getImageData(0, 0, img.width, img.height).data;
     const grid = new TerrainGrid(img.width, img.height);
-    let legacyV0 = true;
     const n = grid.height.length;
-    for (let i = 0; i < n; i++) {
-      if (data[i * 4 + 2] !== 0) { legacyV0 = false; break; }
+    let legacyV0 = false;
+    if (format !== 2) {
+      legacyV0 = true;
+      for (let i = 0; i < n; i++) {
+        if (data[i * 4 + 2] !== 0) { legacyV0 = false; break; }
+      }
     }
     for (let i = 0; i < n; i++) {
       const o = i * 4;
-      if (legacyV0) {
+      if (format === 2) {
+        const u16 = (data[o] << 8) | data[o + 1];
+        grid.height[i] = (u16 / 65535) * H_SPAN + H_MIN;
+        grid.water[i] = data[o + 2];
+      } else if (legacyV0) {
         grid.height[i] = (data[o] / 255) * 2 - 1;
-        grid.river[i] = data[o + 1];
+        grid.water[i] = Math.max(data[o + 1], grid.height[i] <= 0 ? 255 : 0);
       } else {
         const u16 = (data[o] << 8) | data[o + 1];
         grid.height[i] = (u16 / 65535) * H_SPAN + H_MIN;
-        grid.river[i] = data[o + 2];
+        grid.water[i] = Math.max(data[o + 2], grid.height[i] <= 0 ? 255 : 0);
       }
     }
     grid.renderColor();
@@ -309,7 +326,8 @@ function landColor(h) {
     [0.85, [214, 216, 220]],
     [1.00, [246, 248, 252]],
   ];
-  if (h <= 0) return [124, 149, 88];
+  // 陆地可以低于海平面（绿色盆地），色带从最低一档起算，不按符号跳成海色
+  if (h <= 0) return stops[0][1];
   if (h >= 1) return stops[stops.length - 1][1];
   for (let s = 0; s < stops.length - 1; s++) {
     if (h <= stops[s + 1][0]) {
