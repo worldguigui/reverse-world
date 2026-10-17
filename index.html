@@ -6,26 +6,54 @@
   <title>世界图志 · 世界观时间轴工具</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>" />
   <style>
+    /* 视觉基色：近黑底、深灰实色面板、暖色文字。
+       橙色只给品牌动作与「当前」状态；人物、路线、区域等业务颜色不从这里取。 */
     :root {
-      --ink: #dfe7ff;
-      --ink-dim: #8fa3c8;
-      --glass: rgba(13, 20, 38, 0.78);
-      --line: rgba(140, 170, 255, 0.18);
-      --accent: #6ea8ff;
+      color-scheme: dark;
+      --bg: #0b0a09;
+      --panel: #171513;
+      --panel-2: #1f1c19;
+      --panel-3: #292521;
+      --line: #3a332c;
+      --line-strong: #4a4138;
+      --ink: #ece5da;
+      --ink-dim: #a89e90;
+      --accent: #f08a3c;
+      --accent-bright: #ffa45a;
+      --accent-rgb: 240, 138, 60;
+      --on-accent: #1a120a;
       --danger: #ff7a7a;
+      --danger-soft: #ff9a9a;
+      --radius-lg: 8px;
+      --radius: 6px;
+      --radius-sm: 4px;
+      --dur: 0.15s;
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
     body { font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; color: var(--ink); }
     body.mode-draw canvas { cursor: crosshair !important; }
     canvas { display: block; }
 
+    /* 面板外壳。类名沿用历史命名，现在不再做毛玻璃：实色深灰 + 细边框。 */
     .glass {
-      background: var(--glass);
+      background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 10px;
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    /* 统一的悬停过渡：只过渡颜色，不做位移与模糊 */
+    .brand, .icon-btn, .mode-btn, .menu-item, .btn, .chip, .char-row,
+    .chr-tab, .chr-item, .tl-arrow, .tl-tick, .wk-tool, .map-row, .inp {
+      transition: background-color var(--dur) ease, color var(--dur) ease,
+        border-color var(--dur) ease;
+    }
+
+    /* 键盘焦点：只在键盘操作时出现，鼠标点击不额外描边 */
+    button:focus-visible {
+      outline: 1px solid var(--accent);
+      outline-offset: 1px;
     }
 
     /* ---------------- 顶栏 ---------------- */
@@ -43,23 +71,30 @@
     .brand {
       background: none; border: none; color: var(--ink);
       font-size: 15px; font-weight: 600; letter-spacing: 1px;
-      cursor: pointer; padding: 6px 8px; border-radius: 6px;
+      cursor: pointer; padding: 6px 8px; border-radius: var(--radius-sm);
       max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .brand:hover { background: rgba(110, 168, 255, 0.12); }
+    /* 品牌位的小橙点：不占结构，长世界名被截断时也还在 */
+    .brand::before {
+      content: ''; display: inline-block; width: 6px; height: 6px;
+      margin-right: 8px; border-radius: 50%; background: var(--accent);
+      vertical-align: 1px;
+    }
+    .brand:hover { background: var(--panel-2); }
     .icon-btn {
       background: none; border: none; color: var(--ink-dim); font-size: 16px;
-      cursor: pointer; padding: 6px 9px; border-radius: 6px;
+      cursor: pointer; padding: 6px 9px; border-radius: var(--radius-sm);
     }
-    .icon-btn:hover { color: var(--ink); background: rgba(110, 168, 255, 0.12); }
+    .icon-btn:hover { color: var(--ink); background: var(--panel-2); }
     .mode-btn {
       background: none; border: 1px solid transparent; color: var(--ink-dim);
-      font-size: 12.5px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+      font-size: 12.5px; padding: 6px 12px; border-radius: var(--radius); cursor: pointer;
     }
-    .mode-btn:hover { color: var(--ink); background: rgba(110, 168, 255, 0.1); }
+    .mode-btn:hover { color: var(--ink); background: var(--panel-2); }
     .mode-btn.active {
-      color: var(--ink); background: rgba(110, 168, 255, 0.2);
-      border-color: rgba(110, 168, 255, 0.45);
+      color: var(--accent-bright);
+      background: rgba(var(--accent-rgb), 0.14);
+      border-color: rgba(var(--accent-rgb), 0.55);
     }
     .mode-hint { font-size: 12px; color: var(--ink-dim); margin-right: 6px; }
 
@@ -70,9 +105,9 @@
     }
     .menu-item {
       background: none; border: none; color: var(--ink); text-align: left;
-      font-size: 13px; padding: 9px 12px; border-radius: 6px; cursor: pointer;
+      font-size: 13px; padding: 9px 12px; border-radius: var(--radius-sm); cursor: pointer;
     }
-    .menu-item:hover { background: rgba(110, 168, 255, 0.15); }
+    .menu-item:hover { background: var(--panel-2); }
     .menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }
 
     /* ---------------- 右侧检查器 ---------------- */
@@ -87,45 +122,57 @@
     .insp-hint { font-size: 12px; color: var(--ink-dim); line-height: 1.6; margin: 0; }
     .field-label { font-size: 11px; color: var(--ink-dim); letter-spacing: 1px; }
     .inp {
-      width: 100%; background: rgba(110, 168, 255, 0.1); color: var(--ink);
-      border: 1px solid var(--line); border-radius: 6px;
+      width: 100%; background: var(--panel-2); color: var(--ink);
+      border: 1px solid var(--line); border-radius: var(--radius);
       padding: 7px 9px; font-size: 13px; font-family: inherit; outline: none;
     }
-    .inp:focus { border-color: var(--accent); }
-    textarea.inp { resize: vertical; }
-    select.inp option { background: #101a33; }
-    .btn {
-      background: rgba(110, 168, 255, 0.12); border: 1px solid var(--line);
-      color: var(--ink); font-size: 12.5px; padding: 8px 12px;
-      border-radius: 7px; cursor: pointer;
+    .inp:hover { border-color: var(--line-strong); }
+    .inp:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.14);
     }
-    .btn:hover { background: rgba(110, 168, 255, 0.22); }
+    textarea.inp { resize: vertical; }
+    select.inp option { background: var(--panel-2); color: var(--ink); }
+    .btn {
+      background: var(--panel-2); border: 1px solid var(--line);
+      color: var(--ink); font-size: 12.5px; padding: 8px 12px;
+      border-radius: var(--radius); cursor: pointer;
+    }
+    .btn:hover { background: var(--panel-3); border-color: var(--line-strong); }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-primary { background: rgba(110, 168, 255, 0.3); border-color: rgba(110, 168, 255, 0.5); }
+    .btn-primary {
+      background: var(--accent); border-color: var(--accent);
+      color: var(--on-accent); font-weight: 600;
+    }
+    .btn-primary:hover { background: var(--accent-bright); border-color: var(--accent-bright); }
     /* 开关类按钮的按下态。别用 btn-primary：工坊里「完成」靠它定位，不能有第二个 */
-    .btn.active { color: var(--ink); background: rgba(110, 168, 255, 0.24); border-color: rgba(110, 168, 255, 0.5); }
+    .btn.active {
+      color: var(--accent-bright);
+      background: rgba(var(--accent-rgb), 0.14);
+      border-color: rgba(var(--accent-rgb), 0.55);
+    }
     .btn-danger { color: var(--danger); border-color: rgba(255, 122, 122, 0.35); }
-    .btn-danger:hover { background: rgba(255, 122, 122, 0.15); }
+    .btn-danger:hover { background: rgba(255, 122, 122, 0.15); border-color: rgba(255, 122, 122, 0.5); }
     .btn-ghost { background: none; border: none; color: var(--ink-dim); }
-    .btn-ghost:hover { color: var(--ink); background: rgba(110, 168, 255, 0.1); }
+    .btn-ghost:hover { color: var(--ink); background: var(--panel-2); }
     .btn-mini { padding: 3px 8px; font-size: 11px; }
     .sep { border: none; border-top: 1px solid var(--line); margin: 4px 0; }
     .stat-grid { display: flex; gap: 8px; margin-top: 4px; }
     .stat {
       flex: 1; text-align: center; padding: 8px 4px;
-      background: rgba(110, 168, 255, 0.08); border-radius: 8px;
+      background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius);
     }
     .stat b { display: block; font-size: 16px; }
     .stat span { font-size: 10px; color: var(--ink-dim); }
-    .item-img { width: 100%; border-radius: 8px; border: 1px solid var(--line); }
+    .item-img { width: 100%; border-radius: var(--radius); border: 1px solid var(--line); }
     /* 人物清单与「涉及的事件」清单共用的一行：左边一栏定宽，右边标题占满可溢出省略 */
     .char-list { display: grid; gap: 4px; }
     .char-row {
       display: flex; align-items: baseline; gap: 8px; text-align: left; cursor: pointer;
-      padding: 6px 8px; border-radius: 6px; font-family: inherit; font-size: 12.5px;
-      background: rgba(110, 168, 255, 0.08); border: 1px solid transparent; color: var(--ink);
+      padding: 6px 8px; border-radius: var(--radius-sm); font-family: inherit; font-size: 12.5px;
+      background: var(--panel-2); border: 1px solid transparent; color: var(--ink);
     }
-    .char-row:hover { background: rgba(110, 168, 255, 0.2); }
+    .char-row:hover { background: var(--panel-3); }
     .char-row b { flex: 0 0 auto; font-size: 12px; font-variant-numeric: tabular-nums; }
     .char-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-dim); }
     /* 章节清单：一行一个章节，上行改名、下行是条数与范围加两个动作 */
@@ -137,10 +184,10 @@
     .chips { display: flex; flex-wrap: wrap; gap: 5px; }
     .chip {
       padding: 4px 9px; border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 12px;
-      background: rgba(110, 168, 255, 0.08); border: 1px solid var(--line); color: var(--ink-dim);
+      background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-dim);
     }
-    .chip:hover { background: rgba(110, 168, 255, 0.2); }
-    .chip.on { background: rgba(110, 168, 255, 0.16); font-weight: 600; }
+    .chip:hover { background: var(--panel-3); }
+    .chip.on { background: var(--panel-3); font-weight: 600; }
     .chip-x { margin-left: 5px; font-size: 10px; opacity: 0.55; }
     .chip:hover .chip-x { opacity: 1; }
     .char-pick { display: grid; gap: 6px; }
@@ -149,15 +196,15 @@
     .char-menu {
       position: absolute; left: 0; right: 0; top: calc(100% + 3px); z-index: 20;
       max-height: 172px; overflow-y: auto; padding: 3px;
-      background: #141b2e; border: 1px solid var(--line); border-radius: 8px;
+      background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius);
       box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
     }
     .char-opt {
       display: flex; align-items: center; gap: 7px; width: 100%; text-align: left;
-      padding: 5px 7px; border: 0; border-radius: 6px; cursor: pointer;
+      padding: 5px 7px; border: 0; border-radius: var(--radius-sm); cursor: pointer;
       background: transparent; color: var(--ink); font-family: inherit; font-size: 12.5px;
     }
-    .char-opt.hit { background: rgba(110, 168, 255, 0.22); }
+    .char-opt.hit { background: rgba(var(--accent-rgb), 0.16); }
     .char-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
     .char-name { flex: none; }
     /* 别名挤在右边，太长就截断——它是用来确认「搜到的正是这个人」的旁证 */
@@ -167,12 +214,12 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .char-none { margin: 0; padding: 6px 7px; color: var(--ink-dim); font-size: 12px; }
-    .map-thumb { width: 64px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
+    .map-thumb { width: 64px; height: 32px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--line); }
     .map-row {
       display: flex; align-items: center; gap: 8px; font-size: 12.5px;
-      padding: 5px 6px; border-radius: 6px; cursor: pointer;
+      padding: 5px 6px; border-radius: var(--radius-sm); cursor: pointer;
     }
-    .map-row:hover { background: rgba(110, 168, 255, 0.08); }
+    .map-row:hover { background: var(--panel-2); }
 
     /* ---------------- 底部时间轴 ---------------- */
     #timeline {
@@ -211,23 +258,23 @@
     .tl-tick {
       position: absolute; top: 50%; width: 9px; height: 9px; padding: 0;
       margin: -4.5px 0 0 -4.5px; border-radius: 50%; cursor: pointer;
-      background: rgba(110, 168, 255, 0.35); border: 1px solid var(--line);
+      background: var(--line-strong); border: 1px solid var(--line);
       transform: translateX(0);
     }
-    .tl-tick:hover { background: var(--accent); }
+    .tl-tick:hover { background: var(--accent); border-color: var(--accent); }
     .tl-tick.at-cursor {
       background: var(--accent); border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(110, 168, 255, 0.25);
+      box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
     }
     /* 有区间的刻度：从起点往终点拉一根横线，一眼看出它持续了多久 */
     .tl-span {
       position: absolute; top: 50%; height: 3px; margin-top: -1.5px;
-      border-radius: 2px; background: rgba(110, 168, 255, 0.22); pointer-events: none;
+      border-radius: 2px; background: rgba(var(--accent-rgb), 0.2); pointer-events: none;
     }
     .tl-cursor {
       position: absolute; top: 2px; bottom: 2px; width: 2px; margin-left: -1px;
       background: var(--accent); border-radius: 1px; pointer-events: none;
-      box-shadow: 0 0 8px rgba(110, 168, 255, 0.7);
+      box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.7);
     }
     .tl-cursor::before {
       content: ''; position: absolute; left: 50%; top: -3px; width: 10px; height: 10px;
@@ -236,10 +283,10 @@
 
     .tl-arrow {
       flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
-      background: rgba(110, 168, 255, 0.1); border: 1px solid var(--line);
+      background: var(--panel-2); border: 1px solid var(--line);
       color: var(--ink); cursor: pointer; font-size: 12px;
     }
-    .tl-arrow:hover { background: rgba(110, 168, 255, 0.22); }
+    .tl-arrow:hover { background: var(--panel-3); }
 
     /* ---------------- 编年史长卷 ---------------- */
     /* 浮在时间轴正上方，与它同轴对齐；不摊开时整块不存在 */
@@ -263,12 +310,12 @@
       display: inline-flex; align-items: center; gap: 4px;
       padding: 3px 10px; border-radius: 999px; cursor: pointer; font-family: inherit;
       font-size: 11.5px; color: var(--ink-dim);
-      background: rgba(110, 168, 255, 0.08); border: 1px solid transparent;
+      background: var(--panel-2); border: 1px solid transparent;
     }
-    .chr-tab:hover { background: rgba(110, 168, 255, 0.2); }
+    .chr-tab:hover { background: var(--panel-3); color: var(--ink); }
     .chr-tab.on {
-      color: var(--ink); background: rgba(110, 168, 255, 0.26);
-      border-color: rgba(110, 168, 255, 0.6);
+      color: var(--accent-bright); background: rgba(var(--accent-rgb), 0.14);
+      border-color: rgba(var(--accent-rgb), 0.55);
     }
     .chr-x {
       padding: 0 2px; border: none; background: none; cursor: pointer;
@@ -279,20 +326,20 @@
     .chr-strip .insp-hint { padding: 2px 0; }
     .chr-item {
       flex: 0 0 auto; display: grid; gap: 2px; text-align: left; cursor: pointer;
-      min-width: 104px; max-width: 168px; padding: 8px 11px; border-radius: 8px;
-      background: rgba(110, 168, 255, 0.08); border: 1px solid transparent;
+      min-width: 104px; max-width: 168px; padding: 8px 11px; border-radius: var(--radius);
+      background: var(--panel-2); border: 1px solid transparent;
       color: var(--ink); font-family: inherit;
     }
-    .chr-item:hover { background: rgba(110, 168, 255, 0.2); }
+    .chr-item:hover { background: var(--panel-3); }
     /* 游标还没走到的事件先淡着：长卷是读出来的，读到哪儿亮到哪儿 */
     .chr-item.ahead { opacity: 0.42; }
     .chr-item.at-cursor {
-      opacity: 1; background: rgba(110, 168, 255, 0.26);
-      border-color: rgba(110, 168, 255, 0.6);
-      box-shadow: 0 0 0 3px rgba(110, 168, 255, 0.12);
+      opacity: 1; background: rgba(var(--accent-rgb), 0.14);
+      border-color: rgba(var(--accent-rgb), 0.55);
+      box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
     }
     .chr-year { font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
-    .chr-item.at-cursor .chr-year { color: var(--accent); }
+    .chr-item.at-cursor .chr-year { color: var(--accent-bright); }
     .chr-name { font-size: 12.5px; line-height: 1.35; }
     .chr-note { font-size: 10px; color: var(--ink-dim); }
 
@@ -312,7 +359,7 @@
     .set-row input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }
     .set-row input[type="color"] {
       width: 100%; height: 26px; padding: 0; cursor: pointer;
-      background: none; border: 1px solid var(--line); border-radius: 6px;
+      background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius);
     }
     .set-check { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; }
     .set-check input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
@@ -331,14 +378,14 @@
     }
     #error[hidden] { display: none; }
     #error .box { max-width: 460px; padding: 26px 30px; border-color: rgba(255, 120, 120, 0.4); }
-    #error h2 { margin: 0 0 10px; font-size: 16px; color: #ff9a9a; }
+    #error h2 { margin: 0 0 10px; font-size: 16px; color: var(--danger-soft); }
     #error p { margin: 6px 0; font-size: 13px; color: var(--ink-dim); line-height: 1.7; word-break: break-all; }
 
     /* ---------------- 地图工坊 ---------------- */
     .workshop {
       position: fixed; inset: 0; z-index: 80;
       display: flex; flex-direction: column; gap: 10px;
-      padding: 12px; background: rgba(4, 8, 18, 0.96);
+      padding: 12px; background: var(--bg);
     }
     .workshop.hidden { display: none; }
     .wk-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; flex-wrap: wrap; }
@@ -350,14 +397,14 @@
       display: flex; flex-direction: column; gap: 8px; overflow-y: auto;
     }
     .wk-tool {
-      background: rgba(110, 168, 255, 0.08); border: 1px solid var(--line);
+      background: var(--panel-2); border: 1px solid var(--line);
       color: var(--ink-dim); text-align: left; font-size: 13px;
-      padding: 10px 12px; border-radius: 8px; cursor: pointer;
+      padding: 10px 12px; border-radius: var(--radius); cursor: pointer;
     }
-    .wk-tool:hover { color: var(--ink); background: rgba(110, 168, 255, 0.16); }
+    .wk-tool:hover { color: var(--ink); background: var(--panel-3); }
     .wk-tool.active {
-      color: var(--ink); background: rgba(110, 168, 255, 0.24);
-      border-color: rgba(110, 168, 255, 0.5);
+      color: var(--accent-bright); background: rgba(var(--accent-rgb), 0.14);
+      border-color: rgba(var(--accent-rgb), 0.55);
     }
     /* 画笔按「写哪个通道」分组：组名一行小字，组内按钮竖排 */
     .wk-group { display: flex; flex-direction: column; gap: 6px; }
@@ -366,12 +413,36 @@
     .wk-slider input { width: 100%; accent-color: var(--accent); }
     .wk-canvas-wrap {
       flex: 1; min-width: 0; display: flex; overflow: hidden;
-      border: 1px solid var(--line); border-radius: 10px;
-      background: rgba(4, 8, 18, 0.6);
+      border: 1px solid var(--line); border-radius: var(--radius-lg);
+      background: #090807;
     }
     /* 画布的定位容器：画布绝对定位在里面，缩放平移都靠 transform，
        所以要裁切——不做的话放大后的图会盖到侧栏上去 */
     .wk-stage { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+
+    /* 窄屏：先收提示文字，再让两侧面板贴边收窄，避免顶栏与画布互相遮挡 */
+    @media (max-width: 900px) {
+      .mode-hint { display: none; }
+      #inspector, #settings { width: 264px; }
+      #timeline { width: 94vw; }
+      .chronicle { max-width: 94vw; min-width: 0; }
+    }
+    @media (max-width: 720px) {
+      #topbar { left: 8px; right: 8px; }
+      .topbar-inner { gap: 6px; padding: 0 6px; }
+      .mode-btn { padding: 6px 8px; font-size: 11.5px; }
+      #inspector, #settings {
+        top: 60px; left: 8px; right: 8px; width: auto;
+        max-height: 46vh;
+      }
+      .wk-side { width: 168px; }
+    }
+    @media (max-width: 560px) {
+      .brand { max-width: 110px; font-size: 13px; }
+      .bar-center, .bar-side { gap: 2px; }
+      .mode-btn { padding: 6px 5px; font-size: 11px; }
+      .icon-btn { padding: 6px 6px; }
+    }
   </style>
 </head>
 <body>
