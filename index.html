@@ -6,242 +6,398 @@
   <title>世界图志 · 世界观时间轴工具</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>" />
   <style>
-    /* 视觉基色：近黑底、深灰实色面板、暖色文字。
-       橙色只给品牌动作与「当前」状态；暗金给人物这类需要区别于业务配色的标签；
-       人物、路线、区域等业务颜色仍不从这里取。 */
+    /* 本地字体：不依赖网络加载，发布构建时随 public/fonts 一起复制。
+       Inter 管英文与数字，Noto Sans SC 管中文，Cormorant 只用于少量装饰性西文。 */
+    @font-face {
+      font-family: "Inter";
+      src: url("fonts/Inter-Variable.ttf") format("truetype");
+      font-weight: 100 900;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Noto Sans SC";
+      src: url("fonts/NotoSansSC-Variable.ttf") format("truetype");
+      font-weight: 100 900;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Cormorant Garamond";
+      src: url("fonts/CormorantGaramond-Variable.ttf") format("truetype");
+      font-weight: 300 700;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    /* 复古档案色板：墨黑与炭褐承担大面积背景，旧纸白建立文字层级，
+       铜橙只给品牌、主操作、选中态与时间游标；人物/路线/区域的业务色不在其中。 */
     :root {
       color-scheme: dark;
-      --bg: #0b0a09;
-      --panel: #171513;
-      --panel-2: #1f1c19;
-      --panel-3: #292521;
-      --line: #3a332c;
-      --line-strong: #4a4138;
-      --ink: #ece5da;
-      --ink-dim: #a89e90;
-      --accent: #f08a3c;
-      --accent-bright: #ffa45a;
-      --accent-rgb: 240, 138, 60;
-      --gold: #c8a04a;
-      --gold-bright: #e6c77d;
-      --gold-rgb: 200, 160, 74;
-      --on-accent: #1a120a;
-      --danger: #ff7a7a;
-      --danger-soft: #ff9a9a;
-      --radius-lg: 8px;
-      --radius: 6px;
-      --radius-sm: 4px;
-      --dur: 0.15s;
+
+      --bg: #11100f;
+      --bg-workspace: #191715;
+
+      --surface: #24211e;
+      --surface-raised: #302a24;
+      --surface-input: #1d1b19;
+      --surface-hover: #38312a;
+
+      --text: #d8cbb4;
+      --text-strong: #e8dfcf;
+      --text-muted: #988875;
+      /* 次级面板上的辅助字：比 --text-muted 亮一档，保证 4.5:1 以上 */
+      --text-muted-raised: #a99b87;
+      --text-disabled: #716a5b;
+
+      --accent: #c56b3e;
+      --accent-hover: #d47b4d;
+      /* 强调色用作正文时加深一档；边框/底色仍用 --accent */
+      --accent-text: #d47b4d;
+      --accent-soft: #35241c;
+      --accent-border: #a85a35;
+      --accent-rgb: 197, 107, 62;
+
+      --border: #494034;
+      --border-strong: #a98b60;
+
+      /* 人物/章节标签的暗金色，与铜橙强调区分开 */
+      --gold: #a98b60;
+      --gold-bright: #d0a15b;
+      --gold-rgb: 169, 139, 96;
+
+      --success: #829779;
+      --warning: #d0a15b;
+      --danger: #b65d50;
+      --danger-text: #d98a7d;
+      --danger-rgb: 182, 93, 80;
+
+      --on-accent: #11100f;
+
+      --font-ui: "Inter", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+      --font-editorial: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+
+      --radius-sm: 2px;
+      --radius: 4px;
+      --radius-lg: 5px;
+
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+
+      --dur: 140ms;
+      --transition: color var(--dur) ease, background-color var(--dur) ease,
+        border-color var(--dur) ease;
+
+      /* 层级按实际浮层关系排列；编辑区内部的下拉只用局部层级 */
+      --z-workspace-ui: 10;
+      --z-inspector: 15;
+      --z-chronicle: 19;
+      --z-timeline: 20;
+      --z-settings: 25;
+      --z-topbar: 30;
+      --z-dropdown: 40;
+      --z-tooltip: 50;
+      --z-workshop: 80;
+      --z-modal: 200;
     }
+
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
-    body { font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; color: var(--ink); }
+    body {
+      color: var(--text);
+      /* 极弱的暖色晕染只在页面外围可见，不铺到任何内容面板上 */
+      background:
+        radial-gradient(1100px 620px at 50% -12%, rgba(169, 139, 96, 0.05), transparent 70%),
+        radial-gradient(900px 520px at 50% 112%, rgba(197, 107, 62, 0.035), transparent 70%),
+        var(--bg);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      line-height: 1.5;
+      font-optical-sizing: auto;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
     body.mode-draw canvas { cursor: crosshair !important; }
     canvas { display: block; }
 
-    /* 面板外壳。类名沿用历史命名，现在不再做毛玻璃：实色深灰 + 细边框。 */
+    button, input, textarea, select { font: inherit; }
+    button { color: inherit; }
+    ::selection { background: var(--accent-soft); color: var(--text-strong); }
+
+    /* 细滚动条与整体细线语言一致 */
+    html, body, .glass, .char-menu, .chr-strip {
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+    /* 面板外壳：实色炭褐 + 灰金细边，圆角收敛到 5px 以内 */
     .glass {
-      background: var(--panel);
-      border: 1px solid var(--line);
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: var(--radius-lg);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
     }
 
-    /* 统一的悬停过渡：只过渡颜色，不做位移与模糊 */
     .brand, .icon-btn, .mode-btn, .menu-item, .btn, .chip, .char-row,
-    .chr-tab, .chr-item, .tl-arrow, .tl-tick, .wk-tool, .map-row, .inp {
-      transition: background-color var(--dur) ease, color var(--dur) ease,
-        border-color var(--dur) ease;
+    .chr-tab, .chr-item, .tl-arrow, .tl-tick, .wk-tool, .map-row, .inp,
+    .char-opt, .btn-ghost {
+      transition: var(--transition);
     }
 
-    /* 键盘焦点：只在键盘操作时出现，鼠标点击不额外描边 */
-    button:focus-visible {
-      outline: 1px solid var(--accent);
-      outline-offset: 1px;
+    /* 键盘焦点：清晰的暖色轮廓，不用发光替代 */
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
     }
 
     /* ---------------- 顶栏 ---------------- */
     #topbar {
-      position: fixed; top: 12px; left: 12px; right: 12px; z-index: 20;
-      height: 44px;
+      position: fixed; top: 12px; left: 12px; right: 12px; z-index: var(--z-topbar);
+      height: 48px;
+      /* 页面外围允许一点极细的印刷网点，强度低到只提供质感 */
+      background-color: var(--bg);
+      background-image: radial-gradient(rgba(216, 203, 180, 0.026) 1px, transparent 1px);
+      background-size: 3px 3px;
+      /* 顶栏是一条扁平横带：不靠四周描边和投影立起来，只留底部一条灰金细线 */
+      border-color: transparent;
+      border-bottom-color: rgba(169, 139, 96, 0.42);
+      box-shadow: none;
     }
     .topbar-inner {
       display: flex; align-items: center; gap: 10px; height: 100%;
-      padding: 0 10px;
+      padding: 0 12px;
     }
     .bar-side { display: flex; align-items: center; gap: 8px; flex: 1; }
     .bar-side:last-child { justify-content: flex-end; }
     .bar-center { display: flex; gap: 4px; }
     .brand {
-      background: none; border: none; color: var(--ink);
-      font-size: 15px; font-weight: 600; letter-spacing: 1px;
-      cursor: pointer; padding: 6px 8px; border-radius: var(--radius-sm);
+      background: none; border: none; color: var(--text-strong);
+      font-size: 15.5px; font-weight: 600; letter-spacing: 0.8px;
+      cursor: pointer; padding: 6px 9px; border-radius: var(--radius);
       max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    /* 品牌位的小橙点：不占结构，长世界名被截断时也还在 */
+    /* 品牌位的小铜点：不占结构，长世界名被截断时也还在 */
     .brand::before {
       content: ''; display: inline-block; width: 6px; height: 6px;
-      margin-right: 8px; border-radius: 50%; background: var(--accent);
+      margin-right: 8px; border-radius: 1px; background: var(--accent);
       vertical-align: 1px;
     }
-    .brand:hover { background: var(--panel-2); }
+    .brand:hover { background: var(--surface-raised); }
     .icon-btn {
-      background: none; border: none; color: var(--ink-dim); font-size: 16px;
-      cursor: pointer; padding: 6px 9px; border-radius: var(--radius-sm);
+      background: none; border: 1px solid transparent; color: var(--text-muted); font-size: 16px;
+      cursor: pointer; padding: 6px 9px; border-radius: var(--radius);
     }
-    .icon-btn:hover { color: var(--ink); background: var(--panel-2); }
+    .icon-btn:hover { color: var(--text-strong); background: var(--surface-raised); }
     .mode-btn {
-      background: none; border: 1px solid transparent; color: var(--ink-dim);
-      font-size: 12.5px; padding: 6px 12px; border-radius: var(--radius); cursor: pointer;
+      background: none; border: 1px solid transparent; color: var(--text-muted);
+      font-size: 13px; padding: 6px 12px; border-radius: var(--radius); cursor: pointer;
     }
-    .mode-btn:hover { color: var(--ink); background: var(--panel-2); }
+    .mode-btn:hover { color: var(--text); background: var(--surface-raised); }
     .mode-btn.active {
-      color: var(--accent-bright);
-      background: rgba(var(--accent-rgb), 0.14);
-      border-color: rgba(var(--accent-rgb), 0.55);
+      color: var(--accent-text);
+      background: var(--accent-soft);
+      border-color: var(--accent-border);
     }
-    .mode-hint { font-size: 12px; color: var(--ink-dim); margin-right: 6px; }
+    .mode-hint { font-size: 12px; color: var(--text-muted); margin-right: 6px; }
 
     /* 项目下拉菜单 */
     .menu {
-      position: absolute; top: 46px; left: 10px; z-index: 30;
-      min-width: 220px; padding: 6px; display: grid; gap: 2px;
+      position: absolute; top: 52px; left: 10px; z-index: var(--z-dropdown);
+      min-width: 224px; padding: 6px; display: grid; gap: 2px;
+      background: var(--surface-raised);
+      border-color: var(--border);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
     }
     .menu-item {
-      background: none; border: none; color: var(--ink); text-align: left;
+      background: none; border: none; color: var(--text); text-align: left;
       font-size: 13px; padding: 9px 12px; border-radius: var(--radius-sm); cursor: pointer;
     }
-    .menu-item:hover { background: var(--panel-2); }
-    .menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+    .menu-item:hover { background: var(--surface-hover); color: var(--text-strong); }
+    .menu-sep { height: 1px; margin: 5px 8px; background: var(--border); }
 
     /* ---------------- 右侧检查器 ---------------- */
     #inspector {
-      position: fixed; top: 68px; right: 12px; z-index: 15;
-      width: 300px; max-height: calc(100vh - 160px);
-      overflow-y: auto; padding: 14px;
+      position: fixed; top: 72px; right: 12px; z-index: var(--z-inspector);
+      width: 300px; max-height: calc(100vh - 168px);
+      overflow-y: auto; padding: 16px;
     }
     #inspector:empty { display: none; }
-    .insp-block { display: grid; gap: 10px; }
-    .insp-title { font-size: 15px; font-weight: 600; letter-spacing: 1px; }
-    .insp-hint { font-size: 12px; color: var(--ink-dim); line-height: 1.6; margin: 0; }
-    .field-label { font-size: 11px; color: var(--ink-dim); letter-spacing: 1px; }
-    .inp {
-      width: 100%; background: var(--panel-2); color: var(--ink);
-      border: 1px solid var(--line); border-radius: var(--radius);
-      padding: 7px 9px; font-size: 13px; font-family: inherit; outline: none;
+    .insp-block { display: grid; gap: 12px; }
+    .insp-title {
+      font-size: 17px; font-weight: 600; letter-spacing: 0.6px;
+      color: var(--text-strong);
     }
-    .inp:hover { border-color: var(--line-strong); }
+    .insp-block > .insp-title {
+      padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    }
+    .insp-hint {
+      font-size: 12.5px; color: var(--text-muted); line-height: 1.65; margin: 0;
+    }
+    .field-label {
+      font-size: 11px; color: var(--text-muted); letter-spacing: 0.3px;
+    }
+    .inp {
+      width: 100%; background: var(--surface-input); color: var(--text-strong);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 7px 10px; font-size: 13.5px; font-family: inherit; outline: none;
+    }
+    .inp:hover { border-color: rgba(169, 139, 96, 0.55); }
     .inp:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.14);
+      box-shadow: none;
+    }
+    .inp:disabled {
+      color: var(--text-disabled); cursor: not-allowed;
     }
     textarea.inp { resize: vertical; }
-    select.inp option { background: var(--panel-2); color: var(--ink); }
+    select.inp option { background: var(--surface-input); color: var(--text); }
+    /* 表单里的取色器与输入框保持同一套边框和高度 */
+    input[type="color"] {
+      width: 46px; height: 28px; padding: 2px; cursor: pointer;
+      background: var(--surface-input); border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
+    input[type="checkbox"] { accent-color: var(--accent); }
+
     .btn {
-      background: var(--panel-2); border: 1px solid var(--line);
-      color: var(--ink); font-size: 12.5px; padding: 8px 12px;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      color: var(--text); font-size: 13px; padding: 7px 11px;
       border-radius: var(--radius); cursor: pointer;
     }
-    .btn:hover { background: var(--panel-3); border-color: var(--line-strong); }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn:hover {
+      background: var(--surface-hover); color: var(--text-strong);
+      border-color: rgba(169, 139, 96, 0.5);
+    }
+    .btn:disabled { color: var(--text-disabled); border-color: var(--border); opacity: 0.5; cursor: not-allowed; }
     .btn-primary {
       background: var(--accent); border-color: var(--accent);
       color: var(--on-accent); font-weight: 600;
     }
-    .btn-primary:hover { background: var(--accent-bright); border-color: var(--accent-bright); }
+    .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
     /* 开关类按钮的按下态。别用 btn-primary：工坊里「完成」靠它定位，不能有第二个 */
     .btn.active {
-      color: var(--accent-bright);
-      background: rgba(var(--accent-rgb), 0.14);
-      border-color: rgba(var(--accent-rgb), 0.55);
+      color: var(--accent-text);
+      background: var(--accent-soft);
+      border-color: var(--accent-border);
     }
-    .btn-danger { color: var(--danger); border-color: rgba(255, 122, 122, 0.35); }
-    .btn-danger:hover { background: rgba(255, 122, 122, 0.15); border-color: rgba(255, 122, 122, 0.5); }
-    .btn-ghost { background: none; border: none; color: var(--ink-dim); }
-    .btn-ghost:hover { color: var(--ink); background: var(--panel-2); }
-    .btn-mini { padding: 3px 8px; font-size: 11px; }
-    .sep { border: none; border-top: 1px solid var(--line); margin: 4px 0; }
+    .btn-danger {
+      color: var(--danger-text); border-color: rgba(182, 93, 80, 0.55);
+    }
+    .btn-danger:hover {
+      background: rgba(182, 93, 80, 0.14); color: #e6a196;
+      border-color: var(--danger);
+    }
+    .btn-ghost { background: none; border: none; color: var(--text-muted); }
+    .btn-ghost:hover { color: var(--text); background: var(--surface-raised); }
+    .btn-mini { padding: 3px 8px; font-size: 11.5px; }
+    .sep { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
     .stat-grid { display: flex; gap: 8px; margin-top: 4px; }
     .stat {
-      flex: 1; text-align: center; padding: 8px 4px;
-      background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius);
+      flex: 1; text-align: center; padding: 9px 4px;
+      background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius);
     }
-    .stat b { display: block; font-size: 16px; }
-    .stat span { font-size: 10px; color: var(--ink-dim); }
-    .item-img { width: 100%; border-radius: var(--radius); border: 1px solid var(--line); }
+    .stat b {
+      display: block; font-family: var(--font-editorial);
+      font-size: 21px; font-weight: 600; line-height: 1.15;
+      color: var(--text-strong); font-variant-numeric: tabular-nums;
+    }
+    .stat span { font-size: 10.5px; color: var(--text-muted-raised); }
+    .item-img { width: 100%; border-radius: var(--radius); border: 1px solid var(--border); }
+
     /* 人物清单与「涉及的事件」清单共用的一行：左边一栏定宽，右边标题占满可溢出省略 */
     .char-list { display: grid; gap: 4px; }
     .char-row {
       display: flex; align-items: baseline; gap: 8px; text-align: left; cursor: pointer;
-      padding: 6px 8px; border-radius: var(--radius-sm); font-family: inherit; font-size: 12.5px;
-      background: var(--panel-2); border: 1px solid transparent; color: var(--ink);
+      padding: 7px 9px; border-radius: var(--radius-sm); font-family: inherit; font-size: 13px;
+      background: var(--surface-input); border: 1px solid transparent; color: var(--text);
     }
-    .char-row:hover { background: var(--panel-3); }
-    .char-row b { flex: 0 0 auto; font-size: 12px; font-variant-numeric: tabular-nums; }
-    .char-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-dim); }
+    .char-row:hover { background: var(--surface-hover); border-color: var(--border); }
+    .char-row b { flex: 0 0 auto; font-size: 12px; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+    .char-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted-raised); }
+
     /* 章节清单：一行一个章节，上行改名、下行是条数与范围加两个动作 */
     .chap-list { display: grid; gap: 12px; }
-    .chap-row { display: grid; gap: 5px; }
+    .chap-row { display: grid; gap: 6px; }
     .chap-meta { display: flex; align-items: center; gap: 6px; }
-    /* 「涉及人物」：已挂上的留成暗金 tag，其余的去搜索框里现找，
-       所以这里只出现勾上的那几位，没挂上的一个也不占地方。
+
+    /* 「涉及人物」：已挂上的留成暗金 tag，其余的去搜索框里现找。
        人物自己的颜色只留在候选列表的小圆点上，tag 本身与整体暗色风格一致 */
-    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .chip {
-      padding: 4px 9px; border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 12px;
-      background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-dim);
+      padding: 4px 9px; border-radius: var(--radius); cursor: pointer; font-family: inherit; font-size: 12px;
+      background: var(--surface-input); border: 1px solid var(--border); color: var(--text-muted-raised);
     }
-    .chip:hover { background: var(--panel-3); }
+    .chip:hover { background: var(--surface-hover); color: var(--text); }
     .chip.on {
-      color: var(--gold-bright); background: rgba(var(--gold-rgb), 0.12);
-      border-color: rgba(var(--gold-rgb), 0.5); font-weight: 600;
+      color: var(--gold-bright); background: rgba(var(--gold-rgb), 0.14);
+      border-color: rgba(var(--gold-rgb), 0.62); font-weight: 600;
     }
     .chip.on:hover {
-      background: rgba(var(--gold-rgb), 0.2); border-color: rgba(var(--gold-rgb), 0.72);
+      background: rgba(var(--gold-rgb), 0.2); border-color: rgba(var(--gold-rgb), 0.82);
     }
-    .chip-x { margin-left: 5px; font-size: 10px; opacity: 0.55; }
+    /* 名字过长时在 tag 内截断，别把检查器撑出横向滚动 */
+    .chip-name {
+      display: inline-block; max-width: 150px; vertical-align: bottom;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .chip-x { margin-left: 5px; font-size: 10px; opacity: 0.6; }
     .chip:hover .chip-x { opacity: 1; }
+
     .char-pick { display: grid; gap: 6px; }
     /* 候选浮在输入框下面，不占位——展开收起来不会把检查器剩下的字段顶来顶去 */
     .char-search { position: relative; }
     .char-menu {
       position: absolute; left: 0; right: 0; top: calc(100% + 3px); z-index: 20;
       max-height: 172px; overflow-y: auto; padding: 3px;
-      background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius);
-      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
+      background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.55);
     }
     .char-opt {
       display: flex; align-items: center; gap: 7px; width: 100%; text-align: left;
-      padding: 5px 7px; border: 0; border-radius: var(--radius-sm); cursor: pointer;
-      background: transparent; color: var(--ink); font-family: inherit; font-size: 12.5px;
+      padding: 6px 8px; border: 0; border-radius: var(--radius-sm); cursor: pointer;
+      background: transparent; color: var(--text); font-family: inherit; font-size: 13px;
     }
-    .char-opt.hit { background: rgba(var(--accent-rgb), 0.16); }
+    .char-opt.hit { background: var(--accent-soft); color: var(--text-strong); }
     .char-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
     .char-name { flex: none; }
     /* 别名挤在右边，太长就截断——它是用来确认「搜到的正是这个人」的旁证 */
     .char-alias {
       margin-left: auto; padding-left: 8px; min-width: 0;
-      color: var(--ink-dim); font-size: 11px;
+      color: var(--text-muted-raised); font-size: 11px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .char-none { margin: 0; padding: 6px 7px; color: var(--ink-dim); font-size: 12px; }
-    .map-thumb { width: 64px; height: 32px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--line); }
+    .char-none { margin: 0; padding: 6px 8px; color: var(--text-muted-raised); font-size: 12px; }
+    .map-thumb { width: 64px; height: 32px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border); }
     .map-row {
-      display: flex; align-items: center; gap: 8px; font-size: 12.5px;
-      padding: 5px 6px; border-radius: var(--radius-sm); cursor: pointer;
+      display: flex; align-items: center; gap: 8px; font-size: 13px;
+      padding: 6px 7px; border-radius: var(--radius-sm); cursor: pointer;
     }
-    .map-row:hover { background: var(--panel-2); }
+    .map-row:hover { background: var(--surface-raised); }
 
     /* ---------------- 底部时间轴 ---------------- */
     #timeline {
-      position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 20;
+      position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: var(--z-timeline);
       /* 必须给死宽度：fixed 元素默认收缩包裹，而 .tl-track 的子元素全是绝对定位、
          撑不出内在宽度，轨道会被压成 0 宽——刻度全叠在一点，游标走不动 */
       width: min(86vw, 900px);
     }
     #timeline:empty { display: none; } /* 没有内容带时间时整根轴不出现，容器也别留个空壳 */
     .tl-inner {
-      display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+      display: flex; align-items: center; gap: 8px; padding: 8px 12px;
     }
     /* 读数：当前游标停在哪一年。不报事件标题——那是长卷与检查器的事 */
     .tl-readout {
@@ -249,11 +405,11 @@
       padding-left: 2px; cursor: default;
     }
     .tl-year {
-      font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;
-      color: var(--ink); white-space: nowrap;
+      font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums;
+      color: var(--text-strong); white-space: nowrap;
     }
     .tl-near {
-      font-size: 11.5px; color: var(--ink-dim); white-space: nowrap;
+      font-size: 11.5px; color: var(--text-muted); white-space: nowrap;
       overflow: hidden; text-overflow: ellipsis; max-width: 120px;
     }
 
@@ -264,55 +420,57 @@
     }
     .tl-track::before {
       content: ''; position: absolute; left: 0; right: 0; top: 50%;
-      height: 1px; background: var(--line);
+      height: 1px; background: rgba(169, 139, 96, 0.42);
     }
     .tl-tick {
-      position: absolute; top: 50%; width: 9px; height: 9px; padding: 0;
-      margin: -4.5px 0 0 -4.5px; border-radius: 50%; cursor: pointer;
-      background: var(--line-strong); border: 1px solid var(--line);
+      position: absolute; top: 50%; width: 8px; height: 8px; padding: 0;
+      margin: -4px 0 0 -4px; border-radius: 50%; cursor: pointer;
+      background: var(--text-muted); border: none;
       transform: translateX(0);
     }
-    .tl-tick:hover { background: var(--accent); border-color: var(--accent); }
+    .tl-tick:hover { background: var(--accent); }
     .tl-tick.at-cursor {
-      background: var(--accent); border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
+      width: 10px; height: 10px; margin: -5px 0 0 -5px;
+      background: var(--accent);
     }
     /* 有区间的刻度：从起点往终点拉一根横线，一眼看出它持续了多久 */
     .tl-span {
       position: absolute; top: 50%; height: 3px; margin-top: -1.5px;
-      border-radius: 2px; background: rgba(var(--accent-rgb), 0.2); pointer-events: none;
+      border-radius: 2px; background: rgba(var(--accent-rgb), 0.26); pointer-events: none;
     }
     .tl-cursor {
       position: absolute; top: 2px; bottom: 2px; width: 2px; margin-left: -1px;
       background: var(--accent); border-radius: 1px; pointer-events: none;
-      box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.7);
     }
     .tl-cursor::before {
-      content: ''; position: absolute; left: 50%; top: -3px; width: 10px; height: 10px;
-      margin-left: -5px; border-radius: 50%; background: var(--accent);
+      content: ''; position: absolute; left: 50%; top: -3px; width: 9px; height: 9px;
+      margin-left: -4.5px; border-radius: 50%; background: var(--accent);
     }
 
     .tl-arrow {
-      flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
-      background: var(--panel-2); border: 1px solid var(--line);
-      color: var(--ink); cursor: pointer; font-size: 12px;
+      flex-shrink: 0; width: 30px; height: 30px; border-radius: var(--radius);
+      background: var(--surface-raised); border: 1px solid var(--border);
+      color: var(--text); cursor: pointer; font-size: 12px;
     }
-    .tl-arrow:hover { background: var(--panel-3); }
+    .tl-arrow:hover { background: var(--surface-hover); color: var(--text-strong); }
 
     /* ---------------- 编年史长卷 ---------------- */
     /* 浮在时间轴正上方，与它同轴对齐；不摊开时整块不存在 */
     .chronicle {
-      position: fixed; bottom: 68px; left: 50%; transform: translateX(-50%); z-index: 19;
+      position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%); z-index: var(--z-chronicle);
       max-width: min(86vw, 900px); min-width: min(60vw, 520px);
       /* 不裁切：按姓名搜人的候选浮层要越出面板上沿 */
       display: flex; flex-direction: column; overflow: visible;
     }
     .chr-head {
       display: flex; align-items: center; gap: 10px;
-      padding: 8px 8px 6px 14px; border-bottom: 1px solid var(--line);
+      padding: 10px 10px 8px 16px; border-bottom: 1px solid var(--border);
     }
-    .chr-title { font-size: 13px; font-weight: 600; letter-spacing: 2px; }
-    .chr-count { flex: 1; font-size: 11.5px; color: var(--ink-dim); }
+    .chr-title {
+      font-size: 16px; font-weight: 600; letter-spacing: 1.6px;
+      color: var(--text-strong);
+    }
+    .chr-count { flex: 1; font-size: 11.5px; color: var(--text-muted); }
     /* 按姓名找人物：候选向上展开，避开下面的长卷与时间轴 */
     .chr-search { position: relative; flex: 0 1 170px; min-width: 108px; }
     .chr-search .inp { padding: 4px 8px; font-size: 11.5px; }
@@ -321,124 +479,139 @@
     /* 顶上的视图入口：全部 | 各章节。标签不分来源，样式一律相同 */
     .chr-tabs {
       display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-      padding: 8px 14px 0;
+      padding: 10px 16px 0;
     }
     .chr-tab {
       display: inline-flex; align-items: center; gap: 4px;
-      padding: 3px 10px; border-radius: 999px; cursor: pointer; font-family: inherit;
-      font-size: 11.5px; color: var(--ink-dim);
-      background: var(--panel-2); border: 1px solid transparent;
+      padding: 4px 10px; border-radius: var(--radius); cursor: pointer; font-family: inherit;
+      font-size: 12px; color: var(--text-muted-raised);
+      background: var(--surface-input); border: 1px solid transparent;
     }
-    .chr-tab:hover { background: var(--panel-3); color: var(--ink); }
+    .chr-tab:hover { background: var(--surface-hover); color: var(--text); }
     .chr-tab.on {
-      color: var(--accent-bright); background: rgba(var(--accent-rgb), 0.14);
-      border-color: rgba(var(--accent-rgb), 0.55);
+      color: var(--accent-text); background: var(--accent-soft);
+      border-color: var(--accent-border);
     }
     .chr-x {
       padding: 0 2px; border: none; background: none; cursor: pointer;
       color: inherit; font-size: 11px; line-height: 1;
     }
-    .chr-x:hover { color: var(--danger); }
-    .chr-strip { display: flex; gap: 8px; padding: 10px 14px 12px; overflow-x: auto; }
+    .chr-x:hover { color: var(--danger-text); }
+    .chr-strip { display: flex; gap: 8px; padding: 12px 16px 14px; overflow-x: auto; }
     .chr-strip .insp-hint { padding: 2px 0; }
     .chr-empty { display: grid; gap: 8px; padding: 2px 0; }
     .chr-empty-actions { display: flex; flex-wrap: wrap; gap: 6px; }
     .chr-item {
-      flex: 0 0 auto; display: grid; gap: 2px; text-align: left; cursor: pointer;
+      flex: 0 0 auto; display: grid; gap: 3px; text-align: left; cursor: pointer;
       min-width: 104px; max-width: 168px; padding: 8px 11px; border-radius: var(--radius);
-      background: var(--panel-2); border: 1px solid transparent;
-      color: var(--ink); font-family: inherit;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      color: var(--text); font-family: inherit;
     }
-    .chr-item:hover { background: var(--panel-3); }
+    .chr-item:hover { background: var(--surface-hover); border-color: rgba(169, 139, 96, 0.45); }
     /* 游标还没走到的事件先淡着：长卷是读出来的，读到哪儿亮到哪儿 */
-    .chr-item.ahead { opacity: 0.42; }
+    .chr-item.ahead { opacity: 0.45; }
     .chr-item.at-cursor {
-      opacity: 1; background: rgba(var(--accent-rgb), 0.14);
-      border-color: rgba(var(--accent-rgb), 0.55);
-      box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
+      opacity: 1; background: var(--accent-soft);
+      border-color: var(--accent-border);
     }
-    .chr-year { font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
-    .chr-item.at-cursor .chr-year { color: var(--accent-bright); }
-    .chr-name { font-size: 12.5px; line-height: 1.35; }
-    .chr-note { font-size: 10px; color: var(--ink-dim); }
+    .chr-year {
+      font-size: 11px; color: var(--text-muted-raised); font-variant-numeric: tabular-nums;
+    }
+    .chr-item.at-cursor .chr-year { color: var(--accent-text); }
+    .chr-name { font-size: 13px; line-height: 1.4; color: var(--text-strong); }
+    .chr-note { font-size: 10px; color: var(--text-muted-raised); }
 
     /* ---------------- 画面设置 ---------------- */
     #settings {
-      position: fixed; top: 68px; right: 12px; z-index: 25;
-      width: 300px; max-height: calc(100vh - 160px);
-      overflow-y: auto; padding: 14px;
+      position: fixed; top: 72px; right: 12px; z-index: var(--z-settings);
+      width: 300px; max-height: calc(100vh - 168px);
+      overflow-y: auto; padding: 16px;
     }
     #settings:empty { display: none; } /* 关掉后组件渲染空，只留容器 */
-    .set-group { display: grid; gap: 9px; }
-    .set-group + .set-group { padding-top: 9px; border-top: 1px solid var(--line); }
-    .set-head { font-size: 11px; color: var(--ink-dim); letter-spacing: 1px; }
-    .set-row { display: grid; gap: 3px; font-size: 12.5px; }
+    /* 只给面板标题那一行加分隔线；滑块行同样叫 set-row-top，不能一起画线 */
+    #settings .insp-block > .set-row-top:first-child {
+      padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    }
+    .set-group { display: grid; gap: 10px; }
+    .set-group + .set-group { padding-top: 12px; border-top: 1px solid var(--border); }
+    .set-head {
+      font-size: 11px; color: var(--text-muted); letter-spacing: 1.2px;
+      text-transform: uppercase;
+    }
+    .set-row { display: grid; gap: 4px; font-size: 13px; }
     .set-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-    .set-val { font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+    .set-val { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
     .set-row input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }
     .set-row input[type="color"] {
-      width: 100%; height: 26px; padding: 0; cursor: pointer;
-      background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius);
+      width: 100%; height: 28px; padding: 0; cursor: pointer;
+      background: var(--surface-input); border: 1px solid var(--border); border-radius: var(--radius);
     }
-    .set-check { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; }
+    .set-check { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
     .set-check input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 
     /* ---------------- 浮层 ---------------- */
     #tooltip {
-      position: fixed; z-index: 40; padding: 4px 10px; font-size: 12px;
-      pointer-events: none; white-space: nowrap; color: var(--ink);
+      position: fixed; z-index: var(--z-tooltip); padding: 5px 10px; font-size: 12px;
+      pointer-events: none; white-space: nowrap; color: var(--text-strong);
+      background: var(--surface-raised); border: 1px solid var(--border-strong);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
     }
     #tooltip[hidden] { display: none; }
 
     #error {
-      position: fixed; inset: 0; z-index: 200;
+      position: fixed; inset: 0; z-index: var(--z-modal);
       display: flex; align-items: center; justify-content: center;
-      background: rgba(0, 0, 0, 0.85);
+      background: rgba(17, 16, 15, 0.88);
     }
     #error[hidden] { display: none; }
-    #error .box { max-width: 460px; padding: 26px 30px; border-color: rgba(255, 120, 120, 0.4); }
-    #error h2 { margin: 0 0 10px; font-size: 16px; color: var(--danger-soft); }
-    #error p { margin: 6px 0; font-size: 13px; color: var(--ink-dim); line-height: 1.7; word-break: break-all; }
+    #error .box { max-width: 460px; padding: 26px 30px; border-color: rgba(182, 93, 80, 0.55); }
+    #error h2 { margin: 0 0 10px; font-size: 16px; color: var(--danger-text); }
+    #error p { margin: 6px 0; font-size: 13px; color: var(--text-muted); line-height: 1.7; word-break: break-all; }
 
     /* ---------------- 地图工坊 ---------------- */
     .workshop {
-      position: fixed; inset: 0; z-index: 80;
+      position: fixed; inset: 0; z-index: var(--z-workshop);
       display: flex; flex-direction: column; gap: 10px;
-      padding: 12px; background: var(--bg);
+      padding: 12px; background: var(--bg-workspace);
     }
     .workshop.hidden { display: none; }
-    .wk-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; flex-wrap: wrap; }
-    .wk-title { font-weight: 600; letter-spacing: 1px; margin-right: 6px; }
-    .wk-dim { font-size: 12px; color: var(--ink-dim); }
+    .wk-top { display: flex; align-items: center; gap: 8px; padding: 9px 12px; flex-wrap: wrap; }
+    .wk-title {
+      font-weight: 600; letter-spacing: 0.5px; margin-right: 6px;
+      font-size: 16px; color: var(--text-strong);
+    }
+    .wk-dim { font-size: 12px; color: var(--text-muted); }
     .wk-body { display: flex; gap: 10px; flex: 1; min-height: 0; }
     .wk-side {
-      width: 200px; flex-shrink: 0; padding: 12px;
-      display: flex; flex-direction: column; gap: 8px; overflow-y: auto;
+      width: 200px; flex-shrink: 0; padding: 14px;
+      display: flex; flex-direction: column; gap: 10px; overflow-y: auto;
     }
     .wk-tool {
-      background: var(--panel-2); border: 1px solid var(--line);
-      color: var(--ink-dim); text-align: left; font-size: 13px;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      color: var(--text); text-align: left; font-size: 13px;
       padding: 10px 12px; border-radius: var(--radius); cursor: pointer;
     }
-    .wk-tool:hover { color: var(--ink); background: var(--panel-3); }
+    .wk-tool:hover { background: var(--surface-hover); color: var(--text-strong); }
     .wk-tool.active {
-      color: var(--accent-bright); background: rgba(var(--accent-rgb), 0.14);
-      border-color: rgba(var(--accent-rgb), 0.55);
+      color: var(--accent-text); background: var(--accent-soft);
+      border-color: var(--accent-border);
     }
     /* 画笔按「写哪个通道」分组：组名一行小字，组内按钮竖排 */
     .wk-group { display: flex; flex-direction: column; gap: 6px; }
-    .wk-group-label { font-size: 11px; color: var(--ink-dim); letter-spacing: 1px; margin-left: 2px; }
-    .wk-slider { display: grid; gap: 4px; font-size: 12px; color: var(--ink-dim); margin-top: 6px; }
+    .wk-group-label { font-size: 11px; color: var(--text-muted); letter-spacing: 1px; margin-left: 2px; }
+    .wk-slider { display: grid; gap: 4px; font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+    .wk-slider b { color: var(--text-strong); font-variant-numeric: tabular-nums; }
     .wk-slider input { width: 100%; accent-color: var(--accent); }
     .wk-canvas-wrap {
       flex: 1; min-width: 0; display: flex; overflow: hidden;
-      border: 1px solid var(--line); border-radius: var(--radius-lg);
+      border: 1px solid var(--border); border-radius: var(--radius-lg);
       background: #090807;
     }
     /* 画布的定位容器：画布绝对定位在里面，缩放平移都靠 transform，
        所以要裁切——不做的话放大后的图会盖到侧栏上去 */
     .wk-stage { position: relative; flex: 1; min-width: 0; overflow: hidden; }
 
+    /* ---------------- 响应式 ---------------- */
     /* 窄屏：先收提示文字，再让两侧面板贴边收窄，避免顶栏与画布互相遮挡 */
     @media (max-width: 900px) {
       .mode-hint { display: none; }
@@ -448,19 +621,29 @@
     }
     @media (max-width: 720px) {
       #topbar { left: 8px; right: 8px; }
-      .topbar-inner { gap: 6px; padding: 0 6px; }
-      .mode-btn { padding: 6px 8px; font-size: 11.5px; }
+      .topbar-inner { gap: 6px; padding: 0 8px; }
+      .mode-btn { padding: 6px 8px; font-size: 12px; }
       #inspector, #settings {
-        top: 60px; left: 8px; right: 8px; width: auto;
+        top: 64px; left: 8px; right: 8px; width: auto;
         max-height: 46vh;
       }
       .wk-side { width: 168px; }
     }
     @media (max-width: 560px) {
-      .brand { max-width: 110px; font-size: 13px; }
+      .brand { max-width: 110px; font-size: 13.5px; }
       .bar-center, .bar-side { gap: 2px; }
-      .mode-btn { padding: 6px 5px; font-size: 11px; }
+      .mode-btn { padding: 6px 5px; font-size: 11.5px; }
       .icon-btn { padding: 6px 6px; }
+    }
+
+    /* 系统要求减少动态时，所有颜色过渡直接落定 */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+      }
     }
   </style>
 </head>

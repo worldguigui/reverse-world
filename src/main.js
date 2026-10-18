@@ -313,7 +313,7 @@ async function main() {
   });
   console.info(
     '%c window.world ',
-    'background:#f08a3c;color:#1a120a;padding:2px 6px;border-radius:4px;font-weight:bold',
+    'background:#c56b3e;color:#11100f;padding:2px 6px;border-radius:4px;font-weight:bold',
     'API 就绪，输入 world.help() 查看；首次使用可从 ☰ 菜单载入示例世界',
   );
 
