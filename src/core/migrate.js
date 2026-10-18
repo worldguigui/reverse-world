@@ -3,12 +3,15 @@
  *
  * v1 的模型是「时间点槽位容器」：每个时间点自带一张地图 / 一套地形，内容是第几个槽位上的东西。
  * v2 换成了「一张脸 + 一根游标」：球只有一张地图，内容自带数值年份，切面由游标求值得到。
+ * v3 把章节关系从事件挪到了章节：`event.groupId` → `group.eventIds`，
+ * 一个事件因此可以同时属于多章，姓名搜索生成的章节也不再需要单独的导出字段。
  *
  * 迁移的目标是尽量不丢数据：
  *   - 球只剩一张脸 —— 取最后一个带栅格地形的时间点，也就是「世界演进至今的样子」；
  *   - 内容的时间锚点由「时间点 id」换成「数值年」，找不到的锚点留空（等价于旧的开放端点）；
  *   - 旧时间点本身变成一条没有坐标的事件 —— 它本来就是「那个时刻发生的事」，
- *     这样时间轴上仍有刻度。
+ *     这样时间轴上仍有刻度；
+ *   - v2 的 `event.groupId` 原样搬进那一章的 eventIds，多对多关系只是多了一个方向。
  * 真正丢掉的是逐时代的地图与地形、旧版的图片底图，以及旧模型里的地点：地点这一等实体已经取消，
  * 它们没有对应的新形状，硬塞成事件只会把「哪一年发生了什么」变成一张地名表。
  */
@@ -29,13 +32,18 @@ function lastOf(timePoints, field) {
 }
 
 /**
- * v1 → v2。收的是一份原始对象（可能来自 IndexedDB，也可能来自导入的文件），
- * 返回一份 v2 形状的对象；版本认不出来就抛错。字段的兜底校验交给 normalizeProject。
+ * 收的是一份原始对象（可能来自 IndexedDB，也可能来自导入的文件），
+ * 一路迁到当前版本；版本认不出来就抛错。字段的兜底校验交给 normalizeProject。
  */
 export function migrateProject(raw) {
   if (!raw || typeof raw !== 'object') throw new Error('不是合法的项目对象');
-  if (raw.version !== 1) throw new Error(`不支持的项目版本：${raw.version}`);
+  if (raw.version === 2) return toV3(raw);
+  if (raw.version === 1) return toV3(fromV1(raw));
+  throw new Error(`不支持的项目版本：${raw.version}`);
+}
 
+/** v1 → v2 */
+function fromV1(raw) {
   const timePoints = Array.isArray(raw.timePoints) ? raw.timePoints.filter((t) => t?.id) : [];
 
   // 旧时间点 → 只有年份、没有坐标的瞬时事件。id 原样留着，它是不可解释的字符串，改名没有意义
@@ -66,5 +74,29 @@ export function migrateProject(raw) {
     events: [...shift(raw.events), ...events],
     routes: shift(raw.routes),
     regions: shift(raw.regions),
+  };
+}
+
+/**
+ * v2 → v3：把事件上的单值 groupId 搬进对应章节的 eventIds。
+ * 章节从此是清单的所有者；事件对象上的那份引用删掉，免得出现第二份真相。
+ * 指向不存在的章节的 id 直接丢掉（悬空引用本来也渲染不出来）。
+ */
+function toV3(raw) {
+  const groups = (Array.isArray(raw.groups) ? raw.groups : [])
+    .filter((g) => g && typeof g === 'object' && g.id)
+    .map((g) => ({ ...g, eventIds: [] }));
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  const events = (Array.isArray(raw.events) ? raw.events : [])
+    .filter((ev) => ev && typeof ev === 'object');
+  for (const ev of events) {
+    const g = ev.groupId ? byId.get(ev.groupId) : null;
+    if (g && !g.eventIds.includes(ev.id)) g.eventIds.push(ev.id);
+  }
+  return {
+    ...raw,
+    version: 3,
+    groups,
+    events: events.map(({ groupId: _legacy, ...ev }) => ev),
   };
 }

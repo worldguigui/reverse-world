@@ -76,7 +76,7 @@ export const createActionsSlice = (set, get) => ({
     try {
       const p = await buildSampleProject();
       get().loadProjectInto(p);
-      get().toast('示例世界已载入：拖动底部游标，看一战的事件依次登场');
+      get().toast('示例世界已载入：拖动底部游标，看事件依次登场');
     } catch (err) {
       get().toast(`示例世界载入失败：${err.message}`);
     }
@@ -84,12 +84,10 @@ export const createActionsSlice = (set, get) => ({
 
   async importFile(file) {
     try {
-      // 文件里的姓名快照载入后成为 viewFilter.snapshots（界面上是临时章节标签）
-      const { project, snapshots, activeSnapshotIds } = await importProjectFile(file);
-      get().loadProjectInto(project, snapshots, activeSnapshotIds);
-      get().toast(snapshots.length
-        ? `已导入「${project.name}」与 ${snapshots.length} 个临时章节`
-        : `已导入「${project.name}」`);
+      // 章节都在 project.groups 里，和手建章节走同一套
+      const project = await importProjectFile(file);
+      get().loadProjectInto(project);
+      get().toast(`已导入「${project.name}」`);
     } catch (err) {
       get().toast(`导入失败：${err.message}`);
     }

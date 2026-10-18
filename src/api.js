@@ -50,12 +50,12 @@ export function installAPI({ ctx, project, cursor }) {
     /** 只看某一章（收窄长卷、时间轴刻度与球上的事件；路线与区域不受影响）。替换当前章节选择 */
     filterByGroup: (id) => ctx.setViewFilter({ groupIds: id ? [id] : [] }),
     /**
-     * 只看某个人物涉及的事件。这是一层实时的视图条件，与已选中的集合取交集；
-     * 与编年史里按姓名搜索固化的快照是两件事。收窄的是事件的在场集合，不是数据本身。
+     * 只看某个人物涉及的事件。这是一层实时的视图条件，与已选中的章节取交集；
+     * 与编年史里按姓名搜索新建的章节是两件事：后者是一个普通章节，清单不会自己更新。
      */
     filterByCharacter: (id) => ctx.setViewFilter({ characterId: id ?? null }),
-    /** 退出筛选：取消所有选中的集合，姓名快照作为标签保留，不会被删掉 */
-    clearFilter: () => ctx.setViewFilter({ groupIds: [], characterId: null, activeSnapshotIds: [] }),
+    /** 退出筛选：取消所有选中的集合，章节本身不会被删掉 */
+    clearFilter: () => ctx.setViewFilter({ groupIds: [], characterId: null }),
 
     // —— 相机 ——
     flyTo: (lat, lng, opts = {}) => ctx.flyTo(lat, lng, opts),
@@ -90,7 +90,7 @@ export function installAPI({ ctx, project, cursor }) {
       + 'world.stepCursor(±1) / jumpToEvent(id)          前后跳一个刻度 / 跳到某条事件\n'
       + 'world.showChronicle(true)                       摊开 / 收起编年史长卷\n'
       + 'world.listEvents()                              当前游标下在场的事件\n'
-      + "world.addEvent({ title, lat, lng, from, to })    加事件（lat/lng 可省 = 纯叙事，不上球）\n"
+      + "world.addEvent({ title, lat, lng, from, to, groupIds }) 加事件（lat/lng 可省 = 纯叙事；groupIds 可挂多章）\n"
       + "world.addRoute({ title, points: [{lat,lng}...] }) 加路线\n"
       + "world.addRegion({ name, ring: [[lng,lat]...] })  加区域\n"
       + 'world.listGroups() / eventsOfGroup(id)          章节清单 / 某章里的事件\n'

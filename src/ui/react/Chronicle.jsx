@@ -3,7 +3,7 @@ import { useStore } from '../../store/index.js';
 import { useProjectRevision } from './hooks.js';
 import { searchCharacters } from './common.jsx';
 import { timeTicks, formatYear } from '../../core/timeline.js';
-import { uid, isViewFiltered } from '../../core/project.js';
+import { isViewFiltered } from '../../core/project.js';
 
 /** 章节标签上的时间范围：只有一年就只写那一年，算不出来就不写 */
 function spanText(span) {
@@ -22,12 +22,15 @@ function spanText(span) {
  * 两条时间线索分工不同：**游标管远近**——还没走到的事件先淡着；**选中管焦点**——
  * 亮起来并自动滚进视野的，是检查器里正在讲的那一条。
  *
- * 顶上的标签都是「一批事件」的入口：章节是一批，姓名搜索固化下来的快照也是一批，
- * 界面上就是一个临时章节。标签可以选中任意多个，长卷、时间轴与球面看到的都是它们的交集。
- * 快照不实时更新——之后再给事件挂上这个人，清单也不会自己变，要最新的就再搜一次。
+ * 顶上的标签都是「一批事件」的入口，也就是章节：手动建的、姓名搜索生成的，
+ * 都是同一种普通章节，没有类型之分。标签可以选中任意多个，长卷、时间轴与球面
+ * 看到的都是它们的交集。
  *
- * 取消选中只是退出交集，快照作为标签留在栏里，之后还能点回来；「全部」清掉的是所有选中，
- * 不是这些标签本身。快照要彻底删掉，点它右边的叉。
+ * 搜索生成的一章，清单是搜索那一刻的一份拷贝；之后再给事件挂上这个人，那一章不会变，
+ * 要最新的就再搜一次、再建一章。改名或删除章节都在「章节」面板里。
+ *
+ * 取消选中只是退出交集，章节留在栏里，之后还能点回来；「全部」清掉的是所有选中，
+ * 不是章节本身。
  */
 export function Chronicle() {
   const project = useStore((s) => s.project);
@@ -39,14 +42,14 @@ export function Chronicle() {
   const viewFilter = useStore((s) => s.viewFilter);
   const setViewFilter = useStore((s) => s.setViewFilter);
   const groupSpan = useStore((s) => s.groupSpan);
-  const { groupIds, snapshots, activeSnapshotIds } = viewFilter;
+  const chapterFromCharacter = useStore((s) => s.chapterFromCharacter);
+  const { groupIds } = viewFilter;
 
-  // 「全部」只取消所有选中，不删标签：姓名快照留在栏里，随时可以再点回来。
-  // 这和章节标签的行为一样——取消选中不等于把章节删掉
-  const showAll = () => setViewFilter({ groupIds: [], characterId: null, activeSnapshotIds: [] });
+  // 「全部」只取消所有选中，不删章节——取消选中不等于把章节删掉
+  const showAll = () => setViewFilter({ groupIds: [], characterId: null });
   useProjectRevision(); // 事件改了名字或年份、或换了章节，长卷要跟着重排
 
-  // 按姓名搜人：输入即列候选，选中某位就把「此刻他涉及的事件」固化成临时编年史
+  // 按姓名搜人：输入即列候选，选中某位就用「此刻他涉及的事件」新建一章
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
   const [hit, setHit] = useState(0);
@@ -57,29 +60,9 @@ export function Chronicle() {
   const searching = focused && query.trim().length > 0;
 
   const pickCharacter = (c) => {
-    // 固化而不是实时求值：这份清单是从当前数据里取的快照，之后数据再变也不跟着动。
-    // 它不属于项目，不参与自动保存；显式导出时才随文件写出那一份 id 清单。
-    // 无年份的事件也收：它们上不了长卷，但在球上照样是此人相关的一批事件
-    const eventIds = (project?.events ?? [])
-      .filter((e) => e.characters?.includes(c.id))
-      .map((e) => e.id);
-    // 同一个人再搜一次就更新他那个标签的快照，不叠出第二个同名标签
-    const existing = snapshots.find((s) => s.characterId === c.id);
-    const snap = {
-      id: existing?.id ?? uid('snap'),
-      title: c.name, characterId: c.id, eventIds,
-    };
-    const nextSnapshots = existing
-      ? snapshots.map((s) => (s.id === snap.id ? snap : s))
-      : [...snapshots, snap];
-    const nextActive = activeSnapshotIds.includes(snap.id)
-      ? activeSnapshotIds
-      : [...activeSnapshotIds, snap.id];
-    setViewFilter({
-      characterId: null,
-      snapshots: nextSnapshots,
-      activeSnapshotIds: nextActive,
-    });
+    // 搜索即建章节：把此人此刻涉及的事件取成清单，新建一个普通章节并选中。
+    // 无年份的事件也收——它们上不了长卷，但在球上照样是此人相关的一批事件
+    chapterFromCharacter(c);
     setQuery('');
     setHit(0);
   };
@@ -125,19 +108,9 @@ export function Chronicle() {
   // 选中的不是事件（点球面、选路线区域）时一条都不亮，游标那一路只负责让未到的淡着。
   const currentId = selection?.kind === 'event' ? selection.id : null;
 
-  // 标签是可多选的集合：再点一次就退出交集。章节与临时章节走同一套开关
+  // 标签是可多选的集合：再点一次就退出交集。所有章节走同一套开关
   const toggleGroup = (id) => setViewFilter({
     groupIds: groupIds.includes(id) ? groupIds.filter((x) => x !== id) : [...groupIds, id],
-  });
-  const toggleSnapshot = (id) => setViewFilter({
-    activeSnapshotIds: activeSnapshotIds.includes(id)
-      ? activeSnapshotIds.filter((x) => x !== id)
-      : [...activeSnapshotIds, id],
-  });
-  // 叉掉才是真正删掉这个临时章节；「全部」只取消选中，不删
-  const removeSnapshot = (id) => setViewFilter({
-    snapshots: snapshots.filter((s) => s.id !== id),
-    activeSnapshotIds: activeSnapshotIds.filter((x) => x !== id),
   });
 
   const activeRef = useRef(null);
@@ -166,7 +139,7 @@ export function Chronicle() {
             value={query}
             placeholder={characters.length ? '按姓名搜人物' : '还没有人物'}
             disabled={!characters.length}
-            title="选中后把此人当前涉及的事件固化为临时编年史，不随数据更新"
+            title="选中后把此人当前涉及的事件建成一个新章节，清单不随数据更新"
             onChange={(e) => { setQuery(e.target.value); setHit(0); }}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
@@ -200,7 +173,7 @@ export function Chronicle() {
       </div>
 
       <div className="chr-tabs">
-        {/* 取消所有选中，但标签都留在栏里：筛选出来的临时章节不会因此消失 */}
+        {/* 取消所有选中，但章节都留在栏里 */}
         <button
           className={`chr-tab${filtering ? '' : ' on'}`}
           title="取消所有选中，看全部事件（标签保留）"
@@ -235,28 +208,6 @@ export function Chronicle() {
             </button>
           </span>
         )}
-        {/* 姓名搜索生成的临时章节：和章节标签一样可多选、可取消选中；叉掉才是删除 */}
-        {snapshots.map((s) => {
-          const on = activeSnapshotIds.includes(s.id);
-          return (
-            <span
-              key={s.id}
-              className={`chr-tab person${on ? ' on' : ''}`}
-              title={on ? '取消选中这个临时章节' : '选中这个临时章节，与其他标签取交集'}
-              onClick={() => toggleSnapshot(s.id)}
-            >
-              🧝 {s.title}
-              <span className="chr-temp">临时</span>
-              <button
-                className="chr-x"
-                title="删除这个临时章节"
-                onClick={(e) => { e.stopPropagation(); removeSnapshot(s.id); }}
-              >
-                ✕
-              </button>
-            </span>
-          );
-        })}
       </div>
 
       <div className="chr-strip">

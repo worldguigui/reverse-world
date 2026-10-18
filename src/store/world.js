@@ -17,7 +17,7 @@ import { session } from '../session.js';
  * 由项目数据、游标与视图条件算出的一份派生快照；每次数据变更、游标走动或换视图后重建，
  * 引用必然更新。
  *
- * 只有事件多叠一道视图条件（在场 ∩ 属于当前视图）：章节、实时人物筛与姓名快照
+ * 只有事件多叠一道视图条件（在场 ∩ 属于当前视图）：选中的各章与实时人物筛
  * 都在这一个条件里，球面看到的与长卷、时间轴是同一批事件。
  * 路线与区域的存续区间照旧，不受视图条件影响。
  */
@@ -31,7 +31,7 @@ export function buildDerived(project, cursor, viewFilter = null) {
   return {
     counts: P.stats(project),
     activeEvents: P.activeItems(project, 'event', cursor)
-      .filter((e) => P.inView(viewFilter, e)),
+      .filter((e) => P.inView(project, viewFilter, e)),
     activeRoutes: P.activeItems(project, 'route', cursor),
     activeRegions: P.activeItems(project, 'region', cursor),
   };
@@ -128,7 +128,7 @@ export const createWorldSlice = (set, get) => ({
     get().touchStage();
   },
 
-  /** 启动时从 IndexedDB 恢复：只装载并对齐三维视图，不回写保存。自动保存不含临时编年史 */
+  /** 启动时从 IndexedDB 恢复：只装载并对齐三维视图，不回写保存 */
   hydrateProject(project) {
     const cursor = defaultCursor(project);
     const viewFilter = P.noView();
@@ -140,13 +140,10 @@ export const createWorldSlice = (set, get) => ({
     get().touchStage();
   },
 
-  /**
-   * 载入一份完整项目（示例世界 / 导入文件共用）。
-   * 姓名快照只在从导出文件导入时给出；示例世界与自动恢复没有这一层视图条件。
-   */
-  loadProjectInto(project, snapshots = [], activeSnapshotIds = []) {
+  /** 载入一份完整项目（示例世界 / 导入文件共用） */
+  loadProjectInto(project) {
     const cursor = defaultCursor(project);
-    const viewFilter = { ...P.noView(), snapshots, activeSnapshotIds };
+    const viewFilter = P.noView();
     set({
       project, cursor, viewFilter,
       derived: buildDerived(project, cursor, viewFilter),
@@ -162,13 +159,9 @@ export const createWorldSlice = (set, get) => ({
   exportProject() {
     const p = get().project;
     if (!p) return;
-    // 姓名快照是视图条件，不是项目内容：平时不进自动保存，只在这里显式写进文件。
-    // 多个临时章节与它们各自的选中状态一并写出，导入后还原
-    const { snapshots, activeSnapshotIds } = get().viewFilter;
-    downloadProject(p, snapshots, activeSnapshotIds);
-    get().toast(snapshots.length
-      ? `项目文件已导出（含全部图片与 ${snapshots.length} 个临时章节）`
-      : '项目文件已导出（含全部图片）');
+    // 章节就在 project 里，随项目一起写出，没有额外的视图字段
+    downloadProject(p);
+    get().toast('项目文件已导出（含全部图片）');
   },
 
   // ---------------------------------------------------------------- 内容
@@ -179,7 +172,9 @@ export const createWorldSlice = (set, get) => ({
   },
 
   deleteItem(kind, id) {
-    set({ selection: null });
+    // 只清掉正被删的那一项的选中；删章节不该把检查器里正在看的事件也一并关掉
+    const sel = get().selection;
+    if (sel?.kind === kind && sel.id === id) set({ selection: null });
     get().mutateProject((p) => P.removeItem(p, kind, id));
     // 正选着它的话，选中项跟着一起没了：留一个指向空处的条件会把整条长卷筛空
     const v = get().viewFilter;
@@ -209,7 +204,7 @@ export const createWorldSlice = (set, get) => ({
       from: d.from ?? roundYear(cursor),
       to: d.to ?? null,
       characters: d.characters ?? [],
-      groupId: d.groupId ?? null,
+      groupIds: d.groupIds ?? [],
     });
     set({ eventDraft: {}, selection: { kind: 'event', id: item.id } });
     get().setMode('browse');
@@ -273,6 +268,26 @@ export const createWorldSlice = (set, get) => ({
   /** 新建章节。建完留在清单里改名字，不跳走——章节的正文是它装的事件，不是自己 */
   addGroup(name) {
     return get().mutateProject((p) => P.addItem(p, 'group', { name: name || '新章节' }));
+  },
+
+  /**
+   * 姓名搜索：把此人**此刻**涉及的事件取成一份清单，新建一个章节并选中。
+   *
+   * 这就是一个普通章节，和「新建章节」得到的东西没有区别：清单是此刻的一份拷贝，
+   * 事件之后改章不会自动回写它——普通章节本来也不会自动回写。再搜一次就是再建一章。
+   */
+  chapterFromCharacter(c) {
+    if (!c) return null;
+    const g = get().mutateProject((p) => {
+      const eventIds = p.events
+        .filter((e) => e.characters?.includes(c.id))
+        .map((e) => e.id);
+      return P.addItem(p, 'group', { name: c.name, eventIds });
+    });
+    if (!g) return null;
+    const { groupIds } = get().viewFilter;
+    get().setViewFilter({ groupIds: [...groupIds, g.id] });
+    return g.id;
   },
 
   /** 全部章节，按录入先后 */

@@ -25,7 +25,7 @@ export function Timeline() {
 
   const domain = timeDomain(project);
   // 收窄视图只收窄画在轴上的刻度：轴的跨度与游标照旧，拖与点都不受影响。
-  // 选中的章节、实时人物筛与临时章节都在 viewFilter 里，轴上与长卷看到的是同一批事件
+  // 选中的章节与实时人物筛都在 viewFilter 里，轴上与长卷看到的是同一批事件
   const ticks = timeTicks(project, viewFilter);
   const filtering = isViewFiltered(viewFilter);
   const span = domain ? domain.end - domain.start : 0;

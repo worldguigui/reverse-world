@@ -51,7 +51,7 @@ export function timeDomain(project) {
 export function timeTicks(project, view) {
   if (!project) return [];
   return project.events
-    .filter((e) => typeof e.from === 'number' && Number.isFinite(e.from) && inView(view, e))
+    .filter((e) => typeof e.from === 'number' && Number.isFinite(e.from) && inView(project, view, e))
     .sort((a, b) => a.from - b.from);
 }
 

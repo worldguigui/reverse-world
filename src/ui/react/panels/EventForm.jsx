@@ -1,6 +1,6 @@
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
-import { Labeled, YearInput, CharacterPicker, GroupSelect } from '../common.jsx';
+import { Labeled, YearInput, CharacterPicker, GroupPicker } from '../common.jsx';
 import { formatYear } from '../../../core/timeline.js';
 
 /**
@@ -67,7 +67,10 @@ export function EventForm() {
       </Labeled>
 
       <Labeled label="所属章节">
-        <GroupSelect value={draft.groupId ?? null} onChange={(id) => saveDraft({ groupId: id })} />
+        <GroupPicker
+          ids={draft.groupIds ?? []}
+          onChange={(ids) => saveDraft({ groupIds: ids })}
+        />
       </Labeled>
 
       {/* 两端都留空 = 常驻。不填出现于时会认下当前游标所在的年份 */}

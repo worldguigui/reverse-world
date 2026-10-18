@@ -1,17 +1,56 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "示例世界 · 一战",
   "description": "以真实地球地形为底：从萨拉热窝的那一枪到凡尔赛宫的签字，六年之间的事件与人物。",
   "baseRasterId": null,
   "rasterMaps": [],
   "groups": [
-    { "id": "g_ww1", "name": "一战" }
+    {
+      "id": "g_ww1",
+      "name": "一战",
+      "eventIds": [
+        "ev_sarajevo",
+        "ev_austria_serbia",
+        "ev_germany_russia_france",
+        "ev_liege",
+        "ev_tannenberg",
+        "ev_marne",
+        "ev_first_ypres",
+        "ev_ottoman",
+        "ev_christmas_truce",
+        "ev_ypres_gas",
+        "ev_gallipoli",
+        "ev_lusitania",
+        "ev_italy_enters",
+        "ev_gorlice",
+        "ev_verdun",
+        "ev_jutland",
+        "ev_brusilov",
+        "ev_somme",
+        "ev_first_tank",
+        "ev_zimmermann",
+        "ev_unrestricted_sub",
+        "ev_feb_revolution",
+        "ev_us_enters",
+        "ev_passchendaele",
+        "ev_oct_revolution",
+        "ev_cambrai",
+        "ev_fourteen_points",
+        "ev_brest_litovsk",
+        "ev_hundred_days",
+        "ev_compiegne",
+        "ev_paris_conference",
+        "ev_versailles"
+      ]
+    }
   ],
   "characters": [
     {
       "id": "ch_franz",
       "name": "斐迪南大公",
-      "aliases": ["奥匈帝国皇储"],
+      "aliases": [
+        "奥匈帝国皇储"
+      ],
       "born": 1863,
       "died": 1914,
       "description": "在萨拉热窝遇刺，成了整场战争的引信。",
@@ -21,7 +60,9 @@
     {
       "id": "ch_wilhelm",
       "name": "威廉二世",
-      "aliases": ["德皇"],
+      "aliases": [
+        "德皇"
+      ],
       "born": 1859,
       "died": 1941,
       "description": "给奥匈开出空头支票，战败后退位流亡。",
@@ -31,7 +72,9 @@
     {
       "id": "ch_moltke",
       "name": "小毛奇",
-      "aliases": ["德军总参谋长"],
+      "aliases": [
+        "德军总参谋长"
+      ],
       "born": 1848,
       "died": 1916,
       "description": "执行施里芬计划，在马恩河城下把它改坏了。",
@@ -71,7 +114,9 @@
     {
       "id": "ch_joffre",
       "name": "霞飞",
-      "aliases": ["法军总司令"],
+      "aliases": [
+        "法军总司令"
+      ],
       "born": 1852,
       "died": 1931,
       "description": "在马恩河把德军挡住，之后被换下去养老。",
@@ -91,7 +136,9 @@
     {
       "id": "ch_foch",
       "name": "福煦",
-      "aliases": ["协约国联军总司令"],
+      "aliases": [
+        "协约国联军总司令"
+      ],
       "born": 1851,
       "died": 1929,
       "description": "从马恩河一路指挥到停战，在贡比涅的火车厢里接受德国投降。",
@@ -101,7 +148,9 @@
     {
       "id": "ch_haig",
       "name": "黑格",
-      "aliases": ["英军总司令"],
+      "aliases": [
+        "英军总司令"
+      ],
       "born": 1861,
       "died": 1928,
       "description": "索姆河、帕斯尚尔都出自他的手笔，伤亡换来的是几公里的推进。",
@@ -111,7 +160,9 @@
     {
       "id": "ch_nicholas",
       "name": "尼古拉二世",
-      "aliases": ["俄国末代沙皇"],
+      "aliases": [
+        "俄国末代沙皇"
+      ],
       "born": 1868,
       "died": 1918,
       "description": "把俄国拖进战争，最后连同家人一起死在叶卡捷琳堡的地下室。",
@@ -131,7 +182,9 @@
     {
       "id": "ch_wilson",
       "name": "威尔逊",
-      "aliases": ["美国总统"],
+      "aliases": [
+        "美国总统"
+      ],
       "born": 1856,
       "died": 1924,
       "description": "把美国带进战争，又在巴黎和会上推销他那套「十四点」。",
@@ -141,7 +194,9 @@
     {
       "id": "ch_clemenceau",
       "name": "克列孟梭",
-      "aliases": ["法国总理"],
+      "aliases": [
+        "法国总理"
+      ],
       "born": 1841,
       "died": 1929,
       "description": "人称「老虎」，在和会上要的是把德国彻底压死。",
@@ -151,7 +206,9 @@
     {
       "id": "ch_lloyd_george",
       "name": "劳合·乔治",
-      "aliases": ["英国首相"],
+      "aliases": [
+        "英国首相"
+      ],
       "born": 1863,
       "died": 1945,
       "description": "夹在法国人的复仇与威尔逊的理想之间，替英国讨价还价。",
@@ -180,8 +237,10 @@
       "color": "#ffb545",
       "from": 1914,
       "to": null,
-      "characters": ["ch_franz", "ch_wilhelm"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_franz",
+        "ch_wilhelm"
+      ]
     },
     {
       "id": "ev_austria_serbia",
@@ -193,8 +252,9 @@
       "color": "#4dd0ff",
       "from": 1914,
       "to": null,
-      "characters": ["ch_wilhelm"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_wilhelm"
+      ]
     },
     {
       "id": "ev_germany_russia_france",
@@ -206,8 +266,10 @@
       "color": "#ff6e6e",
       "from": 1914,
       "to": null,
-      "characters": ["ch_wilhelm", "ch_moltke"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_wilhelm",
+        "ch_moltke"
+      ]
     },
     {
       "id": "ev_liege",
@@ -219,8 +281,9 @@
       "color": "#8dff70",
       "from": 1914,
       "to": null,
-      "characters": ["ch_moltke"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_moltke"
+      ]
     },
     {
       "id": "ev_tannenberg",
@@ -228,25 +291,29 @@
       "description": "俄军第二集团军被合围歼灭，兴登堡与鲁登道夫一夜之间成了民族英雄。",
       "image": null,
       "lat": 53.5,
-      "lng": 20.0,
+      "lng": 20,
       "color": "#c78dff",
       "from": 1914,
       "to": null,
-      "characters": ["ch_hindenburg", "ch_ludendorff"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_hindenburg",
+        "ch_ludendorff"
+      ]
     },
     {
       "id": "ev_marne",
       "title": "马恩河战役",
       "description": "德军在巴黎城下被挡住，速胜的打算到此为止。毛奇随后被撤换。",
       "image": null,
-      "lat": 49.0,
-      "lng": 3.0,
+      "lat": 49,
+      "lng": 3,
       "color": "#ffd54d",
       "from": 1914,
       "to": null,
-      "characters": ["ch_moltke", "ch_joffre"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_moltke",
+        "ch_joffre"
+      ]
     },
     {
       "id": "ev_first_ypres",
@@ -258,8 +325,9 @@
       "color": "#7da7ff",
       "from": 1914,
       "to": null,
-      "characters": ["ch_falkenhayn"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_falkenhayn"
+      ]
     },
     {
       "id": "ev_ottoman",
@@ -271,8 +339,9 @@
       "color": "#ff9ad5",
       "from": 1914,
       "to": null,
-      "characters": ["ch_wilhelm"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_wilhelm"
+      ]
     },
     {
       "id": "ev_christmas_truce",
@@ -284,8 +353,7 @@
       "color": "#ffb545",
       "from": 1914,
       "to": null,
-      "characters": [],
-      "groupId": "g_ww1"
+      "characters": []
     },
     {
       "id": "ev_ypres_gas",
@@ -297,8 +365,9 @@
       "color": "#4dd0ff",
       "from": 1915,
       "to": null,
-      "characters": ["ch_falkenhayn"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_falkenhayn"
+      ]
     },
     {
       "id": "ev_gallipoli",
@@ -310,8 +379,9 @@
       "color": "#ff6e6e",
       "from": 1915,
       "to": null,
-      "characters": ["ch_kemal"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_kemal"
+      ]
     },
     {
       "id": "ev_lusitania",
@@ -323,21 +393,21 @@
       "color": "#8dff70",
       "from": 1915,
       "to": null,
-      "characters": ["ch_wilhelm"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_wilhelm"
+      ]
     },
     {
       "id": "ev_italy_enters",
       "title": "意大利转投协约国",
       "description": "原本与德奥同盟的意大利掉头加入对面，为的是拿到南蒂罗尔与达尔马提亚。",
       "image": null,
-      "lat": 46.0,
+      "lat": 46,
       "lng": 12.5,
       "color": "#c78dff",
       "from": 1915,
       "to": null,
-      "characters": [],
-      "groupId": "g_ww1"
+      "characters": []
     },
     {
       "id": "ev_gorlice",
@@ -345,12 +415,14 @@
       "description": "德奥在东线撕开一个大口子，俄军一路退到自己的国境线内，伤亡过百万。",
       "image": null,
       "lat": 49.9,
-      "lng": 21.0,
+      "lng": 21,
       "color": "#ffd54d",
       "from": 1915,
       "to": null,
-      "characters": ["ch_hindenburg", "ch_ludendorff"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_hindenburg",
+        "ch_ludendorff"
+      ]
     },
     {
       "id": "ev_verdun",
@@ -362,8 +434,10 @@
       "color": "#7da7ff",
       "from": 1916,
       "to": null,
-      "characters": ["ch_falkenhayn", "ch_petain"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_falkenhayn",
+        "ch_petain"
+      ]
     },
     {
       "id": "ev_jutland",
@@ -371,12 +445,11 @@
       "description": "两国主力舰队唯一一次正面交手。英国损失的船更多，德国舰队此后没再出海。",
       "image": null,
       "lat": 56.3,
-      "lng": 5.0,
+      "lng": 5,
       "color": "#ff9ad5",
       "from": 1916,
       "to": null,
-      "characters": [],
-      "groupId": "g_ww1"
+      "characters": []
     },
     {
       "id": "ev_brusilov",
@@ -388,21 +461,24 @@
       "color": "#ffb545",
       "from": 1916,
       "to": null,
-      "characters": ["ch_nicholas"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_nicholas"
+      ]
     },
     {
       "id": "ev_somme",
       "title": "索姆河战役",
       "description": "第一天英军就伤亡近六万。战役打了四个半月，战线最多挪动了十几公里。",
       "image": null,
-      "lat": 50.0,
+      "lat": 50,
       "lng": 2.65,
       "color": "#4dd0ff",
       "from": 1916,
       "to": null,
-      "characters": ["ch_haig", "ch_foch"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_haig",
+        "ch_foch"
+      ]
     },
     {
       "id": "ev_first_tank",
@@ -414,8 +490,9 @@
       "color": "#ff6e6e",
       "from": 1916,
       "to": null,
-      "characters": ["ch_haig"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_haig"
+      ]
     },
     {
       "id": "ev_zimmermann",
@@ -427,21 +504,25 @@
       "color": "#8dff70",
       "from": 1917,
       "to": null,
-      "characters": ["ch_wilhelm", "ch_wilson"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_wilhelm",
+        "ch_wilson"
+      ]
     },
     {
       "id": "ev_unrestricted_sub",
       "title": "无限制潜艇战",
       "description": "德国宣布击沉一切驶向英国海域的船只。它想在美国赶到之前掐断英国的海上补给。",
       "image": null,
-      "lat": 54.0,
-      "lng": 6.0,
+      "lat": 54,
+      "lng": 6,
       "color": "#c78dff",
       "from": 1917,
       "to": null,
-      "characters": ["ch_wilhelm", "ch_ludendorff"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_wilhelm",
+        "ch_ludendorff"
+      ]
     },
     {
       "id": "ev_feb_revolution",
@@ -453,8 +534,9 @@
       "color": "#ffd54d",
       "from": 1917,
       "to": null,
-      "characters": ["ch_nicholas"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_nicholas"
+      ]
     },
     {
       "id": "ev_us_enters",
@@ -466,8 +548,9 @@
       "color": "#7da7ff",
       "from": 1917,
       "to": null,
-      "characters": ["ch_wilson"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_wilson"
+      ]
     },
     {
       "id": "ev_passchendaele",
@@ -479,8 +562,9 @@
       "color": "#ff9ad5",
       "from": 1917,
       "to": null,
-      "characters": ["ch_haig"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_haig"
+      ]
     },
     {
       "id": "ev_oct_revolution",
@@ -492,8 +576,9 @@
       "color": "#ffb545",
       "from": 1917,
       "to": null,
-      "characters": ["ch_lenin"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_lenin"
+      ]
     },
     {
       "id": "ev_cambrai",
@@ -505,8 +590,9 @@
       "color": "#4dd0ff",
       "from": 1917,
       "to": null,
-      "characters": ["ch_haig"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_haig"
+      ]
     },
     {
       "id": "ev_fourteen_points",
@@ -518,8 +604,9 @@
       "color": "#ff6e6e",
       "from": 1918,
       "to": null,
-      "characters": ["ch_wilson"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_wilson"
+      ]
     },
     {
       "id": "ev_brest_litovsk",
@@ -531,8 +618,9 @@
       "color": "#8dff70",
       "from": 1918,
       "to": null,
-      "characters": ["ch_lenin"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_lenin"
+      ]
     },
     {
       "id": "ev_hundred_days",
@@ -544,8 +632,11 @@
       "color": "#c78dff",
       "from": 1918,
       "to": null,
-      "characters": ["ch_foch", "ch_haig", "ch_ludendorff"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_foch",
+        "ch_haig",
+        "ch_ludendorff"
+      ]
     },
     {
       "id": "ev_compiegne",
@@ -557,8 +648,9 @@
       "color": "#ffd54d",
       "from": 1918,
       "to": null,
-      "characters": ["ch_foch"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_foch"
+      ]
     },
     {
       "id": "ev_paris_conference",
@@ -570,8 +662,11 @@
       "color": "#7da7ff",
       "from": 1919,
       "to": null,
-      "characters": ["ch_wilson", "ch_clemenceau", "ch_lloyd_george"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_wilson",
+        "ch_clemenceau",
+        "ch_lloyd_george"
+      ]
     },
     {
       "id": "ev_versailles",
@@ -583,8 +678,11 @@
       "color": "#ff9ad5",
       "from": 1919,
       "to": null,
-      "characters": ["ch_wilson", "ch_clemenceau", "ch_foch"],
-      "groupId": "g_ww1"
+      "characters": [
+        "ch_wilson",
+        "ch_clemenceau",
+        "ch_foch"
+      ]
     }
   ],
   "routes": [
@@ -596,12 +694,30 @@
       "from": 1914,
       "to": 1914,
       "points": [
-        { "lat": 50.78, "lng": 6.08 },
-        { "lat": 50.63, "lng": 5.57 },
-        { "lat": 50.85, "lng": 4.35 },
-        { "lat": 50.45, "lng": 3.95 },
-        { "lat": 49.9, "lng": 3.6 },
-        { "lat": 49.0, "lng": 3.0 }
+        {
+          "lat": 50.78,
+          "lng": 6.08
+        },
+        {
+          "lat": 50.63,
+          "lng": 5.57
+        },
+        {
+          "lat": 50.85,
+          "lng": 4.35
+        },
+        {
+          "lat": 50.45,
+          "lng": 3.95
+        },
+        {
+          "lat": 49.9,
+          "lng": 3.6
+        },
+        {
+          "lat": 49,
+          "lng": 3
+        }
       ]
     }
   ],
@@ -614,16 +730,46 @@
       "from": 1914,
       "to": 1918,
       "ring": [
-        [2.4, 51.2],
-        [4.2, 50.9],
-        [5.0, 50.2],
-        [5.8, 49.6],
-        [6.8, 48.8],
-        [7.6, 47.7],
-        [6.4, 48.6],
-        [5.4, 49.4],
-        [4.4, 50.1],
-        [3.2, 50.8]
+        [
+          2.4,
+          51.2
+        ],
+        [
+          4.2,
+          50.9
+        ],
+        [
+          5,
+          50.2
+        ],
+        [
+          5.8,
+          49.6
+        ],
+        [
+          6.8,
+          48.8
+        ],
+        [
+          7.6,
+          47.7
+        ],
+        [
+          6.4,
+          48.6
+        ],
+        [
+          5.4,
+          49.4
+        ],
+        [
+          4.4,
+          50.1
+        ],
+        [
+          3.2,
+          50.8
+        ]
       ]
     }
   ]

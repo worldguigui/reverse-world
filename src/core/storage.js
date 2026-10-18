@@ -4,7 +4,7 @@
  * IndexedDB 不可用（隐私模式等）时退化为内存保存，并在导出功能里提醒。
  */
 
-import { normalizeProject, normalizeTempChronicle } from './project.js';
+import { normalizeProject, uid } from './project.js';
 
 const DB_NAME = 'worldbuilding-tool';
 const STORE = 'kv';
@@ -86,13 +86,11 @@ export function createAutoSaver(delay = 500) {
 // ---------------------------------------------------------------- 导出 / 导入
 
 /**
- * 导出 .world.json。项目数据与姓名快照共用一个文件，但放在各自的字段里：
- * 前者是持久数据；后者是搜索当时固化的事件 id 集合（界面上表现为临时章节），
- * 连同当时选中哪几个一起写出，导入时据此恢复那一次视图。
+ * 导出 .world.json。章节就在项目里，姓名搜索生成的也只是普通章节，
+ * 所以这里只写 project 本身，不再附一份单独的视图字段。
  */
-export function downloadProject(project, snapshots = [], activeSnapshotIds = []) {
-  const payload = { ...project, viewSnapshots: snapshots, activeSnapshotIds };
-  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+export function downloadProject(project) {
+  const blob = new Blob([JSON.stringify(project)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `${project.name || '未命名世界'}.world.json`;
@@ -101,23 +99,30 @@ export function downloadProject(project, snapshots = [], activeSnapshotIds = [])
 }
 
 /**
- * 读入 .world.json：项目先校验，姓名快照再按校验后的项目 id 过滤。
- * 兼容旧文件里的单个 `tempChronicle` 字段——它相当于只有一个快照的列表。
+ * 读入 .world.json。旧版本把姓名搜索的结果写在项目之外（`viewSnapshots` 或更早的
+ * `tempChronicle`），现在它们就是普通章节：导入时补进 groups，
+ * 事件 id 按当前项目校验一遍。新文件不会有这两个字段。
  */
 export async function importProjectFile(file) {
   const text = await file.text();
   const raw = JSON.parse(text);
   const project = normalizeProject(raw);
-  const rawSnapshots = Array.isArray(raw.viewSnapshots)
+  const legacy = Array.isArray(raw.viewSnapshots)
     ? raw.viewSnapshots
     : raw.tempChronicle ? [raw.tempChronicle] : [];
-  const snapshots = rawSnapshots
-    .map((s) => normalizeTempChronicle(s, project))
-    .filter(Boolean);
-  const known = new Set(snapshots.map((s) => s.id));
-  // 旧文件没有选中记录，按原来的行为把它那一个快照直接选中
-  const activeSnapshotIds = Array.isArray(raw.activeSnapshotIds)
-    ? raw.activeSnapshotIds.filter((id) => known.has(id))
-    : snapshots.map((s) => s.id);
-  return { project, snapshots, activeSnapshotIds };
+  if (legacy.length) {
+    const known = new Set(project.events.map((e) => e.id));
+    for (const s of legacy) {
+      if (!s || typeof s !== 'object' || !Array.isArray(s.eventIds)) continue;
+      const eventIds = [...new Set(s.eventIds)].filter((id) => known.has(id));
+      if (!eventIds.length) continue;
+      const title = typeof s.title === 'string' ? s.title.trim() : '';
+      project.groups.push({
+        id: typeof s.id === 'string' && s.id ? s.id : uid('g'),
+        name: title || '未命名章节',
+        eventIds,
+      });
+    }
+  }
+  return project;
 }

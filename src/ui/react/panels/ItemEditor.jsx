@@ -1,6 +1,6 @@
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
-import { Labeled, BackToOverview, YearInput, CharacterPicker, GroupSelect } from '../common.jsx';
+import { Labeled, BackToOverview, YearInput, CharacterPicker, GroupPicker } from '../common.jsx';
 
 const TITLES = { event: '事件', route: '路线', region: '势力区域' };
 
@@ -86,7 +86,12 @@ export function ItemEditor({ kind, id }) {
 
       {kind === 'event' && (
         <Labeled label="所属章节">
-          <GroupSelect value={item.groupId} onChange={(id) => patch({ groupId: id })} />
+          <GroupPicker
+            ids={(project.groups ?? [])
+              .filter((g) => g.eventIds?.includes(item.id))
+              .map((g) => g.id)}
+            onChange={(ids) => patch({ groupIds: ids })}
+          />
         </Labeled>
       )}
 

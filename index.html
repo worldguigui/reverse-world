@@ -318,7 +318,7 @@
     .chr-search .inp { padding: 4px 8px; font-size: 11.5px; }
     .chr-search .inp:disabled { opacity: 0.5; cursor: default; }
     .chr-search .char-menu { top: auto; bottom: calc(100% + 4px); }
-    /* 顶上的视图入口：全部 | 第一章 … | 按人物筛出来的临时组 */
+    /* 顶上的视图入口：全部 | 各章节。标签不分来源，样式一律相同 */
     .chr-tabs {
       display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
       padding: 8px 14px 0;
@@ -334,25 +334,6 @@
       color: var(--accent-bright); background: rgba(var(--accent-rgb), 0.14);
       border-color: rgba(var(--accent-rgb), 0.55);
     }
-    /* 姓名搜索生成的临时章节用暗金，与章节标签区分。
-       未选中时也留在栏里，只是暗一档；选中后参与交集并亮起 */
-    .chr-tab.person {
-      color: rgba(var(--gold-rgb), 0.78); background: transparent;
-      border-color: rgba(var(--gold-rgb), 0.3);
-    }
-    .chr-tab.person:hover {
-      color: var(--gold-bright); background: rgba(var(--gold-rgb), 0.1);
-      border-color: rgba(var(--gold-rgb), 0.5);
-    }
-    .chr-tab.person.on {
-      color: var(--gold-bright); background: rgba(var(--gold-rgb), 0.14);
-      border-color: rgba(var(--gold-rgb), 0.6);
-    }
-    .chr-tab.person.on:hover {
-      background: rgba(var(--gold-rgb), 0.2);
-      border-color: rgba(var(--gold-rgb), 0.72);
-    }
-    .chr-temp { font-size: 10px; opacity: 0.65; }
     .chr-x {
       padding: 0 2px; border: none; background: none; cursor: pointer;
       color: inherit; font-size: 11px; line-height: 1;

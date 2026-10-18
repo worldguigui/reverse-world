@@ -177,27 +177,39 @@ export function CharacterPicker({ ids = [], onChange }) {
 }
 
 /**
- * 「所属章节」下拉。章节是独立对象，所以这里只能选一个已有的——
- * 建章节、改名、删除都在顶栏「章节」那一页，事件这一侧只管归类。
+ * 「所属章节」多选。章节拥有事件清单，所以一条事件可以同时挂进多章；
+ * 这里点一下切换一章的挂/摘。所有章节一视同仁。
  *
- * @param {string|null} value 章节 id，空 = 未分组
- * @param {(id: string|null) => void} onChange
+ * @param {string[]} ids 已挂上的章节 id
+ * @param {(ids: string[]) => void} onChange 变化后的完整清单
  */
-export function GroupSelect({ value, onChange }) {
+export function GroupPicker({ ids = [], onChange }) {
   const project = useStore((s) => s.project);
   const groups = project?.groups ?? [];
   if (!groups.length) {
     return <p className="insp-hint">还没有章节。顶栏「章节」里建一个，再来归类。</p>;
   }
+  const toggle = (id) => onChange(
+    ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id],
+  );
   return (
-    <select
-      className="inp"
-      value={value ?? ''}
-      onChange={(e) => onChange(e.target.value || null)}
-    >
-      <option value="">未分组</option>
-      {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-    </select>
+    <div className="chips">
+      {groups.map((g) => {
+        const on = ids.includes(g.id);
+        return (
+          <button
+            key={g.id}
+            type="button"
+            className={`chip${on ? ' on' : ''}`}
+            title={on ? '点一下从这一章里移除' : '点一下挂到这一章'}
+            onClick={() => toggle(g.id)}
+          >
+            <span className="chip-name">{g.name}</span>
+            {on && <span className="chip-x">✕</span>}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

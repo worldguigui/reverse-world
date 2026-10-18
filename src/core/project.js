@@ -17,7 +17,7 @@ export function uid(prefix) {
 /** 内容默认配色轮换 */
 export const PALETTE = ['#ffb545', '#4dd0ff', '#ff6e6e', '#8dff70', '#c78dff', '#ffd54d', '#7da7ff', '#ff9ad5'];
 
-export const PROJECT_VERSION = 2;
+export const PROJECT_VERSION = 3;
 
 export function createProject({ name = '未命名世界', description = '' } = {}) {
   return {
@@ -33,8 +33,9 @@ export function createProject({ name = '未命名世界', description = '' } = {
     regions: [],    // { id, name, description, color, ring: [[lng,lat]...], from, to }
     // 人物。没有存续区间：born / died 是生平，不参与在场判定，也不撑开时间轴
     characters: [], // { id, name, aliases: [], born, died, description, image, color }
-    // 章节。独立对象，事件用 groupId 挂上来；可以暂时一个事件都没有（写大纲的常态）
-    groups: [],     // { id, name }
+    // 章节。章节自己拥有一批事件（eventIds），一个事件因此可以同时属于多章；
+    // 也可以暂时一个事件都没有（写大纲的常态）。姓名搜索出来的也只是这样一章
+    groups: [],     // { id, name, eventIds }
   };
 }
 
@@ -51,35 +52,25 @@ export function normalizeProject(raw) {
   const okList = (v) => (Array.isArray(v) ? v : []);
   p.characters = okList(src.characters).filter(okItem)
     .map((c) => ({ ...c, aliases: toAliases(c.aliases) }));
-  // 事件的「涉及人物」与「所属章节」在旧文件里整个键都可能不在，读进来统一补齐，
-  // 面板、筛选与渲染层拿到的永远是数组 / null，不必各自兜底
-  p.events = okList(src.events).filter(okItem).map((ev) => ({
-    ...ev, characters: okList(ev.characters), groupId: ev.groupId ?? null,
+  // 事件的「涉及人物」在旧文件里整个键都可能不在，读进来统一补齐。
+  // 章节关系不放在事件上：章节自己拥有 eventIds，一个事件才能同时出现在多章里
+  p.events = okList(src.events).filter(okItem).map(({ groupId: _legacy, ...ev }) => ({
+    ...ev, characters: okList(ev.characters),
   }));
   p.routes = okList(src.routes).filter(okItem);
   p.regions = okList(src.regions).filter(okItem);
-  p.groups = okList(src.groups).filter(okItem);
+  // 章节清单由章节持有。导入时按当前事件表校验：悬空 id 与重复项一律摘掉。
+  // 章节只有 id / name / eventIds 三个字段，没有「来源」之类的类型标记
+  const knownEvents = new Set(p.events.map((e) => e.id));
+  p.groups = okList(src.groups).filter((g) => g?.id).map((g) => {
+    const ids = okList(g.eventIds).filter((id) => knownEvents.has(id));
+    return {
+      id: g.id,
+      name: typeof g.name === 'string' ? g.name : '未命名章节',
+      eventIds: [...new Set(ids)],
+    };
+  });
   return p;
-}
-
-/**
- * 姓名快照：按姓名搜索时固化下来的一批事件 id，在界面上表现为一个临时章节。
- *
- * 它不属于项目数据，不随自动保存落盘；只在显式导出时写进文件，导入时按当前项目
- * 校验一遍——项目里已经不存在的 id 直接丢掉，免得长卷指向空处。
- */
-export function normalizeTempChronicle(raw, project) {
-  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.eventIds)) return null;
-  const known = new Set(project.events.map((e) => e.id));
-  const eventIds = [...new Set(raw.eventIds)].filter((id) => known.has(id));
-  if (!eventIds.length) return null;
-  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
-  return {
-    id: typeof raw.id === 'string' && raw.id ? raw.id : uid('snap'),
-    title: title || '临时编年史',
-    characterId: typeof raw.characterId === 'string' ? raw.characterId : null,
-    eventIds,
-  };
 }
 
 /** 别名一律存成数组：手写的文件里可能直接给一串，读进来补齐，不要悄悄丢掉 */
@@ -132,10 +123,10 @@ export function getRasterMap(project, id) {
 
 const DEFAULTS = {
   // 坐标可以缺省——缺省就是纯叙事事件，不上球。
-  // 每一条事件都常驻 characters / groupId 两个键（哪怕是空的），筛起来不必到处兜底
+  // 事件上常驻 characters 一个键（哪怕空的），筛起来不必到处兜底
   event: (d) => ({
     title: '新事件', description: '', image: null,
-    lat: null, lng: null, characters: [], groupId: null, ...d,
+    lat: null, lng: null, characters: [], ...d,
   }),
   route: (d) => ({
     title: '新路线', description: '', points: [], ...d,
@@ -148,16 +139,37 @@ const DEFAULTS = {
     // 写在展开之后：编程接口那边可能直接给一串，面板与搜索都按数组读
     aliases: toAliases(d.aliases),
   }),
-  group: (d) => ({ name: '新章节', ...d }),
+  group: (d) => ({ name: '新章节', eventIds: [], ...d }),
 };
 
 const ID_PREFIX = {
   event: 'ev', route: 'r', region: 'rg', character: 'ch', group: 'g',
 };
 
+/**
+ * 改写某条事件挂在哪几章下。清单的所有者是章节，所以这里是往各章的 eventIds 里
+ * 加或删这条 id，事件对象上不留副本。所有章节一视同仁。
+ */
+export function setEventGroups(project, eventId, groupIds = []) {
+  const want = new Set(groupIds);
+  for (const g of project.groups) {
+    const has = g.eventIds.includes(eventId);
+    if (want.has(g.id) && !has) g.eventIds.push(eventId);
+    else if (!want.has(g.id) && has) g.eventIds = g.eventIds.filter((id) => id !== eventId);
+  }
+}
+
 export function addItem(project, kind, data = {}) {
   // 过滤掉显式传入的 undefined，避免覆盖 id/color 等默认值
   const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
+  // 章节关系写在章节那一侧：创建时把新事件的 id 同步进各章清单，事件上不存副本。
+  // groupId 是旧版的单章字段，仍接受，按一章处理
+  let groupIds = null;
+  if (kind === 'event' && ('groupIds' in clean || 'groupId' in clean)) {
+    groupIds = clean.groupIds ?? (clean.groupId ? [clean.groupId] : []);
+    delete clean.groupIds;
+    delete clean.groupId;
+  }
   const caps = KINDS[kind];
   const item = {
     id: uid(ID_PREFIX[kind]),
@@ -167,12 +179,20 @@ export function addItem(project, kind, data = {}) {
     ...DEFAULTS[kind](clean),
   };
   getList(project, kind).push(item);
+  if (groupIds) setEventGroups(project, item.id, groupIds);
   return item;
 }
 
 export function updateItem(project, kind, id, patch) {
   const item = getItem(project, kind, id);
   if (!item) return null;
+  // 与创建同一条规则：groupIds 不是事件上的字段，而是各章节清单的增删
+  if (kind === 'event' && ('groupIds' in patch || 'groupId' in patch)) {
+    const { groupIds, groupId, ...rest } = patch;
+    Object.assign(item, rest);
+    setEventGroups(project, id, groupIds ?? (groupId ? [groupId] : []));
+    return item;
+  }
   Object.assign(item, patch);
   return item;
 }
@@ -188,9 +208,12 @@ export function removeItem(project, kind, id) {
       if (ev.characters?.includes(id)) ev.characters = ev.characters.filter((c) => c !== id);
     }
   }
-  // 章节不走：删章节只是把组里的事件退回「未分组」，事件本身一条都不少
-  if (kind === 'group') {
-    for (const ev of project.events) if (ev.groupId === id) ev.groupId = null;
+  // 事件一走，各章清单里那份 id 也随之摘掉。删章节则相反：清单随章节一起消失，
+  // 事件本身一条都不少，也不存在「退回未分组」——事件与章节是多对多关系
+  if (kind === 'event') {
+    for (const g of project.groups) {
+      if (g.eventIds?.includes(id)) g.eventIds = g.eventIds.filter((x) => x !== id);
+    }
   }
   return true;
 }
@@ -200,40 +223,32 @@ export function removeItem(project, kind, id) {
 /**
  * 当前视图条件：一组**同时生效**的集合，事件必须落在每一个集合里（交集）。
  *
- * 三种集合只是来源不同，本质都是「一批事件」：
- *   - `groupIds`：选中的章节（可多选）；
- *   - `characterId`：编程接口的实时人物筛；
- *   - `activeSnapshotIds`：选中的姓名快照。快照存在 `snapshots` 里，形如
- *     `{ id, title, characterId, eventIds }`，是搜索那一刻算出来的一批事件 id；
- *     它不实时更新，但仍然是「一个章节那样的一批事件」，不是另一种筛选机制。
+ * 两种集合只是来源不同，本质都是「一批事件」：
+ *   - `groupIds`：选中的章节（可多选）。手动建的、姓名搜索生成的都是章节，
+ *     都在 `project.groups` 里，用同一套选择与交集逻辑；
+ *   - `characterId`：编程接口的实时人物筛。
  *
  * 任何一项为空就不参与交集；全部为空就是「全部」。长卷、时间轴与球面都只读这一个条件。
- * 注意：事件目前只属于一个章节，而多个选中项取的是交集，所以同时选中两个不同章节时
- * 结果为空——这是数据模型与集合语义的直接结果；若以后事件可属于多个章节，这里不用改。
+ * 章节拥有事件清单，一个事件可以同时属于多章，因此任意多个章节的交集都是有意义的。
  */
 export const noView = () => ({
   groupIds: [],
   characterId: null,
-  snapshots: [],
-  activeSnapshotIds: [],
 });
 
-/** 是否正在筛选（三个来源任一有值） */
+/** 是否正在筛选（任一来源有值） */
 export function isViewFiltered(view) {
-  return !!(view?.groupIds?.length || view?.characterId || view?.activeSnapshotIds?.length);
+  return !!(view?.groupIds?.length || view?.characterId);
 }
 
-export function inView(view, item) {
+export function inView(project, view, item) {
   if (!view) return true;
-  // 选中的每一章都必须包含它（交集）；事件只属于一章，所以选两章会得到空集
+  // 选中的每一章都必须把这条事件列在自己的清单里（交集）
   for (const id of view.groupIds ?? []) {
-    if (item.groupId !== id) return false;
+    const group = project.groups.find((g) => g.id === id);
+    if (!group || !group.eventIds?.includes(item.id)) return false;
   }
   if (view.characterId && !item.characters?.includes(view.characterId)) return false;
-  for (const id of view.activeSnapshotIds ?? []) {
-    const snap = view.snapshots?.find((s) => s.id === id);
-    if (!snap || !snap.eventIds.includes(item.id)) return false;
-  }
   return true;
 }
 
@@ -242,10 +257,13 @@ export function inView(view, item) {
  * 组里没有事件、或事件都没填年份时返回 null——此时标签上就不写范围。
  */
 export function groupSpan(project, groupId) {
+  const group = project.groups.find((g) => g.id === groupId);
+  if (!group) return null;
+  const ids = new Set(group.eventIds);
   let min = Infinity;
   let max = -Infinity;
   for (const ev of project.events) {
-    if (ev.groupId !== groupId) continue;
+    if (!ids.has(ev.id)) continue;
     for (const v of [ev.from, ev.to]) {
       if (typeof v !== 'number' || !Number.isFinite(v)) continue;
       if (v < min) min = v;
@@ -266,10 +284,18 @@ export function eventsOfCharacter(project, id) {
     .sort((a, b) => (a.from ?? -Infinity) - (b.from ?? Infinity));
 }
 
+/** 某条事件挂在哪些章节下。清单在章节那一侧，这里反向扫一遍 */
+export function groupsOfEvent(project, eventId) {
+  return project.groups.filter((g) => g.eventIds?.includes(eventId));
+}
+
 /** 某个章节里的事件，按时间先后 */
 export function eventsOfGroup(project, id) {
+  const group = project.groups.find((g) => g.id === id);
+  if (!group) return [];
+  const ids = new Set(group.eventIds);
   return project.events
-    .filter((ev) => ev.groupId === id)
+    .filter((ev) => ids.has(ev.id))
     .sort((a, b) => (a.from ?? -Infinity) - (b.from ?? Infinity));
 }
 

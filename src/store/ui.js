@@ -12,10 +12,9 @@ export const createUISlice = (set, get) => ({
   // 检查器正在展示什么。kind='characters'（复数、没有 id）是人物清单那一页，
   // 让「翻列表」与「看某一个」共用同一份状态，不必再多一个开关去跟选中态对齐
   selection: null,       // { kind: 'event'|'route'|'region'|'character', id } | { kind: 'characters' | 'groups' }
-  // 「当前在看什么」是一组同时生效的事件集合：选中的章节、编程接口的实时人物筛、
-  // 选中的姓名快照，三者取交集。姓名快照本身存在 snapshots 里，和章节一样是一个可点选的
-  // 标签；取消选中只是退出交集，快照不会因此消失。
-  // 快照不进 project、不参与自动保存；显式导出时才写进文件，导入时按项目校验后恢复。
+  // 「当前在看什么」是一组同时生效的事件集合：选中的章节（含姓名搜索生成的章节）
+  // 与编程接口的实时人物筛，取交集。章节都存在 project.groups 里，取消选中只是退出交集，
+  // 章节本身不会消失。
   viewFilter: noView(),
   // 当前镜头档位：1 = 出厂视角，64 = 相机推到底再收满镜头。
   // 滚轮与设置面板滑块读写同一个数，不写进设置存档。
@@ -73,7 +72,7 @@ export const createUISlice = (set, get) => ({
    * 改视图条件。收窄只是换一批「谁在场」，一个像素都不用重画，
    * 所以走 derived 这一路、不碰 contentRev。
    *
-   * 章节、实时人物筛与姓名快照都在这一个对象里；长卷、时间轴、球面与方向键
+   * 章节与实时人物筛都在这一个对象里；长卷、时间轴、球面与方向键
    * 读到的因此永远是同一批事件。
    */
   setViewFilter(patch) {
@@ -92,8 +91,6 @@ export const createUISlice = (set, get) => ({
       groupId: v.groupIds[0] ?? null,
       groupIds: [...v.groupIds],
       characterId: v.characterId,
-      snapshots: v.snapshots.map((s) => ({ ...s, eventIds: [...s.eventIds] })),
-      activeSnapshotIds: [...v.activeSnapshotIds],
     };
   },
 
