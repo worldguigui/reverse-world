@@ -45,7 +45,7 @@ export const DEFAULT_CONFIG = {
   markers: {
     dotPx: 18,         // 选中事件那个光点的直径（像素）
     routeWidth: 3,     // 路线像素宽度
-    fillOpacity: 0.32, // 区域填充不透明度
+    fillOpacity: 0.14, // 区域填充不透明度：只给地形蒙一层很淡的灰金
   },
 };
 
@@ -71,7 +71,13 @@ export function loadViewConfig() {
   const config = structuredClone(DEFAULT_CONFIG);
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) mergeInto(config, dropCodeOwnedKeys(JSON.parse(saved)));
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // 旧版的区域填充默认值是 0.32，偏厚；没动过这一项的存档跟着换成新默认，
+      // 自己调过的值保留
+      if (parsed?.markers?.fillOpacity === 0.32) delete parsed.markers.fillOpacity;
+      mergeInto(config, dropCodeOwnedKeys(parsed));
+    }
   } catch { /* 忽略坏数据 */ }
   // 上限可能随版本收紧：旧存档里更大的数量在这里夹回当前范围
   config.stars.count = Math.min(

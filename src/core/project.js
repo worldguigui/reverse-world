@@ -14,8 +14,16 @@ export function uid(prefix) {
   return `${prefix}_${_seq}${((Math.random() * 1e6) | 0).toString(36)}`;
 }
 
-/** 内容默认配色轮换 */
-export const PALETTE = ['#ffb545', '#4dd0ff', '#ff6e6e', '#8dff70', '#c78dff', '#ffd54d', '#7da7ff', '#ff9ad5'];
+/**
+ * 新建内容的默认颜色：按类别固定，不随创建顺序轮换。
+ * 路线与区域在球上走统一的语义配色（普通灰金、选中铜橙），
+ * 这两个值只为数据兼容保留；人物颜色仍用于列表里的小圆点。
+ */
+export const DEFAULT_ITEM_COLORS = {
+  route: '#b5a17b',
+  region: '#b5a17b',
+  character: '#c78dff',
+};
 
 export const PROJECT_VERSION = 3;
 
@@ -27,7 +35,7 @@ export function createProject({ name = '未命名世界', description = '' } = {
     // 舞台：球自己的那张脸，与时间无关，最多一张
     baseRasterId: null, // 地图 id（工坊可编辑的那种），空 = 深色空球
     rasterMaps: [], // { id, name, w, h, dataUrl, format } 地图（format 2：R+G=高度、B=水）
-    events: [],     // { id, title, description, image, lat, lng, color, from, to } 事件
+    events: [],     // { id, title, description, image, lat, lng, from, to } 事件
                     //   lat / lng 为空 = 纯叙事事件：不上球、不渲染标注，只进编年史
     routes: [],     // { id, title, description, color, points: [{lat,lng}...], from, to }
     regions: [],    // { id, name, description, color, ring: [[lng,lat]...], from, to }
@@ -54,9 +62,10 @@ export function normalizeProject(raw) {
     .map((c) => ({ ...c, aliases: toAliases(c.aliases) }));
   // 事件的「涉及人物」在旧文件里整个键都可能不在，读进来统一补齐。
   // 章节关系不放在事件上：章节自己拥有 eventIds，一个事件才能同时出现在多章里
-  p.events = okList(src.events).filter(okItem).map(({ groupId: _legacy, ...ev }) => ({
-    ...ev, characters: okList(ev.characters),
-  }));
+  p.events = okList(src.events).filter(okItem)
+    .map(({ groupId: _legacy, color: _unusedColor, ...ev }) => ({
+      ...ev, characters: okList(ev.characters),
+    }));
   p.routes = okList(src.routes).filter(okItem);
   p.regions = okList(src.regions).filter(okItem);
   // 章节清单由章节持有。导入时按当前事件表校验：悬空 id 与重复项一律摘掉。
@@ -78,11 +87,11 @@ const toAliases = (v) => (v == null ? [] : (Array.isArray(v) ? v : [String(v)]))
 
 /**
  * 每种内容的台账，外加它自带哪些通用字段。
- * `timed` = 有存续区间（两端留空即常驻）；`colored` = 参与配色轮换。
- * 人物没有存续区间，章节只是一个归类——两者都不该占掉配色池的额度。
+ * `timed` = 有存续区间（两端留空即常驻）；`colored` = 创建时带该类别的默认颜色。
+ * 事件与章节没有颜色；人物没有存续区间。
  */
 const KINDS = {
-  event: { list: (p) => p.events, timed: true, colored: true },
+  event: { list: (p) => p.events, timed: true },
   route: { list: (p) => p.routes, timed: true, colored: true },
   region: { list: (p) => p.regions, timed: true, colored: true },
   character: { list: (p) => p.characters, colored: true },
@@ -95,12 +104,6 @@ export function getList(project, kind) {
 
 export function getItem(project, kind, id) {
   return getList(project, kind).find((it) => it.id === id) ?? null;
-}
-
-function nextColor(project) {
-  const kinds = Object.keys(KINDS).filter((k) => KINDS[k].colored);
-  const used = kinds.flatMap((k) => getList(project, k).map((it) => it.color));
-  return PALETTE.find((c) => !used.includes(c)) ?? PALETTE[used.length % PALETTE.length];
 }
 
 // ---------------------------------------------------------------- 舞台
@@ -162,6 +165,8 @@ export function setEventGroups(project, eventId, groupIds = []) {
 export function addItem(project, kind, data = {}) {
   // 过滤掉显式传入的 undefined，避免覆盖 id/color 等默认值
   const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
+  // 事件没有颜色字段：旧面板或脚本仍可能传进来，直接丢掉
+  if (kind === 'event') delete clean.color;
   // 章节关系写在章节那一侧：创建时把新事件的 id 同步进各章清单，事件上不存副本。
   // groupId 是旧版的单章字段，仍接受，按一章处理
   let groupIds = null;
@@ -173,7 +178,7 @@ export function addItem(project, kind, data = {}) {
   const caps = KINDS[kind];
   const item = {
     id: uid(ID_PREFIX[kind]),
-    ...(caps.colored ? { color: nextColor(project) } : {}),
+    ...(caps.colored ? { color: DEFAULT_ITEM_COLORS[kind] } : {}),
     // 两端留空 = 常驻；填了才进时间轴
     ...(caps.timed ? { from: null, to: null } : {}),
     ...DEFAULTS[kind](clean),
@@ -186,6 +191,11 @@ export function addItem(project, kind, data = {}) {
 export function updateItem(project, kind, id, patch) {
   const item = getItem(project, kind, id);
   if (!item) return null;
+  // 事件没有颜色字段：旧面板或脚本仍可能传进来，直接丢掉
+  if (kind === 'event' && 'color' in patch) {
+    const { color: _unusedColor, ...rest } = patch;
+    patch = rest;
+  }
   // 与创建同一条规则：groupIds 不是事件上的字段，而是各章节清单的增删
   if (kind === 'event' && ('groupIds' in patch || 'groupId' in patch)) {
     const { groupIds, groupId, ...rest } = patch;

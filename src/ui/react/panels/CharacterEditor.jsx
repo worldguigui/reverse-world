@@ -39,7 +39,7 @@ export function CharacterList() {
   const shown = query.trim() ? searchCharacters(characters, query) : characters;
 
   return (
-    <div className="insp-block">
+    <div className="insp-block insp-list-page">
       <div className="insp-title">人物</div>
 
       {characters.length === 0 ? (

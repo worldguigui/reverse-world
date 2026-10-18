@@ -234,7 +234,6 @@
       "image": null,
       "lat": 43.86,
       "lng": 18.41,
-      "color": "#ffb545",
       "from": 1914,
       "to": null,
       "characters": [
@@ -249,7 +248,6 @@
       "image": null,
       "lat": 44.79,
       "lng": 20.45,
-      "color": "#4dd0ff",
       "from": 1914,
       "to": null,
       "characters": [
@@ -263,7 +261,6 @@
       "image": null,
       "lat": 52.52,
       "lng": 13.4,
-      "color": "#ff6e6e",
       "from": 1914,
       "to": null,
       "characters": [
@@ -278,7 +275,6 @@
       "image": null,
       "lat": 50.63,
       "lng": 5.57,
-      "color": "#8dff70",
       "from": 1914,
       "to": null,
       "characters": [
@@ -292,7 +288,6 @@
       "image": null,
       "lat": 53.5,
       "lng": 20,
-      "color": "#c78dff",
       "from": 1914,
       "to": null,
       "characters": [
@@ -307,7 +302,6 @@
       "image": null,
       "lat": 49,
       "lng": 3,
-      "color": "#ffd54d",
       "from": 1914,
       "to": null,
       "characters": [
@@ -322,7 +316,6 @@
       "image": null,
       "lat": 50.85,
       "lng": 2.89,
-      "color": "#7da7ff",
       "from": 1914,
       "to": null,
       "characters": [
@@ -336,7 +329,6 @@
       "image": null,
       "lat": 41.01,
       "lng": 28.98,
-      "color": "#ff9ad5",
       "from": 1914,
       "to": null,
       "characters": [
@@ -350,7 +342,6 @@
       "image": null,
       "lat": 50.9,
       "lng": 2.92,
-      "color": "#ffb545",
       "from": 1914,
       "to": null,
       "characters": []
@@ -362,7 +353,6 @@
       "image": null,
       "lat": 50.85,
       "lng": 2.89,
-      "color": "#4dd0ff",
       "from": 1915,
       "to": null,
       "characters": [
@@ -376,7 +366,6 @@
       "image": null,
       "lat": 40.24,
       "lng": 26.28,
-      "color": "#ff6e6e",
       "from": 1915,
       "to": null,
       "characters": [
@@ -390,7 +379,6 @@
       "image": null,
       "lat": 51.25,
       "lng": -10.5,
-      "color": "#8dff70",
       "from": 1915,
       "to": null,
       "characters": [
@@ -404,7 +392,6 @@
       "image": null,
       "lat": 46,
       "lng": 12.5,
-      "color": "#c78dff",
       "from": 1915,
       "to": null,
       "characters": []
@@ -416,7 +403,6 @@
       "image": null,
       "lat": 49.9,
       "lng": 21,
-      "color": "#ffd54d",
       "from": 1915,
       "to": null,
       "characters": [
@@ -431,7 +417,6 @@
       "image": null,
       "lat": 49.16,
       "lng": 5.38,
-      "color": "#7da7ff",
       "from": 1916,
       "to": null,
       "characters": [
@@ -446,7 +431,6 @@
       "image": null,
       "lat": 56.3,
       "lng": 5,
-      "color": "#ff9ad5",
       "from": 1916,
       "to": null,
       "characters": []
@@ -458,7 +442,6 @@
       "image": null,
       "lat": 49.6,
       "lng": 24.5,
-      "color": "#ffb545",
       "from": 1916,
       "to": null,
       "characters": [
@@ -472,7 +455,6 @@
       "image": null,
       "lat": 50,
       "lng": 2.65,
-      "color": "#4dd0ff",
       "from": 1916,
       "to": null,
       "characters": [
@@ -487,7 +469,6 @@
       "image": null,
       "lat": 50.05,
       "lng": 2.75,
-      "color": "#ff6e6e",
       "from": 1916,
       "to": null,
       "characters": [
@@ -501,7 +482,6 @@
       "image": null,
       "lat": 38.9,
       "lng": -77.03,
-      "color": "#8dff70",
       "from": 1917,
       "to": null,
       "characters": [
@@ -516,7 +496,6 @@
       "image": null,
       "lat": 54,
       "lng": 6,
-      "color": "#c78dff",
       "from": 1917,
       "to": null,
       "characters": [
@@ -531,7 +510,6 @@
       "image": null,
       "lat": 59.93,
       "lng": 30.34,
-      "color": "#ffd54d",
       "from": 1917,
       "to": null,
       "characters": [
@@ -545,7 +523,6 @@
       "image": null,
       "lat": 38.9,
       "lng": -77.03,
-      "color": "#7da7ff",
       "from": 1917,
       "to": null,
       "characters": [
@@ -559,7 +536,6 @@
       "image": null,
       "lat": 50.9,
       "lng": 2.92,
-      "color": "#ff9ad5",
       "from": 1917,
       "to": null,
       "characters": [
@@ -573,7 +549,6 @@
       "image": null,
       "lat": 59.93,
       "lng": 30.34,
-      "color": "#ffb545",
       "from": 1917,
       "to": null,
       "characters": [
@@ -587,7 +562,6 @@
       "image": null,
       "lat": 50.18,
       "lng": 3.23,
-      "color": "#4dd0ff",
       "from": 1917,
       "to": null,
       "characters": [
@@ -601,7 +575,6 @@
       "image": null,
       "lat": 38.9,
       "lng": -77.03,
-      "color": "#ff6e6e",
       "from": 1918,
       "to": null,
       "characters": [
@@ -615,7 +588,6 @@
       "image": null,
       "lat": 52.1,
       "lng": 23.7,
-      "color": "#8dff70",
       "from": 1918,
       "to": null,
       "characters": [
@@ -629,7 +601,6 @@
       "image": null,
       "lat": 49.89,
       "lng": 2.3,
-      "color": "#c78dff",
       "from": 1918,
       "to": null,
       "characters": [
@@ -645,7 +616,6 @@
       "image": null,
       "lat": 49.42,
       "lng": 2.82,
-      "color": "#ffd54d",
       "from": 1918,
       "to": null,
       "characters": [
@@ -659,7 +629,6 @@
       "image": null,
       "lat": 48.86,
       "lng": 2.35,
-      "color": "#7da7ff",
       "from": 1919,
       "to": null,
       "characters": [
@@ -675,7 +644,6 @@
       "image": null,
       "lat": 48.8,
       "lng": 2.13,
-      "color": "#ff9ad5",
       "from": 1919,
       "to": null,
       "characters": [

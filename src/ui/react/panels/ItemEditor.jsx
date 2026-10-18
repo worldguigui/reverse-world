@@ -125,10 +125,6 @@ export function ItemEditor({ kind, id }) {
       <Labeled label="消失于">
         <YearInput value={item.to} onChange={(v) => patch({ to: v })} placeholder="至今" />
       </Labeled>
-      <Labeled label="颜色">
-        <input type="color" value={item.color} onChange={(e) => patch({ color: e.target.value })} />
-      </Labeled>
-
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
         <button className="btn" onClick={() => flyToItem(kind, item)}>定位</button>
         <button

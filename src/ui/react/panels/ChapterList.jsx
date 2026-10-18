@@ -41,7 +41,7 @@ export function ChapterList() {
     : groups;
 
   return (
-    <div className="insp-block">
+    <div className="insp-block insp-list-page">
       <div className="insp-title">章节</div>
 
       {groups.length === 0 ? (

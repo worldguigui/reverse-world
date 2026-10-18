@@ -5,7 +5,7 @@
 import { uid, noView } from '../core/project.js';
 import { buildDerived } from './world.js';
 
-export const blankDrawForm = () => ({ title: '', description: '', color: null, from: null, to: null });
+export const blankDrawForm = () => ({ title: '', description: '', from: null, to: null });
 
 export const createUISlice = (set, get) => ({
   mode: 'browse',        // browse | add-event | draw-route | draw-region

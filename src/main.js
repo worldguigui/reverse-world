@@ -27,6 +27,8 @@ async function main() {
   // ---------------------------------------------------------- 渲染基础
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.autoClear = false; // 一帧要分三趟画，清屏由 render() 自己掌握
+  // 太空底色是略暖的黑炭色，而不是纯黑：星场边缘不再与周围 UI 割裂
+  renderer.setClearColor(0x0d0c0b, 1);
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;

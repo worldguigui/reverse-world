@@ -3,10 +3,14 @@ import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { latLngToVec3, slerpLatLng } from '../utils.js';
+import { OVERLAY_ACTIVE, OVERLAY_BASE } from './overlay-palette.js';
 import { LAYER_CONTENT } from './render-layers.js';
 import { createMaterialBin } from './material-bin.js';
 
 const ROUTE_R = 1.008;
+// 普通路线压低存在感，选中时靠铜橙、加粗与满透明度拉开层级
+const NORMAL_OPACITY = 0.78;
+const SELECTED_EXTRA_WIDTH = 1;
 
 /**
  * 路线层：相邻经纬点之间走大圆弧（slerp 细分），用 Line2 渲染保证像素宽度。
@@ -51,19 +55,27 @@ export class RouteLayer {
       this.group.remove(line);
     }
     this.byId.clear();
-    const width = this.getConfig().markers.routeWidth;
     for (const route of routes) {
       const mat = this._bin.take();
-      mat.color = new THREE.Color(route.color || '#ffb545');
-      mat.linewidth = width;
-      mat.opacity = route.id === this.selectedId ? 1 : 0.88;
       mat.resolution = this._resolution;
       const line = new Line2(new LineGeometry(), mat);
       line.userData.itemId = route.id;
       this.byId.set(route.id, { line, mat, points: route.points });
       this._add(line);
     }
+    this._applyStyles();
     this.relayout();
+  }
+
+  /** 颜色、线宽与透明度都由「是否选中」决定，路线自己的 color 不再参与渲染 */
+  _applyStyles() {
+    const width = this.getConfig().markers.routeWidth;
+    for (const [id, { mat }] of this.byId) {
+      const selected = id === this.selectedId;
+      mat.color.set(selected ? OVERLAY_ACTIVE : OVERLAY_BASE);
+      mat.linewidth = selected ? width + SELECTED_EXTRA_WIDTH : width;
+      mat.opacity = selected ? 1 : NORMAL_OPACITY;
+    }
   }
 
   /**
@@ -101,7 +113,7 @@ export class RouteLayer {
   setSelected(id) {
     if (this.selectedId === id) return;
     this.selectedId = id;
-    for (const [rid, { mat }] of this.byId) mat.opacity = rid === id ? 1 : 0.88;
+    this._applyStyles();
   }
 
   /** 射线拾取（Line2 的拾取按屏幕像素宽度计算） */
@@ -119,7 +131,7 @@ export class RouteLayer {
     const verts = points.map((p) => latLngToVec3(p.lat, p.lng, ROUTE_R));
     this._preview = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(verts),
-      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 }),
+      new THREE.LineBasicMaterial({ color: OVERLAY_ACTIVE, transparent: true, opacity: 0.85 }),
     );
     this._add(this._preview);
   }

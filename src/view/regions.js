@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { latLngToVec3 } from '../utils.js';
+import { OVERLAY_ACTIVE, OVERLAY_BASE, OVERLAY_BORDER } from './overlay-palette.js';
 import { LAYER_CONTENT } from './render-layers.js';
 import { createMaterialBin } from './material-bin.js';
 
@@ -7,6 +8,11 @@ const FILL_R = 1.0025; // 填充面略高于地表，避免 z-fighting
 const LINE_R = 1.005;  // 边界线更高一点，盖在填充面上
 const MAX_TRI_DEG = 2; // 三角形最大边长（度），对应弦陷 0.00015，远小于层高
 const MAX_DEPTH = 6;   // 四分割深度上限，防止退化环死循环
+// 悬停只轻抬一层，选中只换边界色：整块区域变橙会压过地形
+const HOVER_FILL_BOOST = 0.04;
+const SELECTED_FILL_BOOST = 0.03;
+const NORMAL_LINE_OPACITY = 0.8;
+const HOVER_LINE_OPACITY = 0.95;
 
 /**
  * 势力区域层：用户在球面上逐点勾画的多边形。
@@ -40,16 +46,13 @@ export class RegionLayer {
    */
   build(regions) {
     this._clearBuilt();
-    const fillOpacity = this.getConfig().markers.fillOpacity;
     for (const region of regions) {
       const polygons = region.ring?.length >= 3 ? [region.ring] : [];
       const entry = { fill: null, line: null, polygons };
-      const color = region.color || '#ffb545';
 
       if (polygons.length) {
         const mat = this._fillBin.take();
-        mat.color.set(color);
-        mat.opacity = fillOpacity;
+        mat.color.set(OVERLAY_BASE);
         entry.mat = mat;
         entry.fill = new THREE.Mesh(new THREE.BufferGeometry(), mat);
         entry.fill.userData.itemId = region.id;
@@ -57,8 +60,7 @@ export class RegionLayer {
       }
 
       const lineMat = this._lineBin.take();
-      lineMat.color.set(color);
-      lineMat.opacity = 0.9;
+      lineMat.color.set(OVERLAY_BORDER);
       entry.lineMat = lineMat;
       entry.line = new THREE.LineSegments(new THREE.BufferGeometry(), lineMat);
       entry.line.userData.itemId = region.id;
@@ -110,12 +112,16 @@ export class RegionLayer {
     this.byId.clear();
   }
 
+  /** 填充色与边界色固定，选中/悬停只调整浓度与边界；区域自己的 color 不再参与渲染 */
   _applyStyles() {
     const base = this.getConfig().markers.fillOpacity;
     for (const [id, e] of this.byId) {
-      const boost = id === this.selectedId ? 0.45 : id === this.hoverId ? 0.18 : 0;
+      const selected = id === this.selectedId;
+      const hover = id === this.hoverId;
+      const boost = selected ? SELECTED_FILL_BOOST : hover ? HOVER_FILL_BOOST : 0;
       if (e.mat) e.mat.opacity = Math.min(0.85, base + boost);
-      e.lineMat.opacity = id === this.selectedId ? 1 : 0.9;
+      e.lineMat.color.set(selected ? OVERLAY_ACTIVE : hover ? OVERLAY_BASE : OVERLAY_BORDER);
+      e.lineMat.opacity = selected ? 1 : hover ? HOVER_LINE_OPACITY : NORMAL_LINE_OPACITY;
     }
   }
 
@@ -155,7 +161,7 @@ export class RegionLayer {
     }
     this._preview = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(verts),
-      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }),
+      new THREE.LineBasicMaterial({ color: OVERLAY_ACTIVE, transparent: true, opacity: 0.85 }),
     );
     this._previewDots = new THREE.Points(
       new THREE.BufferGeometry().setFromPoints(verts),

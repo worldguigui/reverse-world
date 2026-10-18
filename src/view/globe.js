@@ -264,21 +264,33 @@ export class Globe {
     const col = new Float32Array(count * 3);
     const v = new THREE.Vector3();
     const c = new THREE.Color();
+    // 三档星点：多数是低亮度灰白，少数暖白亮星，极少数灰金装饰星。
+    // 亮度靠顶点色压暗，不用逐点透明度——PointsMaterial 没有逐顶点 alpha。
+    const faint = new THREE.Color('#d8cbb4');
+    const bright = new THREE.Color('#e8dfcf');
+    const gold = new THREE.Color('#a98b60');
     for (let i = 0; i < count; i++) {
       v.randomDirection().multiplyScalar(40 + Math.random() * 60);
       pos.set([v.x, v.y, v.z], i * 3);
-      c.setHSL(0.55 + (Math.random() - 0.5) * 0.25, Math.random() * 0.3, 0.45 + Math.random() * 0.55);
+      const roll = Math.random();
+      if (roll < 0.78) {
+        c.copy(faint).multiplyScalar(0.28 + Math.random() * 0.22);
+      } else if (roll < 0.94) {
+        c.copy(bright).multiplyScalar(0.62 + Math.random() * 0.2);
+      } else {
+        c.copy(gold).multiplyScalar(0.34 + Math.random() * 0.18);
+      }
       col.set([c.r, c.g, c.b], i * 3);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     this.stars = new THREE.Points(geo, new THREE.PointsMaterial({
-      size: 1.6,
+      size: 1.25,
       sizeAttenuation: false,
       vertexColors: true,
       transparent: true,
-      opacity: 0.95,
+      opacity: 0.85,
       depthWrite: false,
     }));
     this.stars.quaternion.copy(this._starsSpin);

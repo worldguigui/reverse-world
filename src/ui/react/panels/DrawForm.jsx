@@ -43,14 +43,6 @@ export function DrawForm({ kind }) {
         />
       </Labeled>
 
-      <Labeled label="颜色">
-        <input
-          type="color"
-          value={form.color ?? '#ffb545'}
-          onChange={(e) => saveDrawForm({ color: e.target.value })}
-        />
-      </Labeled>
-
       <Labeled label="出现于">
         <YearInput value={form.from} onChange={(v) => saveDrawForm({ from: v })} />
       </Labeled>

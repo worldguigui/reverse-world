@@ -223,11 +223,9 @@ export const createWorldSlice = (set, get) => ({
     // 点数不够就什么都不做：按 Enter 提交时「完成」按钮本来就是禁用的
     if (coords.length < (kind === 'route' ? 2 : 3)) return;
     const form = { ...get().drawForm, ...(values || {}) };
-    if (form.color == null) delete form.color; // 未指定 → 交给 core 的调色板轮换
     const named = form.title || (kind === 'route' ? '新路线' : '新区域');
     const common = {
       description: form.description || '',
-      color: form.color,
       from: form.from ?? null,
       to: form.to ?? null,
     };
