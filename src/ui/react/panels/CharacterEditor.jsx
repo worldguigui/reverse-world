@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { formatYear } from '../../../core/timeline.js';
 import { useProjectRevision } from '../hooks.js';
-import { Labeled, BackToOverview, YearInput } from '../common.jsx';
+import { Labeled, BackToOverview, YearInput, searchCharacters } from '../common.jsx';
 
 /**
  * 人物的两张面板：清单与卡片。
@@ -33,6 +34,9 @@ export function CharacterList() {
   useProjectRevision(); // 改了名字或生卒，这一排要跟着重排
 
   const characters = project?.characters ?? [];
+  // 清单页的搜索框：空的就照原顺序列全部；敲了字走与人名下拉同一套名字/别名检索
+  const [query, setQuery] = useState('');
+  const shown = query.trim() ? searchCharacters(characters, query) : characters;
 
   return (
     <div className="insp-block">
@@ -43,18 +47,31 @@ export function CharacterList() {
           还没有人物。录进来之后，事件的详情里就能勾上「谁参与了这件事」。
         </p>
       ) : (
-        <div className="char-list">
-          {characters.map((c) => (
-            <button
-              key={c.id}
-              className="char-row"
-              onClick={() => select({ kind: 'character', id: c.id })}
-            >
-              <b>{c.name}</b>
-              <span>{lifeYears(c) || '生平不详'}</span>
-            </button>
-          ))}
-        </div>
+        <>
+          <input
+            className="inp"
+            type="text"
+            value={query}
+            placeholder="搜索人物（名字或别名）"
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {shown.length === 0 ? (
+            <p className="insp-hint">没有匹配的人物。</p>
+          ) : (
+            <div className="char-list">
+              {shown.map((c) => (
+                <button
+                  key={c.id}
+                  className="char-row"
+                  onClick={() => select({ kind: 'character', id: c.id })}
+                >
+                  <b>{c.name}</b>
+                  <span>{lifeYears(c) || '生平不详'}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       <button className="btn btn-primary" id="char-new" onClick={() => addCharacter()}>

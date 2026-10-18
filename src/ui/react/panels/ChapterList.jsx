@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useStore } from '../../../store/index.js';
 import { formatYear } from '../../../core/timeline.js';
 import { useProjectRevision } from '../hooks.js';
@@ -29,6 +30,15 @@ export function ChapterList() {
 
   const groups = project?.groups ?? [];
   const countOf = (g) => g.eventIds?.length ?? 0;
+  // 章节清单的搜索框：按章节名过滤，空着就照原顺序列全部。
+  // 正在改名的这一行不参与过滤——否则把「威廉二世」改成不含搜索词的名字时，
+  // 输入框会跟着整行一起消失，打到一半的字就没了。
+  const [query, setQuery] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const key = query.trim().toLowerCase();
+  const shown = key
+    ? groups.filter((g) => g.id === editingId || g.name.toLowerCase().includes(key))
+    : groups;
 
   return (
     <div className="insp-block">
@@ -39,45 +49,60 @@ export function ChapterList() {
           还没有章节。把事件分进章节之后，长卷顶上会多出一排标签，点谁看谁。
         </p>
       ) : (
-        <div className="chap-list">
-          {groups.map((g) => {
-            const n = countOf(g);
-            const span = spanText(groupSpan(g.id));
-            return (
-              <div className="chap-row" key={g.id}>
-                <input
-                  className="inp"
-                  defaultValue={g.name}
-                  onChange={(e) => updateItem('group', g.id, { name: e.target.value })}
-                />
-                <div className="chap-meta">
-                  <span className="insp-hint">
-                    {n ? `${n} 条事件${span ? ` · ${span}` : ''}` : '空章节'}
-                  </span>
-                  <span style={{ flex: 1 }} />
-                  <button
-                    className="btn btn-mini"
-                    title="只看这一章：取消其他选中，长卷、时间轴刻度、球上的事件一起收窄"
-                    onClick={() => setViewFilter({ groupIds: [g.id], characterId: null })}
-                  >
-                    看
-                  </button>
-                  <button
-                    className="btn btn-mini btn-danger"
-                    title="删除章节"
-                    onClick={() => {
-                      if (confirm('删除章节？章节只是事件的一种归类，事件本身一条都不删。')) {
-                        deleteItem('group', g.id);
-                      }
-                    }}
-                  >
-                    🗑
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <>
+          <input
+            className="inp"
+            type="text"
+            value={query}
+            placeholder="搜索章节"
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {shown.length === 0 ? (
+            <p className="insp-hint">没有匹配的章节。</p>
+          ) : (
+            <div className="chap-list">
+              {shown.map((g) => {
+                const n = countOf(g);
+                const span = spanText(groupSpan(g.id));
+                return (
+                  <div className="chap-row" key={g.id}>
+                    <input
+                      className="inp"
+                      defaultValue={g.name}
+                      onFocus={() => setEditingId(g.id)}
+                      onBlur={() => setEditingId(null)}
+                      onChange={(e) => updateItem('group', g.id, { name: e.target.value })}
+                    />
+                    <div className="chap-meta">
+                      <span className="insp-hint">
+                        {n ? `${n} 条事件${span ? ` · ${span}` : ''}` : '空章节'}
+                      </span>
+                      <span style={{ flex: 1 }} />
+                      <button
+                        className="btn btn-mini"
+                        title="只看这一章：取消其他选中，长卷、时间轴刻度、球上的事件一起收窄"
+                        onClick={() => setViewFilter({ groupIds: [g.id], characterId: null })}
+                      >
+                        看
+                      </button>
+                      <button
+                        className="btn btn-mini btn-danger"
+                        title="删除章节"
+                        onClick={() => {
+                          if (confirm('删除章节？章节只是事件的一种归类，事件本身一条都不删。')) {
+                            deleteItem('group', g.id);
+                          }
+                        }}
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       <button className="btn btn-primary" id="chap-new" onClick={() => addGroup()}>

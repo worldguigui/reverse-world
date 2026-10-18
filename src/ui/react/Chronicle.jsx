@@ -55,9 +55,16 @@ export function Chronicle() {
   const [hit, setHit] = useState(0);
 
   const characters = project?.characters ?? [];
-  const cands = searchCharacters(characters, query).slice(0, 8);
+  // 不按条数截断：候选菜单限高并可滚动，截断会让第 9 个以后的人永远选不到
+  const cands = searchCharacters(characters, query);
   // 输着字且光标还在框里时才展开候选；一失焦就收，免得挡住长卷
   const searching = focused && query.trim().length > 0;
+
+  // 候选可能比菜单高；键盘移到看不见的那条时把它滚进视野
+  const hitRef = useRef(null);
+  useEffect(() => {
+    hitRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [hit, query]);
 
   const pickCharacter = (c) => {
     // 搜索即建章节：把此人此刻涉及的事件取成清单，新建一个普通章节并选中。
@@ -153,6 +160,7 @@ export function Chronicle() {
                 cands.map((c, i) => (
                   <button
                     key={c.id}
+                    ref={i === hit ? hitRef : null}
                     type="button"
                     className={`char-opt${i === hit ? ' hit' : ''}`}
                     // 按下时挡掉默认行为：一失焦候选就收，紧接着的 click 会落空

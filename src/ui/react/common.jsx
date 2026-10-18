@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../store/index.js';
 
 /** 检查器里统一的「小标题 + 控件」排版 */
@@ -51,9 +51,12 @@ export function searchCharacters(characters, query, exclude = []) {
   return scored.map((x) => x.c);
 }
 
-/** 挂人时的候选：已经挂上的不再出现，最多列 8 条 */
+/**
+ * 挂人时的候选：已经挂上的不再出现。
+ * 不截断条数——菜单本身限高并可滚动，按条数截断只会让第 9 个以后的名字永远选不到。
+ */
 function matchCharacters(characters, taken, query) {
-  return searchCharacters(characters, query, taken).slice(0, 8);
+  return searchCharacters(characters, query, taken);
 }
 
 /**
@@ -83,6 +86,12 @@ export function CharacterPicker({ ids = [], onChange }) {
   const cands = matchCharacters(characters, ids, query);
   // 输着字且光标还在框里时才展开候选；面板一失焦就收，免得挡住下面的字段
   const open = focused && query.trim().length > 0;
+
+  // 候选可能比菜单高；键盘移到看不见的那条时把它滚进视野
+  const hitRef = useRef(null);
+  useEffect(() => {
+    hitRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [hit, query]);
 
   const add = (id) => {
     onChange([...ids, id]);
@@ -155,6 +164,7 @@ export function CharacterPicker({ ids = [], onChange }) {
               cands.map((c, i) => (
                 <button
                   key={c.id}
+                  ref={i === hit ? hitRef : null}
                   type="button"
                   className={`char-opt${i === hit ? ' hit' : ''}`}
                   // 按下时挡掉默认行为，别让候选抢走输入框的焦点：
@@ -177,8 +187,32 @@ export function CharacterPicker({ ids = [], onChange }) {
 }
 
 /**
- * 「所属章节」多选。章节拥有事件清单，所以一条事件可以同时挂进多章；
- * 这里点一下切换一章的挂/摘。所有章节一视同仁。
+ * 章节候选：已经挂上的不再出现；名字开头命中的排在名字中间命中的前面。
+ * 不截断条数，理由同人物候选：菜单自己会滚动，截断只会让后面的章节选不到。
+ */
+function matchGroups(groups, taken, query) {
+  const key = query.trim().toLowerCase();
+  if (!key) return [];
+  const scored = [];
+  for (const g of groups) {
+    if (taken.includes(g.id)) continue;
+    const name = g.name.toLowerCase();
+    const rank = name.startsWith(key) ? 0 : name.includes(key) ? 1 : -1;
+    if (rank >= 0) scored.push({ g, rank });
+  }
+  scored.sort((a, b) => a.rank - b.rank);
+  return scored.map((x) => x.g);
+}
+
+/**
+ * 「所属章节」：与「涉及人物」同一套搜索下拉——常态只列出已经挂上的章节，
+ * 其余的在搜索框里敲字才浮出来。
+ *
+ * 早先这里把项目里每一章都铺成一排可勾的 tag，没挂上的章节也留在原地（只差描边），
+ * 于是「威廉二世」这一章会出现在每一条事件下面，看上去像所有事件都属于他。
+ * 现在没挂上的章节在界面上完全不占位置，一条事件属于哪几章，看到的就只有哪几章。
+ *
+ * 一条事件可以同时挂进多章；点已完成章节上的 ✕ 或再搜一次即可摘掉。
  *
  * @param {string[]} ids 已挂上的章节 id
  * @param {(ids: string[]) => void} onChange 变化后的完整清单
@@ -186,29 +220,108 @@ export function CharacterPicker({ ids = [], onChange }) {
 export function GroupPicker({ ids = [], onChange }) {
   const project = useStore((s) => s.project);
   const groups = project?.groups ?? [];
+  const [query, setQuery] = useState('');
+  const [focused, setFocused] = useState(false);
+  const [hit, setHit] = useState(0);
+
+  const picked = ids.map((id) => groups.find((g) => g.id === id)).filter(Boolean);
+  const cands = matchGroups(groups, ids, query);
+  // 输着字且光标还在框里时才展开候选；一失焦就收，免得挡住下面的字段
+  const open = focused && query.trim().length > 0;
+
+  // 候选可能比菜单高；键盘移到看不见的那条时把它滚进视野
+  const hitRef = useRef(null);
+  useEffect(() => {
+    hitRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [hit, query]);
+
+  const add = (id) => {
+    onChange([...ids, id]);
+    setQuery('');
+    setHit(0); // 候选换了一批，高亮位要退回第一条，否则会指到不存在的那一行上
+  };
+
+  const onKeyDown = (e) => {
+    // 输入法还在组字时，回车是在确认候选字，不是在选章节
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === 'Escape') {
+      setQuery('');
+      e.currentTarget.blur();
+      return;
+    }
+    if (!cands.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHit((i) => (i + 1) % cands.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHit((i) => (i - 1 + cands.length) % cands.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      add(cands[Math.min(hit, cands.length - 1)].id);
+    }
+  };
+
   if (!groups.length) {
     return <p className="insp-hint">还没有章节。顶栏「章节」里建一个，再来归类。</p>;
   }
-  const toggle = (id) => onChange(
-    ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id],
-  );
+
   return (
-    <div className="chips">
-      {groups.map((g) => {
-        const on = ids.includes(g.id);
-        return (
-          <button
-            key={g.id}
-            type="button"
-            className={`chip${on ? ' on' : ''}`}
-            title={on ? '点一下从这一章里移除' : '点一下挂到这一章'}
-            onClick={() => toggle(g.id)}
-          >
-            <span className="chip-name">{g.name}</span>
-            {on && <span className="chip-x">✕</span>}
-          </button>
-        );
-      })}
+    <div className="char-pick">
+      {picked.length === 0 ? (
+        <p className="insp-hint">还没有所属章节，在下面搜一章。</p>
+      ) : (
+        <div className="chips">
+          {picked.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              className="chip on"
+              title="点一下从这一章里移除"
+              onClick={() => onChange(ids.filter((x) => x !== g.id))}
+            >
+              <span className="chip-name">{g.name}</span>
+              <span className="chip-x">✕</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="char-search">
+        <input
+          className="inp"
+          type="text"
+          value={query}
+          placeholder="搜索章节"
+          onChange={(e) => { setQuery(e.target.value); setHit(0); }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onKeyDown={onKeyDown}
+        />
+        {open && (
+          <div className="char-menu">
+            {cands.length === 0 ? (
+              <p className="char-none">没有匹配的章节</p>
+            ) : (
+              cands.map((g, i) => (
+                <button
+                  key={g.id}
+                  ref={i === hit ? hitRef : null}
+                  type="button"
+                  className={`char-opt${i === hit ? ' hit' : ''}`}
+                  // 与人物候选同一个坑：按下时挡住默认行为，别让候选抢走输入框焦点
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setHit(i)}
+                  onClick={() => add(g.id)}
+                >
+                  <span className="char-name">{g.name}</span>
+                  <span className="char-alias">{g.eventIds?.length ?? 0} 条事件</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
