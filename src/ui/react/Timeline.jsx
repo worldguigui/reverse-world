@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useStore } from '../../store/index.js';
 import { useProjectRevision } from './hooks.js';
 import { timeDomain, timeTicks, formatYear } from '../../core/timeline.js';
+import { isViewFiltered } from '../../core/project.js';
 import { Chronicle } from './Chronicle.jsx';
 
 /**
@@ -23,8 +24,10 @@ export function Timeline() {
   const dragging = useRef(false);
 
   const domain = timeDomain(project);
-  // 收窄视图只收窄画在轴上的刻度：轴的跨度与游标照旧，拖与点都不受影响
+  // 收窄视图只收窄画在轴上的刻度：轴的跨度与游标照旧，拖与点都不受影响。
+  // 选中的章节、实时人物筛与临时章节都在 viewFilter 里，轴上与长卷看到的是同一批事件
   const ticks = timeTicks(project, viewFilter);
+  const filtering = isViewFiltered(viewFilter);
   const span = domain ? domain.end - domain.start : 0;
   const posOf = (year) => (span > 0 ? ((year - domain.start) / span) * 100 : 0);
 
@@ -65,7 +68,9 @@ export function Timeline() {
             反倒与另外两处打架 */}
         <div className="tl-readout" title="当前游标所在的年份">
           <span className="tl-year">{formatYear(cursor)}</span>
-          {ticks.length === 0 && <span className="tl-near">还没有事件</span>}
+          {ticks.length === 0 && (
+            <span className="tl-near">{filtering ? '筛选内没有事件' : '还没有事件'}</span>
+          )}
         </div>
 
         <button className="tl-arrow" title="上一个刻度 (←)" onClick={() => stepCursor(-1)}>◀</button>

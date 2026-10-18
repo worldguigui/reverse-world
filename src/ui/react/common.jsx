@@ -26,18 +26,20 @@ export function BackToOverview() {
 }
 
 /**
- * 按关键词找人物，已经挂上的不再出现在候选里。
+ * 按名字或别名检索人物。exclude 里的 id 不进结果。
  *
  * 名字开头命中的排在名字中间命中的前面，都排在只命中别名的前面：
  * 敲「威尔逊」时正主该在第一条，而别名里带这两个字的另一位要沉到后面去。
  * 同分的保持录入先后（sort 稳定），不再另排。
+ *
+ * 编年史的按姓名筛也走这一套：「搜得到谁」在两处必须一致。
  */
-function matchCharacters(characters, taken, query) {
+export function searchCharacters(characters, query, exclude = []) {
   const key = query.trim().toLowerCase();
   if (!key) return [];
   const scored = [];
   for (const c of characters) {
-    if (taken.includes(c.id)) continue;
+    if (exclude.includes(c.id)) continue;
     const name = c.name.toLowerCase();
     const aliases = (c.aliases ?? []).map((a) => a.toLowerCase());
     const rank = name.startsWith(key) ? 0
@@ -46,7 +48,12 @@ function matchCharacters(characters, taken, query) {
     if (rank >= 0) scored.push({ c, rank });
   }
   scored.sort((a, b) => a.rank - b.rank);
-  return scored.slice(0, 8).map((x) => x.c);
+  return scored.map((x) => x.c);
+}
+
+/** 挂人时的候选：已经挂上的不再出现，最多列 8 条 */
+function matchCharacters(characters, taken, query) {
+  return searchCharacters(characters, query, taken).slice(0, 8);
 }
 
 /**
@@ -84,6 +91,8 @@ export function CharacterPicker({ ids = [], onChange }) {
   };
 
   const onKeyDown = (e) => {
+    // 输入法还在组字时，回车是在确认候选字，不是在选人物
+    if (e.nativeEvent.isComposing) return;
     if (e.key === 'Escape') {
       setQuery('');
       e.currentTarget.blur();
@@ -117,8 +126,6 @@ export function CharacterPicker({ ids = [], onChange }) {
               key={c.id}
               type="button"
               className="chip on"
-              // 挂上的人用自己的配色描边，一条事件里有谁一眼看清
-              style={{ borderColor: c.color, color: c.color }}
               title="点一下从这条事件里移除"
               onClick={() => onChange(ids.filter((x) => x !== c.id))}
             >
@@ -134,7 +141,7 @@ export function CharacterPicker({ ids = [], onChange }) {
           className="inp"
           type="text"
           value={query}
-          placeholder="🔍 搜索人物（名字或别名）"
+          placeholder="搜索人物（名字或别名）"
           onChange={(e) => { setQuery(e.target.value); setHit(0); }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
@@ -180,7 +187,7 @@ export function GroupSelect({ value, onChange }) {
   const project = useStore((s) => s.project);
   const groups = project?.groups ?? [];
   if (!groups.length) {
-    return <p className="insp-hint">还没有章节。顶栏「📖 章节」里建一个，再来归类。</p>;
+    return <p className="insp-hint">还没有章节。顶栏「章节」里建一个，再来归类。</p>;
   }
   return (
     <select

@@ -95,7 +95,7 @@ export function SettingsPanel() {
         <button className="icon-btn" title="收起" onClick={() => setSettingsOpen(false)}>✕</button>
       </div>
 
-      <Group title="🎨 大气与星空">
+      <Group title="大气与星空">
         <Check label="大气层" checked={config.atmosphere.enabled}
           onChange={(v) => set({ atmosphere: { enabled: v } })} />
         <Color label="大气颜色" value={config.atmosphere.color}
@@ -108,19 +108,19 @@ export function SettingsPanel() {
           onChange={(v) => set({ stars: { count: v } })} />
       </Group>
 
-      <Group title="💡 光照">
+      <Group title="光照">
         <Slider label="主光" value={config.light.key} min={0} max={4} step={0.05}
           onChange={(v) => set({ light: { key: v } })} />
         <Slider label="环境光" value={config.light.ambient} min={0} max={2} step={0.05}
           onChange={(v) => set({ light: { ambient: v } })} />
       </Group>
 
-      <Group title="🏔 地形">
+      <Group title="地形">
         <Slider label="地形夸张" value={config.terrain.exaggeration} min={0} max={0.15} step={0.005}
           onChange={(v) => set({ terrain: { exaggeration: v } })} />
       </Group>
 
-      <Group title="📍 事件与路线">
+      <Group title="事件与路线">
         <Slider label="事件光点 px" value={config.markers.dotPx} min={8} max={44} step={1}
           onChange={(v) => set({ markers: { dotPx: v } })} />
         <Slider label="路线宽度 px" value={config.markers.routeWidth} min={1} max={8} step={0.5}
@@ -129,19 +129,18 @@ export function SettingsPanel() {
           onChange={(v) => set({ markers: { fillOpacity: v } })} />
       </Group>
 
-      <Group title="📷 视角">
+      <Group title="视角">
         {/* 与滚轮共用「当前档位」：拖动滑块就是缩放，滚轮转了滑块也跟着走。
             数字与「事件镜头档位」同一套 1–64；滚轮拉远超过出厂（档位 <1）时滑块停在 1。 */}
-        <Slider label="视角档位（与滚轮同步）" value={cameraLevel}
+        <Slider label="视角镜头档位" value={cameraLevel}
           min={1} max={64} step={0.01}
           format={(v) => Math.max(1, Math.round(v))}
           onChange={(v) => setCameraLevel(v)} />
-        <p className="insp-hint">与滚轮共用同一个档位：1 = 出厂视角，64 = 最紧。</p>
         {/* 点开一条事件时镜头落到哪一档，1 = 出厂视角，64 = 推到底再加满镜头倍率 */}
         <Slider label="事件镜头档位" value={config.camera.eventLevel} min={1} max={64} step={1}
           onChange={(v) => set({ camera: { eventLevel: v } })} />
         {/* 球可以往任意方向连续翻滚，转晕了就按这个把「上」掰回正北 */}
-        <button className="btn" onClick={() => resetView()}>🧭 复位视角（正北朝上）</button>
+        <button className="btn" onClick={() => resetView()}>视角复位</button>
         <Check label="自动旋转" checked={config.rotation.enabled}
           onChange={(v) => set({ rotation: { enabled: v } })} />
         <Slider label="旋转速度 °/s" value={config.rotation.speed} min={0} max={5} step={0.05}

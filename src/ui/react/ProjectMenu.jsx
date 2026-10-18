@@ -21,16 +21,16 @@ export function ProjectMenu({ onClose }) {
   return (
     // 菜单内部的点击不该冒泡到 document，否则会立刻把菜单关掉
     <div className="menu glass" onClick={(e) => e.stopPropagation()}>
-      {item('📁 新建空白世界', newProject)}
-      {item('✨ 载入示例世界', loadSample)}
+      {item('新建空白世界', newProject)}
+      {item('载入示例世界', loadSample)}
       <div className="menu-sep" />
-      {item('🖌 地图工坊', () => openWorkshop())}
-      {item('🌐 真实地球地图', () => generateRealEarth())}
+      {item('地图工坊', () => openWorkshop())}
+      {item('真实地球地图', () => generateRealEarth())}
       <div className="menu-sep" />
-      {item('📂 导入项目 (.world.json)', () => pickFile('.json,application/json').then((f) => f && importFile(f)))}
-      {item('💾 导出项目', exportProject)}
+      {item('导入项目 (.world.json)', () => pickFile('.json,application/json').then((f) => f && importFile(f)))}
+      {item('导出项目', exportProject)}
       <div className="menu-sep" />
-      {item('ℹ 世界概览', () => select(null))}
+      {item('世界概览', () => select(null))}
     </div>
   );
 }

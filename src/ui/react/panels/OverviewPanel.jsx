@@ -64,13 +64,13 @@ export function OverviewPanel() {
 
       <div style={{ display: 'grid', gap: '6px' }}>
         <button className="btn" onClick={() => openWorkshop()}>
-          {baseRaster ? '🖌 编辑地图' : '🖌 画一张地图'}
+          {baseRaster ? '编辑地图' : '画一张地图'}
         </button>
-        <button className="btn" onClick={() => generateRealEarth()}>🌐 从真实地球生成地图</button>
+        <button className="btn" onClick={() => generateRealEarth()}>从真实地球生成地图</button>
       </div>
 
       <p className="insp-hint" style={{ marginTop: '10px' }}>
-        单击球面上的路线与区域查看详情；拖动底部游标，看事件在时间里依次登场。
+        单击球面上的路线与区域查看详情；拖动底部游标，查看事件。
       </p>
     </div>
   );

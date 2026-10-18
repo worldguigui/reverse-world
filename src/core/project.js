@@ -62,6 +62,26 @@ export function normalizeProject(raw) {
   return p;
 }
 
+/**
+ * 姓名快照：按姓名搜索时固化下来的一批事件 id，在界面上表现为一个临时章节。
+ *
+ * 它不属于项目数据，不随自动保存落盘；只在显式导出时写进文件，导入时按当前项目
+ * 校验一遍——项目里已经不存在的 id 直接丢掉，免得长卷指向空处。
+ */
+export function normalizeTempChronicle(raw, project) {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.eventIds)) return null;
+  const known = new Set(project.events.map((e) => e.id));
+  const eventIds = [...new Set(raw.eventIds)].filter((id) => known.has(id));
+  if (!eventIds.length) return null;
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  return {
+    id: typeof raw.id === 'string' && raw.id ? raw.id : uid('snap'),
+    title: title || '临时编年史',
+    characterId: typeof raw.characterId === 'string' ? raw.characterId : null,
+    eventIds,
+  };
+}
+
 /** 别名一律存成数组：手写的文件里可能直接给一串，读进来补齐，不要悄悄丢掉 */
 const toAliases = (v) => (v == null ? [] : (Array.isArray(v) ? v : [String(v)]));
 
@@ -178,19 +198,42 @@ export function removeItem(project, kind, id) {
 // ---------------------------------------------------------------- 视图条件
 
 /**
- * 当前视图条件：`{ groupId, characterId }`，两个都可空，同时给就是交集。
+ * 当前视图条件：一组**同时生效**的集合，事件必须落在每一个集合里（交集）。
  *
- * 指向章节时 `groupId` 有值；指向按人物筛时 `characterId` 有值——后者那一组是**算出来的**，
- * 用完就没了，不落盘、不进 groups。长卷与时间轴只管照着这个条件筛，不关心它是哪一种，
- * 于是「翻章」与「按人物筛」共用同一条路径，不用写两份。
+ * 三种集合只是来源不同，本质都是「一批事件」：
+ *   - `groupIds`：选中的章节（可多选）；
+ *   - `characterId`：编程接口的实时人物筛；
+ *   - `activeSnapshotIds`：选中的姓名快照。快照存在 `snapshots` 里，形如
+ *     `{ id, title, characterId, eventIds }`，是搜索那一刻算出来的一批事件 id；
+ *     它不实时更新，但仍然是「一个章节那样的一批事件」，不是另一种筛选机制。
+ *
+ * 任何一项为空就不参与交集；全部为空就是「全部」。长卷、时间轴与球面都只读这一个条件。
+ * 注意：事件目前只属于一个章节，而多个选中项取的是交集，所以同时选中两个不同章节时
+ * 结果为空——这是数据模型与集合语义的直接结果；若以后事件可属于多个章节，这里不用改。
  */
-/** 未筛选：全都看。每次给一份新的，免得两处引用到同一个对象 */
-export const noView = () => ({ groupId: null, characterId: null });
+export const noView = () => ({
+  groupIds: [],
+  characterId: null,
+  snapshots: [],
+  activeSnapshotIds: [],
+});
+
+/** 是否正在筛选（三个来源任一有值） */
+export function isViewFiltered(view) {
+  return !!(view?.groupIds?.length || view?.characterId || view?.activeSnapshotIds?.length);
+}
 
 export function inView(view, item) {
   if (!view) return true;
-  if (view.groupId && item.groupId !== view.groupId) return false;
+  // 选中的每一章都必须包含它（交集）；事件只属于一章，所以选两章会得到空集
+  for (const id of view.groupIds ?? []) {
+    if (item.groupId !== id) return false;
+  }
   if (view.characterId && !item.characters?.includes(view.characterId)) return false;
+  for (const id of view.activeSnapshotIds ?? []) {
+    const snap = view.snapshots?.find((s) => s.id === id);
+    if (!snap || !snap.eventIds.includes(item.id)) return false;
+  }
   return true;
 }
 

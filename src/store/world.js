@@ -17,8 +17,9 @@ import { session } from '../session.js';
  * 由项目数据、游标与视图条件算出的一份派生快照；每次数据变更、游标走动或换视图后重建，
  * 引用必然更新。
  *
- * 只有事件多叠一道视图条件（在场 ∩ 属于当前视图）：章节与按人物筛管的是叙事，
- * 路线与区域的存续区间照旧，不受影响。
+ * 只有事件多叠一道视图条件（在场 ∩ 属于当前视图）：章节、实时人物筛与姓名快照
+ * 都在这一个条件里，球面看到的与长卷、时间轴是同一批事件。
+ * 路线与区域的存续区间照旧，不受视图条件影响。
  */
 export function buildDerived(project, cursor, viewFilter = null) {
   if (!project) {
@@ -86,7 +87,8 @@ export const createWorldSlice = (set, get) => ({
     const p = get().project;
     if (!p) return;
     const view = get().viewFilter;
-    // 带上视图条件：筛出某一章之后，方向键在章内的刻度上走
+    // 带上视图条件：筛出某一章或某个人之后，方向键在筛出来的刻度上走，
+    // 与长卷、时间轴和球面是同一批事件
     const sel = get().selection;
     const ev = nextTickEvent(p, get().cursor, dir, view, sel?.kind === 'event' ? sel.id : null);
     if (ev) {
@@ -119,14 +121,14 @@ export const createWorldSlice = (set, get) => ({
     set({
       project: fresh, cursor: 0, selection: null,
       eventDraft: {}, drawCoords: [], pendingCoords: null,
-      // 换了世界就回到「全部」：上一个世界的章节 id 在新世界里毫无意义
+      // 换了世界就回到「全部」：上一个世界的章节 id 与姓名快照在新世界里毫无意义
       viewFilter: P.noView(),
     });
     get().mutateProject(() => {});
     get().touchStage();
   },
 
-  /** 启动时从 IndexedDB 恢复：只装载并对齐三维视图，不回写保存 */
+  /** 启动时从 IndexedDB 恢复：只装载并对齐三维视图，不回写保存。自动保存不含临时编年史 */
   hydrateProject(project) {
     const cursor = defaultCursor(project);
     const viewFilter = P.noView();
@@ -138,10 +140,13 @@ export const createWorldSlice = (set, get) => ({
     get().touchStage();
   },
 
-  /** 载入一份完整项目（示例世界 / 导入文件共用） */
-  loadProjectInto(project) {
+  /**
+   * 载入一份完整项目（示例世界 / 导入文件共用）。
+   * 姓名快照只在从导出文件导入时给出；示例世界与自动恢复没有这一层视图条件。
+   */
+  loadProjectInto(project, snapshots = [], activeSnapshotIds = []) {
     const cursor = defaultCursor(project);
-    const viewFilter = P.noView();
+    const viewFilter = { ...P.noView(), snapshots, activeSnapshotIds };
     set({
       project, cursor, viewFilter,
       derived: buildDerived(project, cursor, viewFilter),
@@ -157,8 +162,13 @@ export const createWorldSlice = (set, get) => ({
   exportProject() {
     const p = get().project;
     if (!p) return;
-    downloadProject(p);
-    get().toast('项目文件已导出（含全部图片）');
+    // 姓名快照是视图条件，不是项目内容：平时不进自动保存，只在这里显式写进文件。
+    // 多个临时章节与它们各自的选中状态一并写出，导入后还原
+    const { snapshots, activeSnapshotIds } = get().viewFilter;
+    downloadProject(p, snapshots, activeSnapshotIds);
+    get().toast(snapshots.length
+      ? `项目文件已导出（含全部图片与 ${snapshots.length} 个临时章节）`
+      : '项目文件已导出（含全部图片）');
   },
 
   // ---------------------------------------------------------------- 内容
@@ -171,9 +181,11 @@ export const createWorldSlice = (set, get) => ({
   deleteItem(kind, id) {
     set({ selection: null });
     get().mutateProject((p) => P.removeItem(p, kind, id));
-    // 正按它筛的话，筛子跟着一起没了：留一个指向空处的条件会把整条长卷筛空
+    // 正选着它的话，选中项跟着一起没了：留一个指向空处的条件会把整条长卷筛空
     const v = get().viewFilter;
-    if (kind === 'group' && v.groupId === id) get().setViewFilter({ groupId: null });
+    if (kind === 'group' && v.groupIds.includes(id)) {
+      get().setViewFilter({ groupIds: v.groupIds.filter((x) => x !== id) });
+    }
     if (kind === 'character' && v.characterId === id) get().setViewFilter({ characterId: null });
   },
 

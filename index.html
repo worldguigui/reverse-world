@@ -7,7 +7,8 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>" />
   <style>
     /* 视觉基色：近黑底、深灰实色面板、暖色文字。
-       橙色只给品牌动作与「当前」状态；人物、路线、区域等业务颜色不从这里取。 */
+       橙色只给品牌动作与「当前」状态；暗金给人物这类需要区别于业务配色的标签；
+       人物、路线、区域等业务颜色仍不从这里取。 */
     :root {
       color-scheme: dark;
       --bg: #0b0a09;
@@ -21,6 +22,9 @@
       --accent: #f08a3c;
       --accent-bright: #ffa45a;
       --accent-rgb: 240, 138, 60;
+      --gold: #c8a04a;
+      --gold-bright: #e6c77d;
+      --gold-rgb: 200, 160, 74;
       --on-accent: #1a120a;
       --danger: #ff7a7a;
       --danger-soft: #ff9a9a;
@@ -179,15 +183,22 @@
     .chap-list { display: grid; gap: 12px; }
     .chap-row { display: grid; gap: 5px; }
     .chap-meta { display: flex; align-items: center; gap: 6px; }
-    /* 「涉及人物」：已挂上的留成 tag（用自己的配色描边），其余的去搜索框里现找，
-       所以这里只出现勾上的那几位，没挂上的一个也不占地方 */
+    /* 「涉及人物」：已挂上的留成暗金 tag，其余的去搜索框里现找，
+       所以这里只出现勾上的那几位，没挂上的一个也不占地方。
+       人物自己的颜色只留在候选列表的小圆点上，tag 本身与整体暗色风格一致 */
     .chips { display: flex; flex-wrap: wrap; gap: 5px; }
     .chip {
       padding: 4px 9px; border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 12px;
       background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-dim);
     }
     .chip:hover { background: var(--panel-3); }
-    .chip.on { background: var(--panel-3); font-weight: 600; }
+    .chip.on {
+      color: var(--gold-bright); background: rgba(var(--gold-rgb), 0.12);
+      border-color: rgba(var(--gold-rgb), 0.5); font-weight: 600;
+    }
+    .chip.on:hover {
+      background: rgba(var(--gold-rgb), 0.2); border-color: rgba(var(--gold-rgb), 0.72);
+    }
     .chip-x { margin-left: 5px; font-size: 10px; opacity: 0.55; }
     .chip:hover .chip-x { opacity: 1; }
     .char-pick { display: grid; gap: 6px; }
@@ -293,7 +304,8 @@
     .chronicle {
       position: fixed; bottom: 68px; left: 50%; transform: translateX(-50%); z-index: 19;
       max-width: min(86vw, 900px); min-width: min(60vw, 520px);
-      display: flex; flex-direction: column; overflow: hidden;
+      /* 不裁切：按姓名搜人的候选浮层要越出面板上沿 */
+      display: flex; flex-direction: column; overflow: visible;
     }
     .chr-head {
       display: flex; align-items: center; gap: 10px;
@@ -301,6 +313,11 @@
     }
     .chr-title { font-size: 13px; font-weight: 600; letter-spacing: 2px; }
     .chr-count { flex: 1; font-size: 11.5px; color: var(--ink-dim); }
+    /* 按姓名找人物：候选向上展开，避开下面的长卷与时间轴 */
+    .chr-search { position: relative; flex: 0 1 170px; min-width: 108px; }
+    .chr-search .inp { padding: 4px 8px; font-size: 11.5px; }
+    .chr-search .inp:disabled { opacity: 0.5; cursor: default; }
+    .chr-search .char-menu { top: auto; bottom: calc(100% + 4px); }
     /* 顶上的视图入口：全部 | 第一章 … | 按人物筛出来的临时组 */
     .chr-tabs {
       display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
@@ -317,6 +334,25 @@
       color: var(--accent-bright); background: rgba(var(--accent-rgb), 0.14);
       border-color: rgba(var(--accent-rgb), 0.55);
     }
+    /* 姓名搜索生成的临时章节用暗金，与章节标签区分。
+       未选中时也留在栏里，只是暗一档；选中后参与交集并亮起 */
+    .chr-tab.person {
+      color: rgba(var(--gold-rgb), 0.78); background: transparent;
+      border-color: rgba(var(--gold-rgb), 0.3);
+    }
+    .chr-tab.person:hover {
+      color: var(--gold-bright); background: rgba(var(--gold-rgb), 0.1);
+      border-color: rgba(var(--gold-rgb), 0.5);
+    }
+    .chr-tab.person.on {
+      color: var(--gold-bright); background: rgba(var(--gold-rgb), 0.14);
+      border-color: rgba(var(--gold-rgb), 0.6);
+    }
+    .chr-tab.person.on:hover {
+      background: rgba(var(--gold-rgb), 0.2);
+      border-color: rgba(var(--gold-rgb), 0.72);
+    }
+    .chr-temp { font-size: 10px; opacity: 0.65; }
     .chr-x {
       padding: 0 2px; border: none; background: none; cursor: pointer;
       color: inherit; font-size: 11px; line-height: 1;
@@ -324,6 +360,8 @@
     .chr-x:hover { color: var(--danger); }
     .chr-strip { display: flex; gap: 8px; padding: 10px 14px 12px; overflow-x: auto; }
     .chr-strip .insp-hint { padding: 2px 0; }
+    .chr-empty { display: grid; gap: 8px; padding: 2px 0; }
+    .chr-empty-actions { display: flex; flex-wrap: wrap; gap: 6px; }
     .chr-item {
       flex: 0 0 auto; display: grid; gap: 2px; text-align: left; cursor: pointer;
       min-width: 104px; max-width: 168px; padding: 8px 11px; border-radius: var(--radius);

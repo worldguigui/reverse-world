@@ -22,7 +22,7 @@ export function EventForm() {
 
   return (
     <div className="insp-block">
-      <div className="insp-title">⚡ 放置事件</div>
+      <div className="insp-title">放置事件</div>
 
       <p className="insp-hint" id="event-coords">
         {pendingCoords

@@ -31,7 +31,7 @@ export function ChapterList() {
 
   return (
     <div className="insp-block">
-      <div className="insp-title">📖 章节</div>
+      <div className="insp-title">章节</div>
 
       {groups.length === 0 ? (
         <p className="insp-hint">
@@ -56,8 +56,8 @@ export function ChapterList() {
                   <span style={{ flex: 1 }} />
                   <button
                     className="btn btn-mini"
-                    title="只看这一章：长卷、时间轴刻度、球上的事件一起收窄"
-                    onClick={() => setViewFilter({ groupId: g.id, characterId: null })}
+                    title="只看这一章：取消其他选中，长卷、时间轴刻度、球上的事件一起收窄"
+                    onClick={() => setViewFilter({ groupIds: [g.id], characterId: null, activeSnapshotIds: [] })}
                   >
                     看
                   </button>

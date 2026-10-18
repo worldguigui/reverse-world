@@ -45,17 +45,17 @@ export function installAPI({ ctx, project, cursor }) {
     addGroup: (data) => ctx.addGroupViaApi(data),
     /** 某个章节里的事件，按时间先后 */
     eventsOfGroup: (id) => ctx.eventsOfGroup(id),
-    /** 当前视图条件 { groupId, characterId }，两者都空就是「全部」 */
+    /** 当前视图条件；兼容字段 `groupId` 取第一个选中章节，新的多选列表在 `groupIds` */
     getViewFilter: () => ctx.currentView(),
-    /** 只看某一章（收窄长卷、时间轴刻度与球上的事件；路线与区域不受影响） */
-    filterByGroup: (id) => ctx.setViewFilter({ groupId: id ?? null, characterId: null }),
+    /** 只看某一章（收窄长卷、时间轴刻度与球上的事件；路线与区域不受影响）。替换当前章节选择 */
+    filterByGroup: (id) => ctx.setViewFilter({ groupIds: id ? [id] : [] }),
     /**
-     * 只看某个人物涉及的事件。这一组是**算出来的**——不落盘、不进 chapters，
-     * 换成别的筛选就没了。收窄的是事件的在场集合，不是数据本身。
+     * 只看某个人物涉及的事件。这是一层实时的视图条件，与已选中的集合取交集；
+     * 与编年史里按姓名搜索固化的快照是两件事。收窄的是事件的在场集合，不是数据本身。
      */
-    filterByCharacter: (id) => ctx.setViewFilter({ groupId: null, characterId: id ?? null }),
-    /** 退出筛选，长卷与时间轴回到「全部」 */
-    clearFilter: () => ctx.setViewFilter({ groupId: null, characterId: null }),
+    filterByCharacter: (id) => ctx.setViewFilter({ characterId: id ?? null }),
+    /** 退出筛选：取消所有选中的集合，姓名快照作为标签保留，不会被删掉 */
+    clearFilter: () => ctx.setViewFilter({ groupIds: [], characterId: null, activeSnapshotIds: [] }),
 
     // —— 相机 ——
     flyTo: (lat, lng, opts = {}) => ctx.flyTo(lat, lng, opts),

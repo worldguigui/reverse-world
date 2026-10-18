@@ -36,7 +36,7 @@ export function CharacterList() {
 
   return (
     <div className="insp-block">
-      <div className="insp-title">🧝 人物</div>
+      <div className="insp-title">人物</div>
 
       {characters.length === 0 ? (
         <p className="insp-hint">
@@ -88,7 +88,7 @@ export function CharacterEditor({ id }) {
 
   return (
     <div className="insp-block">
-      <div className="insp-title">🧝 人物</div>
+      <div className="insp-title">人物</div>
 
       <div className="field-label">配图</div>
       {item.image ? (
@@ -174,7 +174,7 @@ export function CharacterEditor({ id }) {
           className="btn btn-danger"
           onClick={() => { if (confirm('确认删除？事件里对他的引用会一并摘掉。')) deleteItem('character', id); }}
         >
-          🗑 删除
+          删除
         </button>
       </div>
 

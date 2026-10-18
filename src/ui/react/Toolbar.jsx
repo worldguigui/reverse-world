@@ -12,10 +12,10 @@ const MODE_HINTS = {
 };
 
 const MODES = [
-  { id: 'browse', label: '🖐 浏览', title: '浏览模式：悬停查看、单击选中、双击定位' },
-  { id: 'add-event', label: '⚡ 事件', title: '在球面上单击给它一个坐标；不点则是没有坐标的纯叙事事件' },
-  { id: 'draw-route', label: '🛤 路线', title: '依次单击途经点绘制路线' },
-  { id: 'draw-region', label: '🏳 区域', title: '逐点勾画势力区域' },
+  { id: 'browse', label: '浏览', title: '浏览模式：悬停查看、单击选中、双击定位' },
+  { id: 'add-event', label: '事件', title: '在球面上单击给它一个坐标；不点则是没有坐标的纯叙事事件' },
+  { id: 'draw-route', label: '路线', title: '依次单击途经点绘制路线' },
+  { id: 'draw-region', label: '区域', title: '逐点勾画势力区域' },
 ];
 
 /**
@@ -77,7 +77,7 @@ export function Toolbar() {
           title="人物：录入角色，看他们各自涉及哪些事件"
           onClick={() => select({ kind: 'characters' })}
         >
-          🧝 人物
+          人物
         </button>
         <button
           className="mode-btn"
@@ -85,7 +85,7 @@ export function Toolbar() {
           title="章节：把事件分成有名字的一组组"
           onClick={() => select({ kind: 'groups' })}
         >
-          📖 章节
+          章节
         </button>
         <button className="icon-btn" title="画面设置" onClick={() => toggleSettings()}>⚙</button>
       </div>

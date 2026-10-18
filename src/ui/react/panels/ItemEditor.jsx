@@ -2,7 +2,7 @@ import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { Labeled, BackToOverview, YearInput, CharacterPicker, GroupSelect } from '../common.jsx';
 
-const TITLES = { event: '⚡ 事件', route: '🛤 路线', region: '🏳 势力区域' };
+const TITLES = { event: '事件', route: '路线', region: '势力区域' };
 
 /** 有配图的内容 */
 const HAS_IMAGE = new Set(['event']);
@@ -125,12 +125,12 @@ export function ItemEditor({ kind, id }) {
       </Labeled>
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-        <button className="btn" onClick={() => flyToItem(kind, item)}>🎯 定位</button>
+        <button className="btn" onClick={() => flyToItem(kind, item)}>定位</button>
         <button
           className="btn btn-danger"
           onClick={() => { if (confirm('确认删除？')) deleteItem(kind, id); }}
         >
-          🗑 删除
+          删除
         </button>
       </div>
 
