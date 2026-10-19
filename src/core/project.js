@@ -3,29 +3,24 @@
  * 纯函数式 CRUD（直接改传入的 project 对象并返回创建的实体），
  * 持久化、渲染都不在这里。
  *
- * 时间一律是数值年：可为负（公元前）、可为小数。内容的 from / to 为空表示该端开放，
- * 两端都空就是常驻——「常驻」是默认形态，不写时间的内容一直在场。
+ * 事件时间存完整的 `yyyy-MM-ddThh:mm:ss`；路线、区域与人物生卒仍是数值年（可为负、可为小数）。
+ * 所有 from / to 为空表示该端开放，两端都空就是常驻——「常驻」是默认形态，
+ * 不写时间的内容一直在场。时间轴与在场判定只取年份，完整时间不把轴细分到月日。
  * 切面不是一个槽位，而是拿游标去求值。
  */
-import { migrateProject } from './migrate.js';
+import { compareDateTime, normalizeDateTime, timeYear } from './datetime.js';
 
 let _seq = (Date.now() % 1e6).toString(36);
 export function uid(prefix) {
   return `${prefix}_${_seq}${((Math.random() * 1e6) | 0).toString(36)}`;
 }
 
-/**
- * 新建内容的默认颜色：按类别固定，不随创建顺序轮换。
- * 路线与区域在球上走统一的语义配色（普通灰金、选中铜橙），
- * 这两个值只为数据兼容保留；人物颜色仍用于列表里的小圆点。
- */
+/** 新建人物的默认颜色：人物列表里的小圆点用它 */
 export const DEFAULT_ITEM_COLORS = {
-  route: '#b5a17b',
-  region: '#b5a17b',
   character: '#c78dff',
 };
 
-export const PROJECT_VERSION = 3;
+export const PROJECT_VERSION = 4;
 
 export function createProject({ name = '未命名世界', description = '' } = {}) {
   return {
@@ -34,11 +29,12 @@ export function createProject({ name = '未命名世界', description = '' } = {
     description,
     // 舞台：球自己的那张脸，与时间无关，最多一张
     baseRasterId: null, // 地图 id（工坊可编辑的那种），空 = 深色空球
-    rasterMaps: [], // { id, name, w, h, dataUrl, format } 地图（format 2：R+G=高度、B=水）
+    rasterMaps: [], // { id, name, w, h, dataUrl } 地图（R+G=高度、B=水）
     events: [],     // { id, title, description, image, lat, lng, from, to } 事件
+                    //   from / to 是 yyyy-MM-ddThh:mm:ss 或 null
                     //   lat / lng 为空 = 纯叙事事件：不上球、不渲染标注，只进编年史
-    routes: [],     // { id, title, description, color, points: [{lat,lng}...], from, to }
-    regions: [],    // { id, name, description, color, ring: [[lng,lat]...], from, to }
+    routes: [],     // { id, title, description, points: [{lat,lng}...], from, to }
+    regions: [],    // { id, name, description, ring: [[lng,lat]...], from, to }
     // 人物。没有存续区间：born / died 是生平，不参与在场判定，也不撑开时间轴
     characters: [], // { id, name, aliases: [], born, died, description, image, color }
     // 章节。章节自己拥有一批事件（eventIds），一个事件因此可以同时属于多章；
@@ -47,10 +43,13 @@ export function createProject({ name = '未命名世界', description = '' } = {
   };
 }
 
-/** 导入/恢复时兜底：补齐缺失字段，旧版本先迁移，失败抛错 */
+/** 导入/恢复时兜底：补齐缺失字段；只接受当前版本，其他版本直接报错 */
 export function normalizeProject(raw) {
   if (!raw || typeof raw !== 'object') throw new Error('不是合法的项目对象');
-  const src = raw.version === PROJECT_VERSION ? raw : migrateProject(raw);
+  if (raw.version !== PROJECT_VERSION) {
+    throw new Error(`不支持的项目版本：${raw.version}（当前只接受 v${PROJECT_VERSION}）`);
+  }
+  const src = raw;
   const p = createProject({ name: src.name, description: src.description });
   p.baseRasterId = src.baseRasterId ?? null;
   p.rasterMaps = Array.isArray(src.rasterMaps)
@@ -60,11 +59,14 @@ export function normalizeProject(raw) {
   const okList = (v) => (Array.isArray(v) ? v : []);
   p.characters = okList(src.characters).filter(okItem)
     .map((c) => ({ ...c, aliases: toAliases(c.aliases) }));
-  // 事件的「涉及人物」在旧文件里整个键都可能不在，读进来统一补齐。
+  // 事件的「涉及人物」统一补齐成数组。
   // 章节关系不放在事件上：章节自己拥有 eventIds，一个事件才能同时出现在多章里
   p.events = okList(src.events).filter(okItem)
-    .map(({ groupId: _legacy, color: _unusedColor, ...ev }) => ({
-      ...ev, characters: okList(ev.characters),
+    .map((ev) => ({
+      ...ev,
+      from: normalizeDateTime(ev.from),
+      to: normalizeDateTime(ev.to),
+      characters: okList(ev.characters),
     }));
   p.routes = okList(src.routes).filter(okItem);
   p.regions = okList(src.regions).filter(okItem);
@@ -92,8 +94,8 @@ const toAliases = (v) => (v == null ? [] : (Array.isArray(v) ? v : [String(v)]))
  */
 const KINDS = {
   event: { list: (p) => p.events, timed: true },
-  route: { list: (p) => p.routes, timed: true, colored: true },
-  region: { list: (p) => p.regions, timed: true, colored: true },
+  route: { list: (p) => p.routes, timed: true },
+  region: { list: (p) => p.regions, timed: true },
   character: { list: (p) => p.characters, colored: true },
   group: { list: (p) => p.groups },
 };
@@ -108,12 +110,9 @@ export function getItem(project, kind, id) {
 
 // ---------------------------------------------------------------- 舞台
 
-/**
- * 地图。format 是 PNG 的通道约定：2 = R+G 高度、B 水；
- * 没有这个字段的是旧项目（B 是河流），解码时按旧规则迁移。
- */
+/** 地图：PNG 里 R+G 是高度、B 是水 */
 export function addRasterMap(project, { name = '地图', w, h, dataUrl }) {
-  const map = { id: uid('rm'), name, w, h, dataUrl, format: 2 };
+  const map = { id: uid('rm'), name, w, h, dataUrl };
   project.rasterMaps.push(map);
   return map;
 }
@@ -162,18 +161,27 @@ export function setEventGroups(project, eventId, groupIds = []) {
   }
 }
 
+/** 事件时间统一成规范串；路线、区域与人物仍是数值年，原样保留 */
+function normalizeEventTimes(data) {
+  const out = { ...data };
+  if ('from' in out) out.from = normalizeDateTime(out.from);
+  if ('to' in out) out.to = normalizeDateTime(out.to);
+  return out;
+}
+
 export function addItem(project, kind, data = {}) {
   // 过滤掉显式传入的 undefined，避免覆盖 id/color 等默认值
-  const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
-  // 事件没有颜色字段：旧面板或脚本仍可能传进来，直接丢掉
-  if (kind === 'event') delete clean.color;
-  // 章节关系写在章节那一侧：创建时把新事件的 id 同步进各章清单，事件上不存副本。
-  // groupId 是旧版的单章字段，仍接受，按一章处理
+  let clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
+  if (kind === 'event') {
+    // 事件没有颜色字段：传入也丢掉
+    delete clean.color;
+    clean = normalizeEventTimes(clean);
+  }
+  // 章节关系写在章节那一侧：创建时把新事件的 id 同步进各章清单，事件上不存副本
   let groupIds = null;
-  if (kind === 'event' && ('groupIds' in clean || 'groupId' in clean)) {
-    groupIds = clean.groupIds ?? (clean.groupId ? [clean.groupId] : []);
+  if (kind === 'event' && 'groupIds' in clean) {
+    groupIds = clean.groupIds ?? [];
     delete clean.groupIds;
-    delete clean.groupId;
   }
   const caps = KINDS[kind];
   const item = {
@@ -191,16 +199,16 @@ export function addItem(project, kind, data = {}) {
 export function updateItem(project, kind, id, patch) {
   const item = getItem(project, kind, id);
   if (!item) return null;
-  // 事件没有颜色字段：旧面板或脚本仍可能传进来，直接丢掉
-  if (kind === 'event' && 'color' in patch) {
+  if (kind === 'event') {
+    // 事件没有颜色字段：传入也丢掉
     const { color: _unusedColor, ...rest } = patch;
-    patch = rest;
+    patch = normalizeEventTimes(rest);
   }
   // 与创建同一条规则：groupIds 不是事件上的字段，而是各章节清单的增删
-  if (kind === 'event' && ('groupIds' in patch || 'groupId' in patch)) {
-    const { groupIds, groupId, ...rest } = patch;
+  if (kind === 'event' && 'groupIds' in patch) {
+    const { groupIds, ...rest } = patch;
     Object.assign(item, rest);
-    setEventGroups(project, id, groupIds ?? (groupId ? [groupId] : []));
+    setEventGroups(project, id, groupIds ?? []);
     return item;
   }
   Object.assign(item, patch);
@@ -275,9 +283,10 @@ export function groupSpan(project, groupId) {
   for (const ev of project.events) {
     if (!ids.has(ev.id)) continue;
     for (const v of [ev.from, ev.to]) {
-      if (typeof v !== 'number' || !Number.isFinite(v)) continue;
-      if (v < min) min = v;
-      if (v > max) max = v;
+      const year = timeYear(v);
+      if (year == null) continue;
+      if (year < min) min = year;
+      if (year > max) max = year;
     }
   }
   return min === Infinity ? null : { min, max };
@@ -291,7 +300,7 @@ export function groupSpan(project, groupId) {
 export function eventsOfCharacter(project, id) {
   return project.events
     .filter((ev) => ev.characters?.includes(id))
-    .sort((a, b) => (a.from ?? -Infinity) - (b.from ?? Infinity));
+    .sort((a, b) => compareDateTime(a.from, b.from));
 }
 
 /** 某条事件挂在哪些章节下。清单在章节那一侧，这里反向扫一遍 */
@@ -306,7 +315,7 @@ export function eventsOfGroup(project, id) {
   const ids = new Set(group.eventIds);
   return project.events
     .filter((ev) => ids.has(ev.id))
-    .sort((a, b) => (a.from ?? -Infinity) - (b.from ?? Infinity));
+    .sort((a, b) => compareDateTime(a.from, b.from));
 }
 
 // ---------------------------------------------------------------- 在场判定
@@ -314,10 +323,13 @@ export function eventsOfGroup(project, id) {
 /**
  * 内容在游标时刻是否在场。两端为空即开放，所以「常驻」= 两个都留空。
  * 缺省端用 ±Infinity 兜底，四种内容共用这一条判据。
+ *
+ * 事件的时间精确到秒，但游标只有年份、时间轴也不细分到月日：
+ * 这里只取时间里的年份比较，完整时间不会让一条事件在同年中间突然出现或消失。
  */
 export function isActiveAt(cursor, item) {
-  const from = item.from ?? -Infinity;
-  const to = item.to ?? Infinity;
+  const from = timeYear(item.from) ?? -Infinity;
+  const to = timeYear(item.to) ?? Infinity;
   return from <= cursor && cursor <= to;
 }
 

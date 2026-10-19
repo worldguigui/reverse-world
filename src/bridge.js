@@ -34,8 +34,7 @@ export function initBridge() {
 /** 解码并缓存地图（同一张只解码一次，工坊编辑后会回填） */
 export async function getGridCached(rmap) {
   if (session.gridCache.has(rmap.id)) return session.gridCache.get(rmap.id);
-  // format 决定 B 通道是水还是旧版的河流；旧项目没有这个字段，交给解码器自行识别
-  const grid = await TerrainGrid.fromPNG(rmap.dataUrl, rmap.format);
+  const grid = await TerrainGrid.fromPNG(rmap.dataUrl);
   session.gridCache.set(rmap.id, grid);
   return grid;
 }

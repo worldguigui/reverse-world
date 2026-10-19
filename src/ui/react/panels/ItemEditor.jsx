@@ -1,6 +1,6 @@
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
-import { Labeled, BackToOverview, YearInput, CharacterPicker, GroupPicker } from '../common.jsx';
+import { Labeled, BackToOverview, YearInput, DateTimeInput, CharacterPicker, GroupPicker } from '../common.jsx';
 
 const TITLES = { event: '事件', route: '路线', region: '势力区域' };
 
@@ -118,13 +118,27 @@ export function ItemEditor({ kind, id }) {
         </Labeled>
       )}
 
-      {/* 两端都留空 = 常驻。负数是公元前，小数表达更细的粒度 */}
-      <Labeled label="出现于">
-        <YearInput value={item.from} onChange={(v) => patch({ from: v })} />
-      </Labeled>
-      <Labeled label="消失于">
-        <YearInput value={item.to} onChange={(v) => patch({ to: v })} placeholder="至今" />
-      </Labeled>
+      {/* 两端都留空 = 常驻。事件用完整日期时间，路线与区域仍用数值年（负数 = 公元前） */}
+      {kind === 'event' ? (
+        <>
+          <Labeled label="出现于">
+            <DateTimeInput value={item.from} onChange={(v) => patch({ from: v })} />
+          </Labeled>
+          <Labeled label="消失于">
+            <DateTimeInput value={item.to} onChange={(v) => patch({ to: v })} placeholder="至今" />
+          </Labeled>
+          <p className="insp-hint">时间记录到秒；时间轴仍按年划分。</p>
+        </>
+      ) : (
+        <>
+          <Labeled label="出现于">
+            <YearInput value={item.from} onChange={(v) => patch({ from: v })} />
+          </Labeled>
+          <Labeled label="消失于">
+            <YearInput value={item.to} onChange={(v) => patch({ to: v })} placeholder="至今" />
+          </Labeled>
+        </>
+      )}
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
         <button className="btn" onClick={() => flyToItem(kind, item)}>定位</button>
         <button

@@ -45,7 +45,7 @@ export function installAPI({ ctx, project, cursor }) {
     addGroup: (data) => ctx.addGroupViaApi(data),
     /** 某个章节里的事件，按时间先后 */
     eventsOfGroup: (id) => ctx.eventsOfGroup(id),
-    /** 当前视图条件；兼容字段 `groupId` 取第一个选中章节，新的多选列表在 `groupIds` */
+    /** 当前视图条件：选中的章节列表与实时人物筛 */
     getViewFilter: () => ctx.currentView(),
     /** 只看某一章（收窄长卷、时间轴刻度与球上的事件；路线与区域不受影响）。替换当前章节选择 */
     filterByGroup: (id) => ctx.setViewFilter({ groupIds: id ? [id] : [] }),
@@ -90,7 +90,7 @@ export function installAPI({ ctx, project, cursor }) {
       + 'world.stepCursor(±1) / jumpToEvent(id)          前后跳一个刻度 / 跳到某条事件\n'
       + 'world.showChronicle(true)                       摊开 / 收起编年史长卷\n'
       + 'world.listEvents()                              当前游标下在场的事件\n'
-      + "world.addEvent({ title, lat, lng, from, to, groupIds }) 加事件（lat/lng 可省 = 纯叙事；groupIds 可挂多章）\n"
+      + "world.addEvent({ title, lat, lng, from, to, groupIds }) 加事件（from/to 为 yyyy-MM-ddThh:mm:ss；lat/lng 可省 = 纯叙事）\n"
       + "world.addRoute({ title, points: [{lat,lng}...] }) 加路线\n"
       + "world.addRegion({ name, ring: [[lng,lat]...] })  加区域\n"
       + 'world.listGroups() / eventsOfGroup(id)          章节清单 / 某章里的事件\n'

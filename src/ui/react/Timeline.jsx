@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useStore } from '../../store/index.js';
 import { useProjectRevision } from './hooks.js';
 import { timeDomain, timeTicks, formatYear } from '../../core/timeline.js';
+import { timeYear } from '../../core/datetime.js';
 import { isViewFiltered } from '../../core/project.js';
 import { Chronicle } from './Chronicle.jsx';
 
@@ -85,21 +86,24 @@ export function Timeline() {
           onPointerCancel={onPointerUp}
         >
           {ticks.map((t) => {
+            // 事件时间精确到秒，但轴只按年铺开：这里取年份再定位
+            const fromYear = timeYear(t.from);
+            const endYear = timeYear(t.to);
             // 有终点的刻度拉一根横线表示区间；没有终点就只是孤零零一个点
-            const end = typeof t.to === 'number' && t.to > t.from ? t.to : null;
-            const atCursor = Math.abs(t.from - cursor) < (span > 0 ? span * 0.004 : 1);
+            const end = endYear != null && endYear > fromYear ? endYear : null;
+            const atCursor = Math.abs(fromYear - cursor) < (span > 0 ? span * 0.004 : 1);
             return (
               <span key={t.id}>
                 {end != null && (
                   <span
                     className="tl-span"
-                    style={{ left: `${posOf(t.from)}%`, width: `${posOf(end) - posOf(t.from)}%` }}
+                    style={{ left: `${posOf(fromYear)}%`, width: `${posOf(end) - posOf(fromYear)}%` }}
                   />
                 )}
                 <button
                   className={`tl-tick${atCursor ? ' at-cursor' : ''}`}
-                  style={{ left: `${posOf(t.from)}%` }}
-                  title={`${t.title} · ${formatYear(t.from)}`}
+                  style={{ left: `${posOf(fromYear)}%` }}
+                  title={`${t.title} · ${formatYear(fromYear)}`}
                   onClick={() => jumpToEvent(t.id)}
                 />
               </span>

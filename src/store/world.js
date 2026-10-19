@@ -11,6 +11,7 @@
 import * as P from '../core/project.js';
 import { downloadProject } from '../core/storage.js';
 import { defaultCursor, clampCursor, nextTickEvent, nextTickYear, timeTicks, roundYear } from '../core/timeline.js';
+import { timeYear, yearToDateTime } from '../core/datetime.js';
 import { session } from '../session.js';
 
 /**
@@ -93,8 +94,12 @@ export const createWorldSlice = (set, get) => ({
     const ev = nextTickEvent(p, get().cursor, dir, view, sel?.kind === 'event' ? sel.id : null);
     if (ev) {
       // 正在放点或勾线时只挪游标，不抢走检查器里那份填到一半的表单
-      if (get().mode === 'browse') get().jumpToEvent(ev.id);
-      else get().setCursor(ev.from);
+      if (get().mode === 'browse') {
+        get().jumpToEvent(ev.id);
+      } else {
+        const year = timeYear(ev.from);
+        if (year != null) get().setCursor(year);
+      }
       return;
     }
     // 还有刻度却已经走到头：原地不动，别让游标滑到轴的边距上
@@ -188,8 +193,8 @@ export const createWorldSlice = (set, get) => ({
    * 新建事件：草稿 + 落点 → 事件，并飞过去。
    * 没点球面就是「纯叙事事件」——它照样是一条正经事件，只是不上球、只进编年史。
    *
-   * 默认落在当前游标所在的那一年：新事件若不占一个刻度，它在时间轴上就是隐形的，
-   * 与其让人再去填一遍，不如直接认下「就是此刻发生的事」。
+   * 默认落在当前游标所在的那一年，时间补成 1 月 1 日零点：新事件若不占一个刻度，
+   * 它在时间轴上就是隐形的，与其让人再去填一遍，不如直接认下「就是此刻发生的事」。
    */
   commitEvent() {
     const p = get().project;
@@ -201,7 +206,7 @@ export const createWorldSlice = (set, get) => ({
       image: d.image ?? null,
       lat: c?.lat ?? null,
       lng: c?.lng ?? null,
-      from: d.from ?? roundYear(cursor),
+      from: d.from ?? yearToDateTime(roundYear(cursor)),
       to: d.to ?? null,
       characters: d.characters ?? [],
       groupIds: d.groupIds ?? [],
@@ -212,17 +217,14 @@ export const createWorldSlice = (set, get) => ({
     if (c) get().flyToItem('event', item);
   },
 
-  /**
-   * 提交绘制。values 缺省时取 store 里的 drawForm（React 表单路径）；
-   * 旧手写面板会显式传值，两者兼容。
-   */
-  commitDraw(kind, values) {
+  /** 提交绘制：坐标来自球面，名称与时间等字段来自 drawForm */
+  commitDraw(kind) {
     const p = get().project;
     const coords = get().drawCoords;
     if (!p || !coords.length) return;
     // 点数不够就什么都不做：按 Enter 提交时「完成」按钮本来就是禁用的
     if (coords.length < (kind === 'route' ? 2 : 3)) return;
-    const form = { ...get().drawForm, ...(values || {}) };
+    const form = get().drawForm;
     const named = form.title || (kind === 'route' ? '新路线' : '新区域');
     const common = {
       description: form.description || '',

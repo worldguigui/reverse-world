@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { formatYear } from '../../../core/timeline.js';
+import { timeYear } from '../../../core/datetime.js';
 import { useProjectRevision } from '../hooks.js';
 import { Labeled, BackToOverview, YearInput, searchCharacters } from '../common.jsx';
 
@@ -171,17 +172,20 @@ export function CharacterEditor({ id }) {
           <span className="insp-hint">还没有事件提到他。在事件详情里勾一下「涉及人物」。</span>
         ) : (
           <div className="char-list">
-            {events.map((ev) => (
-              <button
-                key={ev.id}
-                className="char-row"
-                title="跳到这条事件"
-                onClick={() => select({ kind: 'event', id: ev.id })}
-              >
-                <b>{ev.from == null ? '未定年' : formatYear(ev.from)}</b>
-                <span>{ev.title}</span>
-              </button>
-            ))}
+            {events.map((ev) => {
+              const year = timeYear(ev.from);
+              return (
+                <button
+                  key={ev.id}
+                  className="char-row"
+                  title="跳到这条事件"
+                  onClick={() => select({ kind: 'event', id: ev.id })}
+                >
+                  <b>{year == null ? '未定年' : formatYear(year)}</b>
+                  <span>{ev.title}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </Labeled>

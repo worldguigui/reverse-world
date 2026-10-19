@@ -1,7 +1,8 @@
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
-import { Labeled, YearInput, CharacterPicker, GroupPicker } from '../common.jsx';
-import { formatYear } from '../../../core/timeline.js';
+import { Labeled, DateTimeInput, CharacterPicker, GroupPicker } from '../common.jsx';
+import { roundYear } from '../../../core/timeline.js';
+import { yearToDateTime } from '../../../core/datetime.js';
 
 /**
  * 放置表单：在球面上点一个坐标，再把它变成一条事件。
@@ -18,6 +19,7 @@ export function EventForm() {
   const saveDraft = useStore((s) => s.saveDraft);
   const commitEvent = useStore((s) => s.commitEvent);
   const setMode = useStore((s) => s.setMode);
+  const setPendingCoords = useStore((s) => s.setPendingCoords);
   const pickImage = useStore((s) => s.pickImage);
 
   return (
@@ -26,17 +28,50 @@ export function EventForm() {
 
       <p className="insp-hint" id="event-coords">
         {pendingCoords
-          ? `位置：${pendingCoords.lat.toFixed(2)}°, ${pendingCoords.lng.toFixed(2)}°（重新单击可调整）`
+          ? `位置：${pendingCoords.lat.toFixed(2)}°, ${pendingCoords.lng.toFixed(2)}°（可直接改下面的经纬度，或继续单击球面重新选点）`
           : '坐标可选：单击球面给它一个坐标；不点就是纯叙事事件，不上球、只进编年史。'}
       </p>
 
       <Labeled label="标题">
         <input
+          id="event-title"
           className="inp"
           defaultValue={draft.title ?? ''}
           onChange={(e) => saveDraft({ title: e.target.value })}
         />
       </Labeled>
+
+      {pendingCoords && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <Labeled label="纬度">
+              <CoordInput
+                id="event-lat"
+                value={pendingCoords.lat}
+                min={-90}
+                max={90}
+                onChange={(lat) => setPendingCoords({ ...pendingCoords, lat })}
+              />
+            </Labeled>
+            <Labeled label="经度">
+              <CoordInput
+                id="event-lng"
+                value={pendingCoords.lng}
+                min={-180}
+                max={180}
+                onChange={(lng) => setPendingCoords({ ...pendingCoords, lng })}
+              />
+            </Labeled>
+          </div>
+          <button
+            className="btn btn-mini"
+            type="button"
+            onClick={() => setPendingCoords(null)}
+          >
+            清除位置（改为纯叙事）
+          </button>
+        </>
+      )}
 
       <Labeled label="描述">
         <textarea
@@ -73,22 +108,53 @@ export function EventForm() {
         />
       </Labeled>
 
-      {/* 两端都留空 = 常驻。不填出现于时会认下当前游标所在的年份 */}
+      {/* 两端都留空 = 常驻。不填出现于时会认下当前游标所在的年份，时间补成 1 月 1 日零点 */}
       <Labeled label="出现于">
-        <YearInput
+        <DateTimeInput
           value={draft.from}
           onChange={(v) => saveDraft({ from: v })}
-          placeholder={`当前游标（${formatYear(cursor)}）`}
+          placeholder={`默认 ${yearToDateTime(roundYear(cursor))}`}
         />
       </Labeled>
       <Labeled label="消失于">
-        <YearInput value={draft.to} onChange={(v) => saveDraft({ to: v })} placeholder="至今" />
+        <DateTimeInput value={draft.to} onChange={(v) => saveDraft({ to: v })} placeholder="至今" />
       </Labeled>
+      <p className="insp-hint">时间记录到秒；时间轴仍按年划分。</p>
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
         <button className="btn btn-primary" onClick={() => commitEvent()}>✔ 创建</button>
         <button className="btn" onClick={() => setMode('browse')}>取消</button>
       </div>
     </div>
+  );
+}
+
+/**
+ * 经纬度输入：失焦或回车提交，并夹到合法区间。
+ * 用 value 做 key 是为了让球面重新选点或提交后的规范值能立刻回显——
+ * 输入框在编辑过程中保持非受控，不会每敲一个字符就回写 store。
+ */
+function CoordInput({ id, value, min, max, onChange }) {
+  const shown = typeof value === 'number' ? value.toFixed(4) : '';
+  const commit = (raw, input) => {
+    const text = raw.trim();
+    const n = Number(text);
+    if (!text || !Number.isFinite(n)) {
+      input.value = shown;
+      return;
+    }
+    onChange(Math.min(max, Math.max(min, n)));
+  };
+  return (
+    <input
+      id={id}
+      key={shown}
+      className="inp"
+      type="text"
+      inputMode="decimal"
+      defaultValue={shown}
+      onBlur={(e) => commit(e.target.value, e.target)}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+    />
   );
 }

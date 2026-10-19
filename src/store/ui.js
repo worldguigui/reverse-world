@@ -81,14 +81,10 @@ export const createUISlice = (set, get) => ({
     set({ viewFilter, derived: buildDerived(p, get().cursor, viewFilter) });
   },
 
-  /**
-   * 当前视图条件的一份副本，给编程接口读。
-   * `groupId` 保留为单选时代的兼容字段（取第一个选中章节），新代码读 `groupIds`。
-   */
+  /** 当前视图条件的一份副本，给编程接口读 */
   currentView() {
     const v = get().viewFilter;
     return {
-      groupId: v.groupIds[0] ?? null,
       groupIds: [...v.groupIds],
       characterId: v.characterId,
     };

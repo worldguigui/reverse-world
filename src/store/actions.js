@@ -7,6 +7,7 @@ import { buildRealEarthGrid } from '../core/realearth.js';
 import { importProjectFile } from '../core/storage.js';
 import { buildSampleProject } from '../core/sample.js';
 import { session } from '../session.js';
+import { timeYear } from '../core/datetime.js';
 import { latLngToVec3, vec3ToLatLng } from '../utils.js';
 import { pickFile } from '../utils/files.js';
 
@@ -166,7 +167,8 @@ export const createActionsSlice = (set, get) => ({
     const p = get().project;
     const ev = p ? P.getItem(p, 'event', id) : null;
     if (!ev) return;
-    if (typeof ev.from === 'number') get().setCursorYear(ev.from);
+    const year = timeYear(ev.from);
+    if (year != null) get().setCursorYear(year);
     get().select({ kind: 'event', id });
     if (ev.lat != null && ev.lng != null) {
       get().flyTo(ev.lat, ev.lng, { level: get().viewConfig.camera.eventLevel });

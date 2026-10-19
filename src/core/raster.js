@@ -7,9 +7,7 @@
  * 水用连续值而不是开关：海洋是 255，河流的软边可以是 80、40，线才不会锯成台阶。
  *
  * 画笔支持「软笔（高斯衰减） / 硬笔（方波硬边，不扩散到邻居，可画垂直悬崖）」两种模式。
- * PNG 编码：R+G 打包 16-bit 高度，B=水，alpha 留空。
- *   兼容两种旧格式：上古版 R=8bit 高度、G=河流、B=0；次新版 R+G 高度、B=河流。
- *   解码旧格式时把河流并进 water，再按高度符号补出海洋，画面与当时一致。
+ * PNG 编码：R+G 打包 16-bit 高度，B=水，alpha 留空。编码与解码是同一套通道约定。
  * 纯数据 + canvas，不依赖 three。
  */
 import { loadImage } from '../utils/files.js';
@@ -252,14 +250,8 @@ export class TerrainGrid {
     return cv.toDataURL('image/png');
   }
 
-  /**
-   * 从 PNG dataURL 解码。
-   * format=2：R+G=16bit 高度，B=水。
-   * 没给 format 时按旧格式识别：B 全 0 视为上古版（R=8bit 高度、G=河流），
-   * 否则视为次新版（R+G=16bit 高度、B=河流）。旧格式的河流并进 water，
-   * 再按高度符号补出海洋——那时「高度 ≤ 0 就是海」，画面与当时一致。
-   */
-  static async fromPNG(dataUrl, format = null) {
+  /** 从 PNG dataURL 解码：R+G=16bit 高度，B=水 */
+  static async fromPNG(dataUrl) {
     const img = await loadImage(dataUrl);
     const cv = document.createElement('canvas');
     cv.width = img.width; cv.height = img.height;
@@ -267,28 +259,11 @@ export class TerrainGrid {
     ctx.drawImage(img, 0, 0);
     const data = ctx.getImageData(0, 0, img.width, img.height).data;
     const grid = new TerrainGrid(img.width, img.height);
-    const n = grid.height.length;
-    let legacyV0 = false;
-    if (format !== 2) {
-      legacyV0 = true;
-      for (let i = 0; i < n; i++) {
-        if (data[i * 4 + 2] !== 0) { legacyV0 = false; break; }
-      }
-    }
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < grid.height.length; i++) {
       const o = i * 4;
-      if (format === 2) {
-        const u16 = (data[o] << 8) | data[o + 1];
-        grid.height[i] = (u16 / 65535) * H_SPAN + H_MIN;
-        grid.water[i] = data[o + 2];
-      } else if (legacyV0) {
-        grid.height[i] = (data[o] / 255) * 2 - 1;
-        grid.water[i] = Math.max(data[o + 1], grid.height[i] <= 0 ? 255 : 0);
-      } else {
-        const u16 = (data[o] << 8) | data[o + 1];
-        grid.height[i] = (u16 / 65535) * H_SPAN + H_MIN;
-        grid.water[i] = Math.max(data[o + 2], grid.height[i] <= 0 ? 255 : 0);
-      }
+      const u16 = (data[o] << 8) | data[o + 1];
+      grid.height[i] = (u16 / 65535) * H_SPAN + H_MIN;
+      grid.water[i] = data[o + 2];
     }
     grid.renderColor();
     return grid;

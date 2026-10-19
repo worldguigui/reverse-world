@@ -6,6 +6,7 @@
  * 纯地理的世界不需要叙事轴。
  */
 import { getList, inView } from './project.js';
+import { compareDateTime, timeYear } from './datetime.js';
 
 /** 两端各留一点空气，取定义域跨度的一个小比例；跨度为 0 时另有兜底 */
 const MARGIN_RATIO = 0.04;
@@ -21,6 +22,8 @@ const ALL_KINDS = ['event', 'route', 'region'];
  *
  * 只看 from / to 两个端点，不看内容本身——所以路线与区域虽然不画刻度，也一定落在域内，
  * 不会出现「录进去了却拖不到」的内容。
+ *
+ * 事件存的是完整日期时间，这里只取年份：时间轴不细分到月日，域的两端仍是整年。
  */
 export function timeDomain(project) {
   if (!project) return null;
@@ -29,9 +32,10 @@ export function timeDomain(project) {
   for (const kind of ALL_KINDS) {
     for (const it of getList(project, kind)) {
       for (const v of [it.from, it.to]) {
-        if (typeof v !== 'number' || !Number.isFinite(v)) continue;
-        if (v < min) min = v;
-        if (v > max) max = v;
+        const year = timeYear(v);
+        if (year == null) continue;
+        if (year < min) min = year;
+        if (year > max) max = year;
       }
     }
   }
@@ -42,17 +46,17 @@ export function timeDomain(project) {
 }
 
 /**
- * 刻度 = 事件。按时间排好序，供时间轴画刻度、供长卷按时间铺开。
+ * 刻度 = 事件。按完整时间排好序，供时间轴画刻度、供长卷按时间铺开。
  * 给了视图条件就只收属于它的那些——轴的跨度不动，收窄的是画在上面的刻度。
  *
- * 同一年里不另排序：sort 是稳定的，同年的事件保持它们在数组里的先后，也就是录入的先后。
- * 这份先后是有意义的——它决定箭头一条一条翻时先翻到谁，按 id 之类的随机次序排就把它拆散了。
+ * 同年的事件也按完整时间排，不能只比年份：同一天里的先后就是清单与箭头的先后。
+ * 时间完全相同时 sort 是稳定的，保持它们在数组里的先后，也就是录入的先后。
  */
 export function timeTicks(project, view) {
   if (!project) return [];
   return project.events
-    .filter((e) => typeof e.from === 'number' && Number.isFinite(e.from) && inView(project, view, e))
-    .sort((a, b) => a.from - b.from);
+    .filter((e) => timeYear(e.from) != null && inView(project, view, e))
+    .sort((a, b) => compareDateTime(a.from, b.from));
 }
 
 /**
@@ -91,11 +95,11 @@ export function nextTickEvent(project, cursor, dir, view, anchorId = null) {
   if (!ticks.length) return null;
   if (anchorId) {
     const i = ticks.findIndex((e) => e.id === anchorId);
-    if (i >= 0 && Math.abs(ticks[i].from - cursor) < 1e-6) return ticks[i + dir] ?? null;
+    if (i >= 0 && Math.abs(timeYear(ticks[i].from) - cursor) < 1e-6) return ticks[i + dir] ?? null;
   }
-  if (dir > 0) return ticks.find((e) => e.from > cursor + 1e-9) ?? null;
+  if (dir > 0) return ticks.find((e) => timeYear(e.from) > cursor + 1e-9) ?? null;
   for (let i = ticks.length - 1; i >= 0; i--) {
-    if (ticks[i].from < cursor - 1e-9) return ticks[i];
+    if (timeYear(ticks[i].from) < cursor - 1e-9) return ticks[i];
   }
   return null;
 }
@@ -108,7 +112,7 @@ export function nextTickEvent(project, cursor, dir, view, anchorId = null) {
  */
 export function nextTickYear(project, cursor, dir, view) {
   const ticks = timeTicks(project, view);
-  const years = ticks.map((e) => e.from);
+  const years = ticks.map((e) => timeYear(e.from));
   const target = dir > 0
     ? years.find((y) => y > cursor + 1e-9)
     : [...years].reverse().find((y) => y < cursor - 1e-9);

@@ -4,7 +4,7 @@
  * IndexedDB 不可用（隐私模式等）时退化为内存保存，并在导出功能里提醒。
  */
 
-import { normalizeProject, uid } from './project.js';
+import { normalizeProject } from './project.js';
 
 const DB_NAME = 'worldbuilding-tool';
 const STORE = 'kv';
@@ -98,31 +98,8 @@ export function downloadProject(project) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-/**
- * 读入 .world.json。旧版本把姓名搜索的结果写在项目之外（`viewSnapshots` 或更早的
- * `tempChronicle`），现在它们就是普通章节：导入时补进 groups，
- * 事件 id 按当前项目校验一遍。新文件不会有这两个字段。
- */
+/** 读入 .world.json：版本校验与字段兜底都交给 normalizeProject */
 export async function importProjectFile(file) {
   const text = await file.text();
-  const raw = JSON.parse(text);
-  const project = normalizeProject(raw);
-  const legacy = Array.isArray(raw.viewSnapshots)
-    ? raw.viewSnapshots
-    : raw.tempChronicle ? [raw.tempChronicle] : [];
-  if (legacy.length) {
-    const known = new Set(project.events.map((e) => e.id));
-    for (const s of legacy) {
-      if (!s || typeof s !== 'object' || !Array.isArray(s.eventIds)) continue;
-      const eventIds = [...new Set(s.eventIds)].filter((id) => known.has(id));
-      if (!eventIds.length) continue;
-      const title = typeof s.title === 'string' ? s.title.trim() : '';
-      project.groups.push({
-        id: typeof s.id === 'string' && s.id ? s.id : uid('g'),
-        name: title || '未命名章节',
-        eventIds,
-      });
-    }
-  }
-  return project;
+  return normalizeProject(JSON.parse(text));
 }

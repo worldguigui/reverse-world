@@ -3,6 +3,7 @@ import { useStore } from '../../store/index.js';
 import { useProjectRevision } from './hooks.js';
 import { searchCharacters } from './common.jsx';
 import { timeTicks, formatYear } from '../../core/timeline.js';
+import { formatDate, timeYear } from '../../core/datetime.js';
 import { isViewFiltered } from '../../core/project.js';
 
 /** 章节标签上的时间范围：只有一年就只写那一年，算不出来就不写 */
@@ -203,7 +204,7 @@ export function Chronicle() {
             </button>
           );
         })}
-        {/* 实时人物筛只有编程接口会设；界面上给它一个和旧行为一致的退出标签 */}
+        {/* 实时人物筛只有编程接口会设；界面上给它一个能直接退出的标签 */}
         {byCharacter && (
           <span className="chr-tab on" id="chr-by-character">
             🧝 {byCharacter.name}
@@ -231,7 +232,9 @@ export function Chronicle() {
           </div>
         )}
         {ticks.map((t) => {
-          const cls = ['chr-item', t.id === currentId && 'at-cursor', t.from > cursor && 'ahead']
+          // 长卷报年月日；游标仍只有年份，所以「还没走到」按年份判断
+          const year = timeYear(t.from);
+          const cls = ['chr-item', t.id === currentId && 'at-cursor', year > cursor && 'ahead']
             .filter(Boolean).join(' ');
           return (
             <button
@@ -241,7 +244,7 @@ export function Chronicle() {
               title={t.lat == null ? '没有地点：只在这条长卷里' : '跳到它发生的那一年并飞过去'}
               onClick={() => jumpToEvent(t.id)}
             >
-              <span className="chr-year">{formatYear(t.from)}</span>
+              <span className="chr-year">{formatDate(t.from)}</span>
               <span className="chr-name">{t.title}</span>
               {t.lat == null && <span className="chr-note">无地点</span>}
             </button>

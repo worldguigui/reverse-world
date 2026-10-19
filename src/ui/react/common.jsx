@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../store/index.js';
+import { normalizeDateTime } from '../../core/datetime.js';
 
 /** 检查器里统一的「小标题 + 控件」排版 */
 export function Labeled({ label, children }) {
@@ -351,6 +352,57 @@ export function YearInput({ value, onChange, placeholder = '自始' }) {
       inputMode="numeric"
       placeholder={placeholder}
       defaultValue={value ?? ''}
+      onBlur={(e) => commit(e.target.value)}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+    />
+  );
+}
+
+/**
+ * 事件时间输入：`yyyy-MM-ddThh:mm:ss`。
+ *
+ * 与 YearInput 一样失焦或回车才提交；区别是提交后要把输入框里的值改写成规范串——
+ * 只敲「1914」也能存成完整时间，但输入框若还停在「1914」，看起来就像没有补零。
+ * 非法输入退回上一次的有效值，不往数据里写半截日期。
+ *
+ * @param {string|null} value 规范时间串
+ * @param {(value: string|null) => void} onChange
+ * @param {string} placeholder 空值时的提示语
+ */
+export function DateTimeInput({ value, onChange, placeholder = 'yyyy-MM-ddThh:mm:ss' }) {
+  const shown = normalizeDateTime(value) ?? '';
+  const ref = useRef(null);
+
+  // 外部值变了（例如切换到另一条事件）就同步到输入框；正在输入时不打断
+  useEffect(() => {
+    if (ref.current && document.activeElement !== ref.current) ref.current.value = shown;
+  }, [shown]);
+
+  const commit = (raw) => {
+    const text = raw.trim();
+    if (!text) {
+      if (ref.current) ref.current.value = '';
+      onChange(null);
+      return;
+    }
+    const normalized = normalizeDateTime(text);
+    if (!normalized) {
+      if (ref.current) ref.current.value = shown;
+      return;
+    }
+    if (ref.current) ref.current.value = normalized;
+    onChange(normalized);
+  };
+
+  return (
+    <input
+      ref={ref}
+      className="inp"
+      type="text"
+      spellCheck={false}
+      placeholder={placeholder}
+      defaultValue={shown}
+      title="格式：yyyy-MM-ddThh:mm:ss；只写年或月日会自动补齐 1 月 1 日与零点"
       onBlur={(e) => commit(e.target.value)}
       onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
     />

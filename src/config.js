@@ -4,7 +4,7 @@
  * localStorage 持久化，所有 GUI/API 修改的都是同一个 config 对象。
  */
 
-/** 星星数量的取值范围：设置面板滑块与旧存档载入共用，改这里一处即可 */
+/** 星星数量的取值范围：设置面板滑块与存档载入共用，改这里一处即可 */
 export const STARS_COUNT_MIN = 0;
 export const STARS_COUNT_MAX = 1999;
 
@@ -73,13 +73,10 @@ export function loadViewConfig() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      // 旧版的区域填充默认值是 0.32，偏厚；没动过这一项的存档跟着换成新默认，
-      // 自己调过的值保留
-      if (parsed?.markers?.fillOpacity === 0.32) delete parsed.markers.fillOpacity;
       mergeInto(config, dropCodeOwnedKeys(parsed));
     }
   } catch { /* 忽略坏数据 */ }
-  // 上限可能随版本收紧：旧存档里更大的数量在这里夹回当前范围
+  // 存档里的数量夹回当前允许的范围
   config.stars.count = Math.min(
     STARS_COUNT_MAX,
     Math.max(STARS_COUNT_MIN, Math.round(config.stars.count)),
