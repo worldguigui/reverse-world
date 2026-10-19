@@ -602,6 +602,39 @@
     #error h2 { margin: 0 0 10px; font-size: 16px; color: var(--danger-text); }
     #error p { margin: 6px 0; font-size: 13px; color: var(--text-muted); line-height: 1.7; word-break: break-all; }
 
+    /* ---------------- 云端存档 ---------------- */
+    .cloud-backdrop {
+      position: fixed; inset: 0; z-index: var(--z-modal);
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px; background: rgba(17, 16, 15, 0.72);
+    }
+    .cloud-dialog {
+      width: min(440px, 100%); max-height: calc(100vh - 48px);
+      overflow-y: auto; padding: 22px 24px;
+      display: grid; gap: 14px;
+    }
+    .cloud-head {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    }
+    .cloud-title {
+      margin: 0; font-size: 17px; font-weight: 600; letter-spacing: 0.6px;
+      color: var(--text-strong);
+    }
+    .cloud-sub { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); }
+    .cloud-note { margin: 0; font-size: 12.5px; color: var(--text-muted); line-height: 1.65; }
+    .cloud-current { color: var(--text-strong); font-weight: 600; }
+    .cloud-field { display: grid; gap: 5px; }
+    .cloud-error {
+      margin: 0; padding: 8px 10px; font-size: 12.5px; line-height: 1.6;
+      color: var(--danger-text); border: 1px solid rgba(182, 93, 80, 0.45);
+      border-radius: var(--radius); background: rgba(182, 93, 80, 0.08);
+      word-break: break-word;
+    }
+    .cloud-actions {
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 8px; flex-wrap: wrap;
+    }
+
     /* ---------------- 地图工坊 ---------------- */
     .workshop {
       position: fixed; inset: 0; z-index: var(--z-workshop);

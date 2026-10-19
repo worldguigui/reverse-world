@@ -5,6 +5,9 @@
 import * as P from '../core/project.js';
 import { buildRealEarthGrid } from '../core/realearth.js';
 import { importProjectFile } from '../core/storage.js';
+import {
+  saveProjectToCloud, loadProjectFromCloud, rememberCloudToken, formatCloudTime,
+} from '../core/cloud.js';
 import { buildSampleProject } from '../core/sample.js';
 import { session } from '../session.js';
 import { timeYear } from '../core/datetime.js';
@@ -92,6 +95,40 @@ export const createActionsSlice = (set, get) => ({
     } catch (err) {
       get().toast(`导入失败：${err.message}`);
     }
+  },
+
+  /**
+   * 显式上传当前项目。成功后记住令牌，下次打开对话框不必再输入。
+   * 云端不参与自动保存：本机的键入仍只落 IndexedDB，只有点这个按钮才会上传。
+   */
+  async saveToCloud(token) {
+    const p = get().project;
+    if (!p) throw new Error('当前没有可保存的项目');
+    const info = await saveProjectToCloud(p, token);
+    rememberCloudToken(token);
+    get().toast(`已保存到云端（${formatCloudTime(info.savedAt)}）`);
+    return info;
+  },
+
+  /**
+   * 下载云端项目。先下载并校验，再问是否替换——坏档不会在确认之前污染当前世界。
+   * 确认后走 loadProjectInto，因此本机自动保存、三维重建与镜头对准都和导入文件一致。
+   */
+  async loadFromCloud(token) {
+    const info = await loadProjectFromCloud(token);
+    rememberCloudToken(token);
+
+    const current = get().project;
+    const counts = current ? P.stats(current) : null;
+    const hasContent = counts && (counts.events || counts.routes || counts.regions || counts.characters);
+    if (hasContent && !confirm(
+      `载入「${info.project.name}」（云端保存于 ${formatCloudTime(info.savedAt)}）`
+      + `会替换当前世界「${current.name}」，本机自动保存也会随之更新。确定？`,
+    )) return null;
+
+    get().loadProjectInto(info.project);
+    get().toast(`已从云端载入「${info.project.name}」`);
+    return info;
   },
 
   // ---------------------------------------------------------------- 相机

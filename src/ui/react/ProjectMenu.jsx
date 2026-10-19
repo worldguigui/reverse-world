@@ -5,7 +5,7 @@ import { useStore } from '../../store/index.js';
  * 项目菜单：世界级操作（新建 / 示例 / 导入导出）与几个数据生成入口。
  * 开合状态由 Toolbar 持有，这里只负责渲染菜单项并在点击后关掉菜单。
  */
-export function ProjectMenu({ onClose }) {
+export function ProjectMenu({ onClose, onCloud }) {
   const newProject = useStore((s) => s.newProject);
   const loadSample = useStore((s) => s.loadSample);
   const importFile = useStore((s) => s.importFile);
@@ -29,6 +29,7 @@ export function ProjectMenu({ onClose }) {
       <div className="menu-sep" />
       {item('导入项目 (.world.json)', () => pickFile('.json,application/json').then((f) => f && importFile(f)))}
       {item('导出项目', exportProject)}
+      {item('云端存档…', onCloud)}
       <div className="menu-sep" />
       {item('世界概览', () => select(null))}
     </div>
