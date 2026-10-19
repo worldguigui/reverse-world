@@ -52,30 +52,19 @@ export const DEFAULT_CONFIG = {
 const STORAGE_KEY = 'worldbuilding:view-config';
 
 /**
- * 存档里的缩放上下限与出厂视场角一律丢掉，以代码里的值为准。
- *
- * 这几项不是设置面板里能改的，只是借 config 放着方便取用；可它们照样会被存进
- * localStorage，而合并时存档盖默认值——于是改了代码却不生效，看着像没改。
- * 凡是「用户改不了、只吃代码」的项都照这个办法挡一道。
+ * 这几项由代码决定，设置面板改不了，因此也不进存档。
+ * 若存下来再合并，改了代码却不生效，看起来像没改。
  */
-function dropCodeOwnedKeys(saved) {
-  if (saved && saved.camera) {
-    delete saved.camera.minDistance;
-    delete saved.camera.maxDistance;
-    delete saved.camera.fov;
-  }
-  return saved;
-}
+const CODE_OWNED_CAMERA = ['fov', 'minDistance', 'maxDistance'];
 
 export function loadViewConfig() {
   const config = structuredClone(DEFAULT_CONFIG);
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      mergeInto(config, dropCodeOwnedKeys(parsed));
-    }
+    if (saved) mergeInto(config, JSON.parse(saved));
   } catch { /* 忽略坏数据 */ }
+  // 镜头这几项永远以代码为准，与存档里有没有它们无关
+  for (const key of CODE_OWNED_CAMERA) config.camera[key] = DEFAULT_CONFIG.camera[key];
   // 存档里的数量夹回当前允许的范围
   config.stars.count = Math.min(
     STARS_COUNT_MAX,
@@ -86,7 +75,9 @@ export function loadViewConfig() {
 
 export function saveViewConfig(config) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    const saved = structuredClone(config);
+    for (const key of CODE_OWNED_CAMERA) delete saved.camera[key];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
   } catch { /* 存不下就算了 */ }
 }
 

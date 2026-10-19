@@ -1,9 +1,9 @@
 /**
- * 事件时间：`yyyy-MM-ddThh:mm:ss`，不带时区。
+ * 事件时间：`yyyy-MM-ddThh:mm:ss`，人物生卒：`yyyy-MM-dd`，都不带时区。
  *
- * 完整时间用于排序、记录、编辑与展示；时间轴与在场判定仍按年取整，
+ * 事件完整时间用于排序、记录、编辑与展示；时间轴与在场判定仍按年取整，
  * 所以这里另外提供 `timeYear()` 把日期时间折回年份。
- * 路线、区域、人物的生卒仍直接使用数值年，`timeYear()` 对数字原样返回。
+ * 路线、区域的存续区间仍直接使用数值年，`timeYear()` 对数字原样返回。
  */
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -57,8 +57,19 @@ export function normalizeDateTime(value) {
   return typeof value === 'string' ? parseDateTime(value) : null;
 }
 
-/** 规范时间串的各段；非法输入返回 null */
-const TIME_RE = /^(-?\d{1,6})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/;
+/** 解析成 `yyyy-MM-dd`：只写年也补成 1 月 1 日；非法输入返回 null */
+export function parseDate(raw) {
+  const normalized = parseDateTime(raw);
+  return normalized ? normalized.slice(0, 10) : null;
+}
+
+/** 人物生卒的规范形式：`yyyy-MM-dd` 或 null */
+export function normalizeDate(value) {
+  return typeof value === 'string' ? parseDate(value) : null;
+}
+
+/** 规范日期串或日期时间串的各段；非法输入返回 null */
+const TIME_RE = /^(-?\d{1,6})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2}))?$/;
 function timeParts(value) {
   if (typeof value !== 'string') return null;
   const m = TIME_RE.exec(value);
@@ -67,9 +78,9 @@ function timeParts(value) {
     year: Number(m[1]),
     month: Number(m[2]),
     day: Number(m[3]),
-    hour: Number(m[4]),
-    minute: Number(m[5]),
-    second: Number(m[6]),
+    hour: m[4] == null ? 0 : Number(m[4]),
+    minute: m[5] == null ? 0 : Number(m[5]),
+    second: m[6] == null ? 0 : Number(m[6]),
   };
 }
 
@@ -101,7 +112,7 @@ export function compareDateTime(a, b) {
     || A.second - B.second;
 }
 
-/** 事件日期的写法：1914年6月28日；公元前写成「前 1914年6月28日」 */
+/** 日期的写法：1914.6.28；公元前写成「前 1914.6.28」 */
 export function formatDate(value) {
   const t = timeParts(value);
   if (!t) return '';

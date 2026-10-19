@@ -33,7 +33,7 @@ export function installAPI({ ctx, project, cursor }) {
     removeItem: (kind, id) => ctx.removeItem(kind, id),
 
     // —— 人物 ——
-    /** 全部人物。人物不分在场：生卒是生平，不拿来筛事件 */
+    /** 全部人物。人物不分在场：生卒日期是生平，不拿来筛事件 */
     listCharacters: () => ctx.characters(),
     addCharacter: (data) => ctx.addCharacterViaApi(data),
     /** 某个人物涉及的事件，按时间先后。反向关系现算，人物上不存清单 */
@@ -98,7 +98,7 @@ export function installAPI({ ctx, project, cursor }) {
       + 'world.filterByGroup(id) / filterByCharacter(id)  只看某一章 / 某个人物涉及的事件\n'
       + 'world.getViewFilter() / clearFilter()           当前筛选条件 / 退出筛选\n'
       + 'world.listCharacters()                        全部人物\n'
-      + "world.addCharacter({ name, aliases, born, died })  加人物（born/died 留空 = 不详）\n"
+      + "world.addCharacter({ name, aliases, born, died })  加人物（born/died 为 yyyy-MM-dd；留空 = 不详）\n"
       + 'world.eventsOfCharacter(id)                     某个人物涉及的事件\n'
       + 'world.flyTo(lat, lng, { level, distance, duration }) 飞到坐标（level = 落到哪一档）\n'
       + 'world.where() / resetView()                     当前视角（经纬度/距离/档位）/ 复位视角\n'

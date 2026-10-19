@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { formatYear } from '../../../core/timeline.js';
-import { timeYear } from '../../../core/datetime.js';
+import { formatDate, timeYear } from '../../../core/datetime.js';
 import { useProjectRevision } from '../hooks.js';
-import { Labeled, BackToOverview, YearInput, searchCharacters } from '../common.jsx';
+import { Labeled, BackToOverview, DateInput, searchCharacters } from '../common.jsx';
 
 /**
  * 人物的两张面板：清单与卡片。
@@ -13,11 +13,11 @@ import { Labeled, BackToOverview, YearInput, searchCharacters } from '../common.
  * 所以这里没有坐标、没有存续区间，录入整张卡都在面板里完成。
  */
 
-/** 生卒的紧凑写法：两端都有是「1451–1506」，缺一端写问号；两端都没有就整个不写 */
-function lifeYears(c) {
+/** 生卒的紧凑写法：两端都有是「1451.1.1–1506.5.2」，缺一端写问号；两端都没有就整个不写 */
+function lifeDates(c) {
   if (c.born == null && c.died == null) return '';
-  const b = c.born == null ? '?' : formatYear(c.born);
-  const d = c.died == null ? '?' : formatYear(c.died);
+  const b = c.born == null ? '?' : formatDate(c.born);
+  const d = c.died == null ? '?' : formatDate(c.died);
   return `${b}–${d}`;
 }
 
@@ -67,7 +67,7 @@ export function CharacterList() {
                   onClick={() => select({ kind: 'character', id: c.id })}
                 >
                   <b>{c.name}</b>
-                  <span>{lifeYears(c) || '生平不详'}</span>
+                  <span>{lifeDates(c) || '生平不详'}</span>
                 </button>
               ))}
             </div>
@@ -146,11 +146,11 @@ export function CharacterEditor({ id }) {
         />
       </Labeled>
 
-      <Labeled label="生年">
-        <YearInput value={item.born} onChange={(v) => patch({ born: v })} placeholder="不详" />
+      <Labeled label="出生日期">
+        <DateInput value={item.born} onChange={(v) => patch({ born: v })} placeholder="不详" />
       </Labeled>
-      <Labeled label="卒年">
-        <YearInput value={item.died} onChange={(v) => patch({ died: v })} placeholder="不详" />
+      <Labeled label="逝世日期">
+        <DateInput value={item.died} onChange={(v) => patch({ died: v })} placeholder="不详" />
       </Labeled>
 
       <Labeled label="小传">

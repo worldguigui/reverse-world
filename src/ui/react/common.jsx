@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../store/index.js';
-import { normalizeDateTime } from '../../core/datetime.js';
+import { normalizeDate, normalizeDateTime } from '../../core/datetime.js';
 
 /** 检查器里统一的「小标题 + 控件」排版 */
 export function Labeled({ label, children }) {
@@ -352,6 +352,57 @@ export function YearInput({ value, onChange, placeholder = '自始' }) {
       inputMode="numeric"
       placeholder={placeholder}
       defaultValue={value ?? ''}
+      onBlur={(e) => commit(e.target.value)}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+    />
+  );
+}
+
+/**
+ * 日期输入：`yyyy-MM-dd`，人物生卒用。
+ *
+ * 与 YearInput 一样失焦或回车才提交；提交后把输入框改写成规范串——
+ * 只敲「1863」也能存成 1863-01-01，但输入框若还停在「1863」，看起来就像没补全。
+ * 非法输入退回上一次的有效值，不往数据里写半截日期。
+ *
+ * @param {string|null} value 规范日期串
+ * @param {(value: string|null) => void} onChange
+ * @param {string} placeholder 空值时的提示语
+ */
+export function DateInput({ value, onChange, placeholder = 'yyyy-MM-dd' }) {
+  const shown = normalizeDate(value) ?? '';
+  const ref = useRef(null);
+
+  // 外部值变了（例如切换到另一个人物）就同步到输入框；正在输入时不打断
+  useEffect(() => {
+    if (ref.current && document.activeElement !== ref.current) ref.current.value = shown;
+  }, [shown]);
+
+  const commit = (raw) => {
+    const text = raw.trim();
+    if (!text) {
+      if (ref.current) ref.current.value = '';
+      onChange(null);
+      return;
+    }
+    const normalized = normalizeDate(text);
+    if (!normalized) {
+      if (ref.current) ref.current.value = shown;
+      return;
+    }
+    if (ref.current) ref.current.value = normalized;
+    onChange(normalized);
+  };
+
+  return (
+    <input
+      ref={ref}
+      className="inp"
+      type="text"
+      spellCheck={false}
+      placeholder={placeholder}
+      defaultValue={shown}
+      title="格式：yyyy-MM-dd；只写年会自动补成 1 月 1 日"
       onBlur={(e) => commit(e.target.value)}
       onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
     />

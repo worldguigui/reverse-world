@@ -98,7 +98,7 @@ export function downloadProject(project) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-/** 读入 .world.json：版本校验与字段兜底都交给 normalizeProject */
+/** 读入 .world.json：结构检查交给 normalizeProject，不对就抛错 */
 export async function importProjectFile(file) {
   const text = await file.text();
   return normalizeProject(JSON.parse(text));

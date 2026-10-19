@@ -3,12 +3,16 @@
  * 纯函数式 CRUD（直接改传入的 project 对象并返回创建的实体），
  * 持久化、渲染都不在这里。
  *
- * 事件时间存完整的 `yyyy-MM-ddThh:mm:ss`；路线、区域与人物生卒仍是数值年（可为负、可为小数）。
+ * 事件时间存完整的 `yyyy-MM-ddThh:mm:ss`，人物生卒存 `yyyy-MM-dd`；
+ * 路线、区域仍用数值年（可为负、可为小数）。
  * 所有 from / to 为空表示该端开放，两端都空就是常驻——「常驻」是默认形态，
  * 不写时间的内容一直在场。时间轴与在场判定只取年份，完整时间不把轴细分到月日。
  * 切面不是一个槽位，而是拿游标去求值。
+ *
+ * 文件只有一种结构：当前代码写出的这一种。读入时字段缺失或格式不对就报错，
+ * 不补默认值，也不接受别的形状。
  */
-import { compareDateTime, normalizeDateTime, timeYear } from './datetime.js';
+import { compareDateTime, normalizeDate, normalizeDateTime, timeYear } from './datetime.js';
 
 let _seq = (Date.now() % 1e6).toString(36);
 export function uid(prefix) {
@@ -20,11 +24,8 @@ export const DEFAULT_ITEM_COLORS = {
   character: '#c78dff',
 };
 
-export const PROJECT_VERSION = 4;
-
 export function createProject({ name = '未命名世界', description = '' } = {}) {
   return {
-    version: PROJECT_VERSION,
     name,
     description,
     // 舞台：球自己的那张脸，与时间无关，最多一张
@@ -37,55 +38,184 @@ export function createProject({ name = '未命名世界', description = '' } = {
     regions: [],    // { id, name, description, ring: [[lng,lat]...], from, to }
     // 人物。没有存续区间：born / died 是生平，不参与在场判定，也不撑开时间轴
     characters: [], // { id, name, aliases: [], born, died, description, image, color }
+                    //   born / died 是 yyyy-MM-dd 或 null
     // 章节。章节自己拥有一批事件（eventIds），一个事件因此可以同时属于多章；
     // 也可以暂时一个事件都没有（写大纲的常态）。姓名搜索出来的也只是这样一章
     groups: [],     // { id, name, eventIds }
   };
 }
 
-/** 导入/恢复时兜底：补齐缺失字段；只接受当前版本，其他版本直接报错 */
-export function normalizeProject(raw) {
-  if (!raw || typeof raw !== 'object') throw new Error('不是合法的项目对象');
-  if (raw.version !== PROJECT_VERSION) {
-    throw new Error(`不支持的项目版本：${raw.version}（当前只接受 v${PROJECT_VERSION}）`);
+function formatError(what) {
+  throw new Error(`项目文件格式不对：${what}`);
+}
+
+function needObject(v, what) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) formatError(`${what} 必须是对象`);
+  return v;
+}
+
+function needArray(v, what) {
+  if (!Array.isArray(v)) formatError(`${what} 必须是数组`);
+  return v;
+}
+
+function needString(v, what) {
+  if (typeof v !== 'string') formatError(`${what} 必须是字符串`);
+  return v;
+}
+
+function needStrings(v, what) {
+  if (!Array.isArray(v) || v.some((s) => typeof s !== 'string')) {
+    formatError(`${what} 必须是字符串数组`);
   }
-  const src = raw;
-  const p = createProject({ name: src.name, description: src.description });
-  p.baseRasterId = src.baseRasterId ?? null;
-  p.rasterMaps = Array.isArray(src.rasterMaps)
-    ? src.rasterMaps.filter((m) => m?.id && typeof m.dataUrl === 'string' && m.w > 0 && m.h > 0)
-    : [];
-  const okItem = (it) => it && typeof it === 'object';
-  const okList = (v) => (Array.isArray(v) ? v : []);
-  p.characters = okList(src.characters).filter(okItem)
-    .map((c) => ({ ...c, aliases: toAliases(c.aliases) }));
-  // 事件的「涉及人物」统一补齐成数组。
-  // 章节关系不放在事件上：章节自己拥有 eventIds，一个事件才能同时出现在多章里
-  p.events = okList(src.events).filter(okItem)
-    .map((ev) => ({
-      ...ev,
-      from: normalizeDateTime(ev.from),
-      to: normalizeDateTime(ev.to),
-      characters: okList(ev.characters),
-    }));
-  p.routes = okList(src.routes).filter(okItem);
-  p.regions = okList(src.regions).filter(okItem);
-  // 章节清单由章节持有。导入时按当前事件表校验：悬空 id 与重复项一律摘掉。
-  // 章节只有 id / name / eventIds 三个字段，没有「来源」之类的类型标记
-  const knownEvents = new Set(p.events.map((e) => e.id));
-  p.groups = okList(src.groups).filter((g) => g?.id).map((g) => {
-    const ids = okList(g.eventIds).filter((id) => knownEvents.has(id));
+  return v;
+}
+
+function needNumber(v, what) {
+  if (typeof v !== 'number' || !Number.isFinite(v)) formatError(`${what} 必须是数字`);
+  return v;
+}
+
+function needId(item, what) {
+  if (typeof item.id !== 'string' || !item.id) formatError(`${what} 缺少 id`);
+  return item.id;
+}
+
+function needDate(v, what) {
+  if (v === null) return null;
+  const normalized = normalizeDate(v);
+  if (normalized !== v) formatError(`${what} 必须是 yyyy-MM-dd`);
+  return normalized;
+}
+
+function needDateTime(v, what) {
+  if (v === null) return null;
+  const normalized = normalizeDateTime(v);
+  if (normalized !== v) formatError(`${what} 必须是 yyyy-MM-ddThh:mm:ss`);
+  return normalized;
+}
+
+/**
+ * 读入项目：逐项按当前结构检查并组装。
+ *
+ * 不做「缺了就给个默认」——当前代码写出的文件每个字段都在，缺字段说明拿到的
+ * 不是这个结构，应该让用户看到错误，而不是猜着补。
+ */
+export function normalizeProject(raw) {
+  needObject(raw, '项目');
+  const p = createProject({
+    name: needString(raw.name, 'name'),
+    description: needString(raw.description, 'description'),
+  });
+  if (raw.baseRasterId !== null && typeof raw.baseRasterId !== 'string') {
+    formatError('baseRasterId 必须是地图 id 或 null');
+  }
+  p.baseRasterId = raw.baseRasterId;
+  p.rasterMaps = needArray(raw.rasterMaps, 'rasterMaps').map((m, i) => {
+    const what = `rasterMaps[${i}]`;
+    needObject(m, what);
+    needId(m, what);
+    if (!Number.isFinite(m.w) || m.w <= 0 || !Number.isFinite(m.h) || m.h <= 0) {
+      formatError(`${what} 的宽高不对`);
+    }
     return {
-      id: g.id,
-      name: typeof g.name === 'string' ? g.name : '未命名章节',
-      eventIds: [...new Set(ids)],
+      id: m.id,
+      name: needString(m.name, `${what}.name`),
+      w: m.w,
+      h: m.h,
+      dataUrl: needString(m.dataUrl, `${what}.dataUrl`),
     };
+  });
+  p.characters = needArray(raw.characters, 'characters').map((c, i) => {
+    const what = `characters[${i}]`;
+    needObject(c, what);
+    needId(c, what);
+    return {
+      id: c.id,
+      name: needString(c.name, `${what}.name`),
+      aliases: needStrings(c.aliases, `${what}.aliases`),
+      born: needDate(c.born, `${what}.born`),
+      died: needDate(c.died, `${what}.died`),
+      description: needString(c.description, `${what}.description`),
+      image: c.image === null ? null : needString(c.image, `${what}.image`),
+      color: needString(c.color, `${what}.color`),
+    };
+  });
+  // 章节关系不放在事件上：章节自己拥有 eventIds，一个事件才能同时出现在多章里
+  p.events = needArray(raw.events, 'events').map((ev, i) => {
+    const what = `events[${i}]`;
+    needObject(ev, what);
+    needId(ev, what);
+    return {
+      id: ev.id,
+      title: needString(ev.title, `${what}.title`),
+      description: needString(ev.description, `${what}.description`),
+      image: ev.image === null ? null : needString(ev.image, `${what}.image`),
+      lat: ev.lat === null ? null : needNumber(ev.lat, `${what}.lat`),
+      lng: ev.lng === null ? null : needNumber(ev.lng, `${what}.lng`),
+      from: needDateTime(ev.from, `${what}.from`),
+      to: needDateTime(ev.to, `${what}.to`),
+      characters: needStrings(ev.characters, `${what}.characters`),
+    };
+  });
+  p.routes = needArray(raw.routes, 'routes').map((r, i) => {
+    const what = `routes[${i}]`;
+    needObject(r, what);
+    needId(r, what);
+    return {
+      id: r.id,
+      title: needString(r.title, `${what}.title`),
+      description: needString(r.description, `${what}.description`),
+      from: r.from === null ? null : needNumber(r.from, `${what}.from`),
+      to: r.to === null ? null : needNumber(r.to, `${what}.to`),
+      points: needArray(r.points, `${what}.points`).map((pt, j) => {
+        const at = `${what}.points[${j}]`;
+        needObject(pt, at);
+        return { lat: needNumber(pt.lat, `${at}.lat`), lng: needNumber(pt.lng, `${at}.lng`) };
+      }),
+    };
+  });
+  p.regions = needArray(raw.regions, 'regions').map((r, i) => {
+    const what = `regions[${i}]`;
+    needObject(r, what);
+    needId(r, what);
+    return {
+      id: r.id,
+      name: needString(r.name, `${what}.name`),
+      description: needString(r.description, `${what}.description`),
+      from: r.from === null ? null : needNumber(r.from, `${what}.from`),
+      to: r.to === null ? null : needNumber(r.to, `${what}.to`),
+      ring: needArray(r.ring, `${what}.ring`).map((pair, j) => {
+        const at = `${what}.ring[${j}]`;
+        if (!Array.isArray(pair) || pair.length !== 2) formatError(`${at} 必须是 [lng, lat]`);
+        return [needNumber(pair[0], `${at}[0]`), needNumber(pair[1], `${at}[1]`)];
+      }),
+    };
+  });
+  // 章节只有 id / name / eventIds 三个字段；引用的必须是这份文件里真实存在的事件
+  const knownEvents = new Set(p.events.map((e) => e.id));
+  p.groups = needArray(raw.groups, 'groups').map((g, i) => {
+    const what = `groups[${i}]`;
+    needObject(g, what);
+    needId(g, what);
+    const eventIds = needStrings(g.eventIds, `${what}.eventIds`);
+    if (new Set(eventIds).size !== eventIds.length) formatError(`${what}.eventIds 有重复`);
+    for (const id of eventIds) {
+      if (!knownEvents.has(id)) formatError(`${what} 引用了不存在的事件 ${id}`);
+    }
+    return { id: g.id, name: needString(g.name, `${what}.name`), eventIds };
   });
   return p;
 }
 
-/** 别名一律存成数组：手写的文件里可能直接给一串，读进来补齐，不要悄悄丢掉 */
-const toAliases = (v) => (v == null ? [] : (Array.isArray(v) ? v : [String(v)]));
+/** 别名始终是字符串数组；别的形状属于调用错误，不在这里改写 */
+const toAliases = (v) => {
+  if (v == null) return [];
+  if (!Array.isArray(v) || v.some((s) => typeof s !== 'string')) {
+    throw new Error('aliases 必须是字符串数组');
+  }
+  return v;
+};
 
 /**
  * 每种内容的台账，外加它自带哪些通用字段。
@@ -161,11 +291,33 @@ export function setEventGroups(project, eventId, groupIds = []) {
   }
 }
 
-/** 事件时间统一成规范串；路线、区域与人物仍是数值年，原样保留 */
+/** 事件时间只收完整时间串；空值表示该端开放 */
+function eventTime(v) {
+  if (v === null) return null;
+  const normalized = normalizeDateTime(v);
+  if (normalized !== v) throw new Error(`事件时间必须是 yyyy-MM-ddThh:mm:ss：${String(v)}`);
+  return normalized;
+}
+
+/** 人物生卒只收 `yyyy-MM-dd`；空值表示不详 */
+function characterDate(v) {
+  if (v === null) return null;
+  const normalized = normalizeDate(v);
+  if (normalized !== v) throw new Error(`人物日期必须是 yyyy-MM-dd：${String(v)}`);
+  return normalized;
+}
+
 function normalizeEventTimes(data) {
   const out = { ...data };
-  if ('from' in out) out.from = normalizeDateTime(out.from);
-  if ('to' in out) out.to = normalizeDateTime(out.to);
+  if ('from' in out) out.from = eventTime(out.from);
+  if ('to' in out) out.to = eventTime(out.to);
+  return out;
+}
+
+function normalizeCharacterDates(data) {
+  const out = { ...data };
+  if ('born' in out) out.born = characterDate(out.born);
+  if ('died' in out) out.died = characterDate(out.died);
   return out;
 }
 
@@ -176,6 +328,8 @@ export function addItem(project, kind, data = {}) {
     // 事件没有颜色字段：传入也丢掉
     delete clean.color;
     clean = normalizeEventTimes(clean);
+  } else if (kind === 'character') {
+    clean = normalizeCharacterDates(clean);
   }
   // 章节关系写在章节那一侧：创建时把新事件的 id 同步进各章清单，事件上不存副本
   let groupIds = null;
@@ -203,6 +357,8 @@ export function updateItem(project, kind, id, patch) {
     // 事件没有颜色字段：传入也丢掉
     const { color: _unusedColor, ...rest } = patch;
     patch = normalizeEventTimes(rest);
+  } else if (kind === 'character') {
+    patch = normalizeCharacterDates(patch);
   }
   // 与创建同一条规则：groupIds 不是事件上的字段，而是各章节清单的增删
   if (kind === 'event' && 'groupIds' in patch) {

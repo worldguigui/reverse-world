@@ -5,7 +5,7 @@ import { buildRealEarthGrid } from './realearth.js';
  * 示例世界：真实地球地形 + 第一次世界大战。
  *
  * 叙事数据（章节、人物、事件、路线、区域）全部放在 public/data/sample-world.json，
- * 与用户导出的 .world.json 同一套结构，走同一个 normalizeProject 校验；
+ * 与用户导出的 .world.json 同一套结构，走同一个 normalizeProject 检查；
  * 这里只负责两件事：取回那份文件，以及给它铺上真实地球这张舞台。
  *
  * 舞台不写进 JSON：它是由 public/textures/ 的高程与水数据现场生成的，
