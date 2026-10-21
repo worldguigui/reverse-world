@@ -3,7 +3,7 @@ import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { formatTime } from '../../../core/datetime.js';
 import { useProjectRevision } from '../hooks.js';
-import { Labeled, BackToOverview, TimeInput, searchCharacters } from '../common.jsx';
+import { Labeled, BackToOverview, TimeInput, ItemImage, searchCharacters } from '../common.jsx';
 
 /**
  * 人物的两张面板：清单与卡片。
@@ -22,6 +22,25 @@ function lifeDates(c) {
 
 /** 别名随手用顿号、逗号或空格分开都认，存的时候统一成数组 */
 const parseAliases = (raw) => raw.split(/[、,，\s]+/).map((s) => s.trim()).filter(Boolean);
+
+/** 人物没设颜色时，取色器先停在这个默认暗金上；与标签的默认配色一致 */
+const DEFAULT_COLOR = '#d0a15b';
+
+/**
+ * 人物卡的草稿。别名在草稿里仍是输入框里的那串原文，保存时才拆成数组——
+ * 边打边拆会把「、」后面的半截字也当成一个别名。
+ */
+function makeDraft(item) {
+  return {
+    name: item.name,
+    aliases: item.aliases.join('、'),
+    born: item.born,
+    died: item.died,
+    description: item.description || '',
+    image: item.image,
+    color: item.color,
+  };
+}
 
 /**
  * 人物清单：顶栏「人物」入口落到这里。
@@ -95,22 +114,33 @@ export function CharacterEditor({ id }) {
   const select = useStore((s) => s.select);
   const pickImage = useStore((s) => s.pickImage);
   const eventsOfCharacter = useStore((s) => s.eventsOfCharacter);
+  const toast = useStore((s) => s.toast);
   useProjectRevision(); // 事件改了标题或年份，下面那张清单要跟着变
 
   const item = (project?.characters ?? []).find((c) => c.id === id);
-  if (!item) return null;
+  const [draft, setDraft] = useState(() => (item ? makeDraft(item) : null));
+  if (!item || !draft) return null;
 
-  const patch = (p) => updateItem('character', id, p);
+  // 名字、生卒、配图都先落在草稿里，按「保存」才回写项目
+  const patch = (p) => setDraft((d) => ({ ...d, ...p }));
+  // 保存与取消都回人物清单：这张卡只是清单里的一条，处理完该回到列表继续翻
+  const save = () => {
+    updateItem('character', id, { ...draft, aliases: parseAliases(draft.aliases) });
+    toast('人物已保存');
+    select({ kind: 'characters' });
+  };
+  const reset = () => select({ kind: 'characters' });
+
   const events = eventsOfCharacter(id);
 
   return (
     <div className="insp-block">
       <div className="insp-title">人物</div>
 
-      <div className="field-label">配图</div>
-      {item.image ? (
+      <div className="field-label">配图（长宽比建议1:1）</div>
+      {draft.image ? (
         <div style={{ display: 'grid', gap: '6px' }}>
-          <img className="item-img" src={item.image} alt="" />
+          <ItemImage src={draft.image} />
           <button className="btn" onClick={() => patch({ image: null })}>移除配图</button>
         </div>
       ) : (
@@ -118,7 +148,7 @@ export function CharacterEditor({ id }) {
           className="btn"
           onClick={async () => {
             const file = await pickImage();
-            if (file) patch({ image: await fileToDataUrl(file, 1024) });
+            if (file) patch({ image: await fileToDataUrl(file) });
           }}
         >
           ⬆ 上传配图
@@ -128,7 +158,7 @@ export function CharacterEditor({ id }) {
       <Labeled label="姓名">
         <input
           className="inp"
-          defaultValue={item.name}
+          value={draft.name}
           onChange={(e) => patch({ name: e.target.value })}
         />
       </Labeled>
@@ -138,18 +168,17 @@ export function CharacterEditor({ id }) {
         <input
           className="inp"
           placeholder="用顿号或逗号分开"
-          defaultValue={item.aliases.join('、')}
-          // 失焦才提交：边打边拆会把「、」后面的半截字当成一个别名存进去
-          onBlur={(e) => patch({ aliases: parseAliases(e.target.value) })}
+          value={draft.aliases}
+          onChange={(e) => patch({ aliases: e.target.value })}
           onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
         />
       </Labeled>
 
       <Labeled label="出生日期">
-        <TimeInput value={item.born} onChange={(v) => patch({ born: v })} placeholder="不详" />
+        <TimeInput value={draft.born} onChange={(v) => patch({ born: v })} placeholder="不详" />
       </Labeled>
       <Labeled label="逝世日期">
-        <TimeInput value={item.died} onChange={(v) => patch({ died: v })} placeholder="不详" />
+        <TimeInput value={draft.died} onChange={(v) => patch({ died: v })} placeholder="不详" />
       </Labeled>
       <p className="insp-hint">
         时间可只写到年、月、日、时、分、秒；空格后的内容作为备注，例如「1919-11-11 待定时间」。
@@ -160,7 +189,7 @@ export function CharacterEditor({ id }) {
           className="inp"
           rows={4}
           placeholder="这个人是谁…"
-          defaultValue={item.description || ''}
+          value={draft.description}
           onChange={(e) => patch({ description: e.target.value })}
         />
       </Labeled>
@@ -169,12 +198,21 @@ export function CharacterEditor({ id }) {
           原生选色框刚关就被重新打开，看起来像关不掉。这里只让色块本身打开它。 */}
       <div style={{ display: 'grid', gap: '4px' }}>
         <span className="field-label">颜色</span>
-        <input
-          type="color"
-          value={item.color}
-          title="选择人物颜色"
-          onChange={(e) => patch({ color: e.target.value })}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <input
+            type="color"
+            value={draft.color ?? DEFAULT_COLOR}
+            title={draft.color ? '选择人物颜色' : '未设颜色，点开可指定'}
+            onChange={(e) => patch({ color: e.target.value })}
+          />
+          {draft.color ? (
+            <button className="btn btn-mini" onClick={() => patch({ color: null })}>
+              使用默认配色
+            </button>
+          ) : (
+            <span className="insp-hint" style={{ margin: 0 }}>未设置，跟随默认配色</span>
+          )}
+        </div>
       </div>
 
       <Labeled label="涉及的事件">
@@ -198,6 +236,8 @@ export function CharacterEditor({ id }) {
       </Labeled>
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+        <button className="btn btn-primary" onClick={save}>保存</button>
+        <button className="btn" onClick={reset} title="放弃未保存的修改">取消</button>
         <button
           className="btn btn-danger"
           onClick={() => { if (confirm('确认删除？事件里对他的引用会一并摘掉。')) deleteItem('character', id); }}

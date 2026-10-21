@@ -19,11 +19,6 @@ export function uid(prefix) {
   return `${prefix}_${_seq}${((Math.random() * 1e6) | 0).toString(36)}`;
 }
 
-/** 新建人物的默认颜色：人物列表里的小圆点用它 */
-export const DEFAULT_ITEM_COLORS = {
-  character: '#c78dff',
-};
-
 export function createProject({ name = '未命名世界', description = '' } = {}) {
   return {
     name,
@@ -39,6 +34,7 @@ export function createProject({ name = '未命名世界', description = '' } = {
     // 人物。没有存续区间：born / died 是生平，不参与在场判定，也不撑开时间轴
     characters: [], // { id, name, aliases: [], born, died, description, image, color }
                     //   born / died 与事件时间同一套精度，或 null
+                    //   color 是可选的人物颜色，null = 跟随界面默认配色
     // 章节。章节自己拥有一批事件（eventIds），一个事件因此可以同时属于多章；
     // 也可以暂时一个事件都没有（写大纲的常态）。姓名搜索出来的也只是这样一章
     groups: [],     // { id, name, eventIds }
@@ -106,7 +102,7 @@ export function normalizeProject(raw) {
     formatError('baseRasterId 必须是地图 id 或 null');
   }
   p.baseRasterId = raw.baseRasterId;
-  p.rasterMaps = needArray(raw.rasterMaps, 'rasterMaps').map((m, i) => {
+  const maps = needArray(raw.rasterMaps, 'rasterMaps').map((m, i) => {
     const what = `rasterMaps[${i}]`;
     needObject(m, what);
     needId(m, what);
@@ -121,6 +117,9 @@ export function normalizeProject(raw) {
       dataUrl: needString(m.dataUrl, `${what}.dataUrl`),
     };
   });
+  // 球只有一张脸：只留 baseRasterId 指向的那张。
+  // 旧文件里可能躺着不再使用的舞台图，不清掉会跟着每次导出一起复制几 MB 的 base64。
+  p.rasterMaps = maps.filter((m) => m.id === p.baseRasterId);
   p.characters = needArray(raw.characters, 'characters').map((c, i) => {
     const what = `characters[${i}]`;
     needObject(c, what);
@@ -133,7 +132,7 @@ export function normalizeProject(raw) {
       died: needTime(c.died, `${what}.died`),
       description: needString(c.description, `${what}.description`),
       image: c.image === null ? null : needString(c.image, `${what}.image`),
-      color: needString(c.color, `${what}.color`),
+      color: c.color === null ? null : needString(c.color, `${what}.color`),
     };
   });
   // 章节关系不放在事件上：章节自己拥有 eventIds，一个事件才能同时出现在多章里
@@ -214,14 +213,14 @@ const toAliases = (v) => {
 
 /**
  * 每种内容的台账，外加它自带哪些通用字段。
- * `timed` = 有存续区间（两端留空即常驻）；`colored` = 创建时带该类别的默认颜色。
+ * `timed` = 有存续区间（两端留空即常驻）。
  * 事件与章节没有颜色；人物没有存续区间。
  */
 const KINDS = {
   event: { list: (p) => p.events, timed: true },
   route: { list: (p) => p.routes, timed: true },
   region: { list: (p) => p.regions, timed: true },
-  character: { list: (p) => p.characters, colored: true },
+  character: { list: (p) => p.characters },
   group: { list: (p) => p.groups },
 };
 
@@ -262,7 +261,8 @@ const DEFAULTS = {
     name: '新区域', description: '', ring: [], ...d,
   }),
   character: (d) => ({
-    name: '新人物', born: null, died: null, description: '', image: null, ...d,
+    // 颜色不是必填：null 表示不指定，各处按默认配色显示
+    name: '新人物', born: null, died: null, description: '', image: null, color: null, ...d,
     // 写在展开之后：编程接口那边可能直接给一串，面板与搜索都按数组读
     aliases: toAliases(d.aliases),
   }),
@@ -307,7 +307,7 @@ function normalizeTimes(kind, data) {
 }
 
 export function addItem(project, kind, data = {}) {
-  // 过滤掉显式传入的 undefined，避免覆盖 id/color 等默认值
+  // 过滤掉显式传入的 undefined，避免覆盖 id 等默认值
   let clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
   if (kind === 'event' || kind === 'character') {
     // 事件没有颜色字段：传入也丢掉
@@ -323,7 +323,6 @@ export function addItem(project, kind, data = {}) {
   const caps = KINDS[kind];
   const item = {
     id: uid(ID_PREFIX[kind]),
-    ...(caps.colored ? { color: DEFAULT_ITEM_COLORS[kind] } : {}),
     // 两端留空 = 常驻；填了才进时间轴
     ...(caps.timed ? { from: null, to: null } : {}),
     ...DEFAULTS[kind](clean),

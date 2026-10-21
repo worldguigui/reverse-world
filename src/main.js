@@ -15,7 +15,7 @@ import { installAPI } from './api.js';
 import { useStore } from './store/index.js';
 import { setViewHooks } from './store/actions.js';
 import { session } from './session.js';
-import { initBridge, relayoutLayers, applyStage, getGridCached } from './bridge.js';
+import { initBridge, relayoutLayers, applyStage, getGridCached, waitForStage } from './bridge.js';
 import { LAYER_SCENE, LAYER_MASK, LAYER_CONTENT } from './view/render-layers.js';
 
 const $ = (id) => document.getElementById(id);
@@ -146,6 +146,7 @@ async function main() {
     inspector: $('inspector'),
     settings: $('settings'),
     workshop: $('workshop'),
+    loading: $('loading'),
   });
 
   setViewHooks({ openWorkshop: openWorkshopPanel });
@@ -307,7 +308,19 @@ async function main() {
 
   // ---------------------------------------------------------- 启动
   const restored = await loadStoredProject();
-  if (restored) store.getState().hydrateProject(restored);
+  if (restored) {
+    // 恢复的世界可能在球上贴一张大图：先立起加载页，等舞台贴完再让它退场。
+    // 这里不等 rAF：地图解码本身是异步的，浏览器总有机会先把加载页画出来；
+    // 反过来在后台标签页里等 rAF 会一直等不到，把整个启动卡住。
+    store.getState().setLoading({ title: '正在恢复上次的世界', detail: '准备地图…', progress: null });
+    try {
+      store.getState().hydrateProject(restored);
+      await waitForStage();
+    } finally {
+      // 恢复失败也要收掉：加载页在最上层，留着会把下面的启动失败提示一起盖住
+      store.getState().setLoading(null);
+    }
+  }
   installAPI({
     ctx: store.getState(),
     project: () => store.getState().project,
@@ -356,6 +369,8 @@ async function main() {
 
 main().catch((err) => {
   console.error(err);
+  // 出错时无论卡在哪个阶段，都先把加载页撤掉，否则提示被它盖着看不见
+  useStore.getState().setLoading(null);
   $('error-msg').textContent = String(err?.message ?? err);
   $('error').hidden = false;
 });

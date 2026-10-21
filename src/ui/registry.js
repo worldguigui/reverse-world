@@ -8,11 +8,12 @@ import { Toolbar } from './react/Toolbar.jsx';
 import { Inspector } from './react/Inspector.jsx';
 import { SettingsPanel } from './react/SettingsPanel.jsx';
 import { Workshop } from './react/Workshop.jsx';
+import { LoadingScreen } from './react/LoadingScreen.jsx';
 
 /**
  * 组装全部面板。
- * @param {{topbar, timeline, inspector, settings, workshop}} containers 静态容器
- * @returns {{toolbar, timeline, inspector, settings, workshop}} 各面板句柄
+ * @param {{topbar, timeline, inspector, settings, workshop, loading}} containers 静态容器
+ * @returns {{toolbar, timeline, inspector, settings, workshop, loading}} 各面板句柄
  */
 export function createPanels(containers) {
   return {
@@ -20,6 +21,7 @@ export function createPanels(containers) {
     timeline: mountPanel(containers.timeline, Timeline),
     inspector: mountPanel(containers.inspector, Inspector),
     settings: mountPanel(containers.settings, SettingsPanel),
+    loading: mountPanel(containers.loading, LoadingScreen),
 
     // 工坊要拿到容器本身：关掉时只给 #workshop 加 .hidden，不卸载
     workshop: mountPanel(containers.workshop, Workshop, { container: containers.workshop }),

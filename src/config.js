@@ -8,6 +8,17 @@
 export const STARS_COUNT_MIN = 0;
 export const STARS_COUNT_MAX = 1999;
 
+/**
+ * 配图上传：长边压到这么多像素；源文件超过这个体积时直接拒收，不读入内存。
+ * 输出 WebP：照片类体积接近 JPEG，又能保留透明通道，无背景的图标不会被迫铺底。
+ */
+export const IMAGE_UPLOAD = {
+  maxSide: 128,
+  maxBytes: 100 * 1024 * 1024,
+  format: 'image/webp',
+  quality: 0.82,
+};
+
 export const DEFAULT_CONFIG = {
   camera: {
     // 出厂镜头的视场角。设置面板不再改它：现在滑块和滚轮共用「档位」，

@@ -22,6 +22,7 @@ function spanText(span) {
 export function ChapterList() {
   const project = useStore((s) => s.project);
   const setViewFilter = useStore((s) => s.setViewFilter);
+  const setChronicleOpen = useStore((s) => s.setChronicleOpen);
   const addGroup = useStore((s) => s.addGroup);
   const updateItem = useStore((s) => s.updateItem);
   const deleteItem = useStore((s) => s.deleteItem);
@@ -81,7 +82,10 @@ export function ChapterList() {
                       <button
                         className="btn btn-mini"
                         title="只看这一章：取消其他选中，长卷、时间轴刻度、球上的事件一起收窄"
-                        onClick={() => setViewFilter({ groupIds: [g.id], characterId: null })}
+                        onClick={() => {
+                          setViewFilter({ groupIds: [g.id], characterId: null });
+                          setChronicleOpen(true);
+                        }}
                       >
                         看
                       </button>

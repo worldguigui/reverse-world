@@ -72,7 +72,16 @@ export function Toolbar() {
 
       <div className="bar-side">
         <span className="mode-hint" id="mode-hint">{MODE_HINTS[mode] ?? ''}</span>
-        {/* 人物与章节都不进模式那一排：它们不改球面的交互方式，只是把检查器翻到另一页 */}
+        {/* 事件、人物与章节的清单都不进模式那一排：它们不改球面的交互方式，
+            只是把检查器翻到另一页；球面上的「事件」模式是另一回事，管的是新建 */}
+        <button
+          className="mode-btn"
+          id="tb-events"
+          title="事件：按时间查看全部事件"
+          onClick={() => select({ kind: 'events' })}
+        >
+          事件
+        </button>
         <button
           className="mode-btn"
           id="tb-characters"

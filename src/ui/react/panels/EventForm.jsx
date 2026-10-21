@@ -1,6 +1,6 @@
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
-import { Labeled, TimeInput, CoordInput, CharacterPicker, GroupPicker } from '../common.jsx';
+import { Labeled, TimeInput, CoordInput, CharacterPicker, GroupPicker, ItemImage } from '../common.jsx';
 import { roundYear } from '../../../core/timeline.js';
 import { yearToTime } from '../../../core/datetime.js';
 
@@ -87,11 +87,17 @@ export function EventForm() {
         id="event-image-btn"
         onClick={async () => {
           const file = await pickImage();
-          if (file) saveDraft({ image: await fileToDataUrl(file, 1024) });
+          if (file) saveDraft({ image: await fileToDataUrl(file) });
         }}
       >
-        {draft.image ? '已选配图 ✓（再点可更换）' : '⬆ 配图（可选）'}
+        {draft.image ? '已选配图（再点可更换）' : '配图（长宽比建议1:1）'}
       </button>
+      {draft.image && (
+        <div style={{ display: 'grid', gap: '6px' }}>
+          <ItemImage src={draft.image} />
+          <button className="btn" onClick={() => saveDraft({ image: null })}>移除配图</button>
+        </div>
+      )}
 
       {/* 编一条事件时本来就在写「谁参与了」，顺手勾上 */}
       <Labeled label="涉及人物">

@@ -9,9 +9,9 @@ export const blankDrawForm = () => ({ title: '', description: '', from: null, to
 
 export const createUISlice = (set, get) => ({
   mode: 'browse',        // browse | add-event | draw-route | draw-region
-  // 检查器正在展示什么。kind='characters'（复数、没有 id）是人物清单那一页，
+  // 检查器正在展示什么。复数 kind 是清单页（没有 id），单数 kind 是某一条的详情，
   // 让「翻列表」与「看某一个」共用同一份状态，不必再多一个开关去跟选中态对齐
-  selection: null,       // { kind: 'event'|'route'|'region'|'character', id } | { kind: 'characters' | 'groups' }
+  selection: null,       // { kind: 'event'|'route'|'region'|'character', id } | { kind: 'events'|'characters'|'groups' }
   // 「当前在看什么」是一组同时生效的事件集合：选中的章节（含姓名搜索生成的章节）
   // 与编程接口的实时人物筛，取交集。章节都存在 project.groups 里，取消选中只是退出交集，
   // 章节本身不会消失。
@@ -35,6 +35,8 @@ export const createUISlice = (set, get) => ({
   canRedo: false,
   settingsOpen: false,
   chronicleOpen: false,  // 编年史长卷浮层是否摊开
+  // 全屏加载页：{ title, detail, progress }。progress 为 0..1；null = 不确定进度
+  loading: null,
   toasts: [],            // [{ id, text }]
 
   // —— 变更信号 ——
@@ -121,6 +123,9 @@ export const createUISlice = (set, get) => ({
   setSettingsOpen(open) { set({ settingsOpen: open }); },
   toggleChronicle() { set((s) => ({ chronicleOpen: !s.chronicleOpen })); },
   setChronicleOpen(open) { set({ chronicleOpen: open }); },
+
+  /** 打开/更新/关闭全屏加载页；传 null 关闭 */
+  setLoading(loading) { set({ loading }); },
 
   // ---------------------------------------------------------------- 提示条
 

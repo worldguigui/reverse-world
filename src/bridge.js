@@ -90,6 +90,14 @@ export function relayoutLayers() {
 }
 
 /**
+ * 等最近一次舞台贴图完成。
+ * 加载页在 loadProjectInto 之后调它：地图解码与纹理创建都结束，遮罩才退场。
+ */
+export function waitForStage() {
+  return session.stageDone ?? Promise.resolve();
+}
+
+/**
  * 舞台变了：把球那张脸重新贴一次。
  * 只在载入项目 / 换地图时跑，与游标无关——拖游标不换脸，只重刷内容层。
  *
@@ -103,6 +111,8 @@ export async function applyStage() {
 
   const token = ++session.stageToken;
   session.applyingStage = true;
+  let finishStage;
+  session.stageDone = new Promise((resolve) => { finishStage = resolve; });
   try {
     if (!rmap) {
       // 没有地图：深色空球。内容跟着回到球面，不再贴着上一张地图的高度。
@@ -120,6 +130,7 @@ export async function applyStage() {
     useStore.getState().toast(`地图解码失败：${err.message}`);
     session.globe.setBlank();
   } finally {
+    finishStage();
     // 被后来者顶掉的那次不重排图层，否则会把新地形的贴地半径算成旧的
     if (token === session.stageToken) {
       session.applyingStage = false;

@@ -3,7 +3,7 @@
  * 单纯的数据增删改放在 world 分片；这里放「一次要协调好几件事」的那些。
  */
 import * as P from '../core/project.js';
-import { buildRealEarthGrid } from '../core/realearth.js';
+import { buildRealEarthGrid, EARTH_RES } from '../core/realearth.js';
 import { importProjectFile } from '../core/storage.js';
 import {
   saveProjectToCloud, loadProjectFromCloud, rememberCloudToken, formatCloudTime,
@@ -13,30 +13,72 @@ import { session } from '../session.js';
 import { timeYear } from '../core/datetime.js';
 import { latLngToVec3, vec3ToLatLng } from '../utils.js';
 import { pickFile } from '../utils/files.js';
+import { IMAGE_UPLOAD } from '../config.js';
 
 /** 工坊面板的打开方式由 main.js 在组装期注入（它需要拿三维句柄做实时预览） */
 let hooks = { openWorkshop: () => {} };
 export function setViewHooks(next) { hooks = { ...hooks, ...next }; }
+
+/**
+ * 等两次 rAF：一次让 React 把加载页提交到 DOM，一次让它真正上屏。
+ * 重活开始前必须先让出这两帧，否则进度条要等重活干完才第一次出现。
+ * 后台标签页里 rAF 会停摆，所以加一个定时器兜底——宁可少刷一帧，不能卡住不干活。
+ */
+const nextPaint = () => new Promise((resolve) => {
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    resolve();
+  };
+  const timer = setTimeout(finish, 250);
+  requestAnimationFrame(() => requestAnimationFrame(finish));
+});
+
+/** 等最近一次舞台贴图结束；bridge 每次 applyStage 开始时替换这个 Promise */
+const waitForStage = () => session.stageDone ?? Promise.resolve();
 
 export const createActionsSlice = (set, get) => ({
   // ---------------------------------------------------------------- 舞台：地图与地形
 
   /** 下载并解码真实地球高程与水，作为全局地图 */
   async generateRealEarth() {
-    if (!get().project) return;
-    get().toast('正在下载/解码真实地球地图…');
+    if (!get().project || get().loading) return;
+    const title = '正在生成真实地球';
+    const show = async (detail, progress) => {
+      get().setLoading({ title, detail, progress });
+      await nextPaint();
+    };
+    await show('准备数据…', 0.01);
     try {
-      const grid = await buildRealEarthGrid();
+      const grid = await buildRealEarthGrid(EARTH_RES, show);
+      await show('保存地图…', 0.97);
       let rmap;
       get().mutateProject((p) => {
-        rmap = P.addRasterMap(p, { name: '真实地球', w: grid.w, h: grid.h, dataUrl: grid.encodePNG() });
-        p.baseRasterId = rmap.id;
+        const dataUrl = grid.encodePNG();
+        // 球只有一张脸：已有舞台就换掉它的内容，不能再往里塞一张新图，
+        // 否则旧图会一直留在 rasterMaps 里，每次导出都多背一份几 MB 的 base64
+        rmap = P.getRasterMap(p, p.baseRasterId);
+        if (rmap) {
+          rmap.name = '真实地球';
+          rmap.w = grid.w;
+          rmap.h = grid.h;
+          rmap.dataUrl = dataUrl;
+        } else {
+          rmap = P.addRasterMap(p, { name: '真实地球', w: grid.w, h: grid.h, dataUrl });
+          p.baseRasterId = rmap.id;
+        }
       });
       // 先填缓存再换舞台，贴图时就能直接命中，不必再解一次码
       session.gridCache.set(rmap.id, grid);
       get().touchStage();
+      await waitForStage();
+      await nextPaint();
+      get().setLoading(null);
       get().toast('真实地球地图已生成——喜马拉雅就在那里，试试用工坊改造它');
     } catch (err) {
+      get().setLoading(null);
       get().toast(`真实地球生成失败：${err.message}`);
     }
   },
@@ -77,22 +119,45 @@ export const createActionsSlice = (set, get) => ({
   // ---------------------------------------------------------------- 项目载入
 
   async loadSample() {
+    if (get().loading) return;
+    const title = '正在载入示例世界';
+    const show = async (detail, progress) => {
+      get().setLoading({ title, detail, progress });
+      await nextPaint();
+    };
+    await show('准备数据…', 0.01);
     try {
-      const p = await buildSampleProject();
-      get().loadProjectInto(p);
+      const { project, grid } = await buildSampleProject(show);
+      // 建好的网格直接进缓存：否则 applyStage 还要把刚编码好的 PNG 再解码一遍
+      session.gridCache.set(project.baseRasterId, grid);
+      await show('准备舞台…', 0.99);
+      get().loadProjectInto(project);
+      await waitForStage();
+      await nextPaint();
+      get().setLoading(null);
       get().toast('示例世界已载入：拖动底部游标，看事件依次登场');
     } catch (err) {
+      get().setLoading(null);
       get().toast(`示例世界载入失败：${err.message}`);
     }
   },
 
   async importFile(file) {
+    if (get().loading) return;
+    get().setLoading({ title: '正在导入项目', detail: '读取文件…', progress: null });
+    await nextPaint();
     try {
       // 章节都在 project.groups 里，和手建章节走同一套
       const project = await importProjectFile(file);
+      get().setLoading({ title: `正在打开「${project.name}」`, detail: '准备地图…', progress: null });
+      await nextPaint();
       get().loadProjectInto(project);
+      await waitForStage();
+      await nextPaint();
+      get().setLoading(null);
       get().toast(`已导入「${project.name}」`);
     } catch (err) {
+      get().setLoading(null);
       get().toast(`导入失败：${err.message}`);
     }
   },
@@ -126,7 +191,15 @@ export const createActionsSlice = (set, get) => ({
       + `会替换当前世界「${current.name}」，本机自动保存也会随之更新。确定？`,
     )) return null;
 
-    get().loadProjectInto(info.project);
+    get().setLoading({ title: `正在打开「${info.project.name}」`, detail: '准备地图…', progress: null });
+    await nextPaint();
+    try {
+      get().loadProjectInto(info.project);
+      await waitForStage();
+      await nextPaint();
+    } finally {
+      get().setLoading(null);
+    }
     get().toast(`已从云端载入「${info.project.name}」`);
     return info;
   },
@@ -214,8 +287,20 @@ export const createActionsSlice = (set, get) => ({
 
   // ---------------------------------------------------------------- 其他
 
-  /** 选一张本地图片，返回 File（取消则 null） */
-  pickImage: () => pickFile('image/*'),
+  /**
+   * 选一张本地图片，返回 File（取消则 null）。
+   * 超过体积上限的图片在这里就挡掉：不进入压缩与 FileReader，避免把内存顶爆。
+   */
+  pickImage: async () => {
+    const file = await pickFile('image/*');
+    if (!file) return null;
+    if (file.size > IMAGE_UPLOAD.maxBytes) {
+      const mb = Math.round(IMAGE_UPLOAD.maxBytes / (1024 * 1024));
+      get().toast(`图片不能超过 ${mb} MB，请先压缩或换一张`);
+      return null;
+    }
+    return file;
+  },
 
   /** 编程接口的删除入口，与界面删除同一套逻辑 */
   removeItem(kind, id) { get().deleteItem(kind, id); },

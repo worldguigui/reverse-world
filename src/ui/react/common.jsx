@@ -27,6 +27,18 @@ export function BackToOverview() {
 }
 
 /**
+ * 检查器里的配图：占满可用宽度、保持原始比例。
+ * 外面留一圈内衬和描边，既贴边又不至于真的顶到面板边缘。
+ */
+export function ItemImage({ src }) {
+  return (
+    <div className="insp-image">
+      <img src={src} alt="" />
+    </div>
+  );
+}
+
+/**
  * 按名字或别名检索人物。exclude 里的 id 不进结果。
  *
  * 名字开头命中的排在名字中间命中的前面，都排在只命中别名的前面：
@@ -135,7 +147,8 @@ export function CharacterPicker({ ids = [], onChange }) {
             <button
               key={c.id}
               type="button"
-              className="chip on"
+              className={`chip on${c.color ? ' own' : ''}`}
+              style={c.color ? { '--chip-color': c.color } : undefined}
               title="点一下从这条事件里移除"
               onClick={() => onChange(ids.filter((x) => x !== c.id))}
             >

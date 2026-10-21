@@ -103,6 +103,8 @@
       --z-tooltip: 50;
       --z-workshop: 80;
       --z-modal: 200;
+      /* 载入页盖住一切，包括云端对话框与启动失败提示 */
+      --z-loading: 300;
     }
 
     * { box-sizing: border-box; }
@@ -329,7 +331,16 @@
       color: var(--text-strong); font-variant-numeric: tabular-nums;
     }
     .stat span { font-size: 10.5px; color: var(--text-muted-raised); }
-    .item-img { width: 100%; border-radius: var(--radius); border: 1px solid var(--border); }
+    /* 检查器里的配图要占满面板：铺满可用宽度，保留原始比例。
+       外面留一圈内衬和描边，既贴边又不至于真的顶到面板边缘 */
+    .insp-image {
+      width: 100%; padding: 4px; overflow: hidden;
+      background: var(--surface-input); border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .insp-image img {
+      display: block; width: 100%; height: auto; border-radius: var(--radius-sm);
+    }
 
     /* 人物清单与「涉及的事件」清单共用的一行：左边一栏定宽，右边标题占满可溢出省略 */
     .char-list { display: grid; gap: 4px; }
@@ -342,13 +353,18 @@
     .char-row b { flex: 0 0 auto; font-size: 12px; color: var(--text-strong); font-variant-numeric: tabular-nums; }
     .char-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted-raised); }
 
+    /* 事件清单：整行点开详情，右侧「看」单独把编年史翻到这条事件 */
+    .event-row { display: flex; align-items: center; gap: 4px; }
+    .event-row > .char-row { flex: 1 1 auto; min-width: 0; }
+    .event-row > .btn { flex: none; }
+
     /* 章节清单：一行一个章节，上行改名、下行是条数与范围加两个动作 */
     .chap-list { display: grid; gap: 12px; }
     .chap-row { display: grid; gap: 6px; }
     .chap-meta { display: flex; align-items: center; gap: 6px; }
 
-    /* 「涉及人物」：已挂上的留成暗金 tag，其余的去搜索框里现找。
-       人物自己的颜色只留在候选列表的小圆点上，tag 本身与整体暗色风格一致 */
+    /* 「涉及人物」：已挂上的留成 tag，其余的去搜索框里现找。
+       人物有颜色时 tag 跟人物走；没设颜色就仍用暗金，保持原来的默认样子 */
     .chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .chip {
       padding: 4px 9px; border-radius: var(--radius); cursor: pointer; font-family: inherit; font-size: 12px;
@@ -361,6 +377,15 @@
     }
     .chip.on:hover {
       background: rgba(var(--gold-rgb), 0.2); border-color: rgba(var(--gold-rgb), 0.82);
+    }
+    .chip.on.own {
+      color: var(--chip-color);
+      background: color-mix(in srgb, var(--chip-color) 14%, transparent);
+      border-color: color-mix(in srgb, var(--chip-color) 62%, transparent);
+    }
+    .chip.on.own:hover {
+      background: color-mix(in srgb, var(--chip-color) 20%, transparent);
+      border-color: color-mix(in srgb, var(--chip-color) 82%, transparent);
     }
     /* 名字过长时在 tag 内截断，别把检查器撑出横向滚动 */
     .chip-name {
@@ -385,7 +410,8 @@
       background: transparent; color: var(--text); font-family: inherit; font-size: 13px;
     }
     .char-opt.hit { background: var(--accent-soft); color: var(--text-strong); }
-    .char-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    /* 没设颜色的人物，候选列表里的小圆点仍用暗金，不留一个看不见的空点 */
+    .char-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--gold-bright); }
     .char-name { flex: none; }
     /* 别名挤在右边，太长就截断——它是用来确认「搜到的正是这个人」的旁证 */
     .char-alias {
@@ -637,6 +663,42 @@
       gap: 8px; flex-wrap: wrap;
     }
 
+    /* ---------------- 载入页 ---------------- */
+    .loading-screen {
+      position: fixed; inset: 0; z-index: var(--z-loading);
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px; background: rgba(17, 16, 15, 0.78);
+    }
+    .loading-card {
+      width: min(360px, 100%); padding: 22px 24px 18px;
+      display: grid; gap: 10px;
+    }
+    .loading-title {
+      font-size: 16px; font-weight: 600; letter-spacing: 0.5px;
+      color: var(--text-strong);
+    }
+    .loading-detail { margin: 0; min-height: 1.5em; font-size: 12.5px; color: var(--text-muted); }
+    .loading-track {
+      height: 4px; overflow: hidden; border-radius: 2px;
+      background: var(--surface-input);
+    }
+    .loading-fill {
+      display: block; width: 0; height: 100%;
+      background: var(--accent); transition: width 0.2s ease;
+    }
+    /* 无法估算进度时，让一小段色块反复滑过，至少让人知道它还在动 */
+    .loading-track.indeterminate .loading-fill {
+      width: 36%; animation: loading-slide 1.1s ease-in-out infinite;
+    }
+    @keyframes loading-slide {
+      from { transform: translateX(-100%); }
+      to { transform: translateX(280%); }
+    }
+    .loading-pct {
+      font-size: 11px; color: var(--text-muted); text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
     /* ---------------- 地图工坊 ---------------- */
     .workshop {
       position: fixed; inset: 0; z-index: var(--z-workshop);
@@ -723,6 +785,7 @@
   <div id="settings" class="glass"></div>
   <div id="tooltip" class="glass" hidden></div>
   <div id="workshop" class="workshop hidden"></div>
+  <div id="loading"></div>
 
   <div id="error" hidden>
     <div class="box glass">

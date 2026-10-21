@@ -27,14 +27,23 @@ export const EARTH_RES = 2048;
 /** 河流宽度的基准栅格宽度：下面的基础宽度是在这个宽度上调出来的，别处按比例缩放 */
 const RIVER_REF_W = 512;
 
-/** 真实地球栅格：高程图直接当高度，海陆掩膜只决定水，最后把河流盖进水通道 */
-export async function buildRealEarthGrid(resolution = EARTH_RES) {
+/**
+ * 真实地球栅格：高程图直接当高度，海陆掩膜只决定水，最后把河流盖进水通道。
+ *
+ * @param {number} resolution 栅格宽度
+ * @param {(detail: string, progress: number) => Promise<void>|void} [onProgress]
+ *   每进入一个阶段回报一次。回调是 await 的：加载页要在两阶段之间取得一帧，
+ *   否则主线程一路跑到底，进度条只会从 0 直接跳到 100。
+ */
+export async function buildRealEarthGrid(resolution = EARTH_RES, onProgress) {
   const w = resolution;
   const h = Math.round(resolution / 2);
+  await onProgress?.('读取高程与水陆数据…', 0.05);
   const [relief, mask] = await Promise.all([
     loadRelief(RELIEF_URL, w, h),
     LandMask.fromImage(WATER_URL),
   ]);
+  await onProgress?.('计算海陆边界…', 0.38);
   const grid = new TerrainGrid(w, h);
   grid.height.set(relief); // 海陆同一个数：海底就是负高度，不再另算
   for (let y = 0; y < h; y++) {
@@ -43,8 +52,11 @@ export async function buildRealEarthGrid(resolution = EARTH_RES) {
       grid.water[y * w + x] = mask.isLand(lat, ((x + 0.5) / w) * 360 - 180) ? 0 : 255;
     }
   }
+  await onProgress?.('绘制河流…', 0.7);
   await rasterizeRivers(grid);
+  await onProgress?.('生成地形颜色…', 0.86);
   grid.renderColor();
+  await onProgress?.('地图数据准备完成', 1);
   return grid;
 }
 

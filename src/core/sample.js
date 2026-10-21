@@ -1,5 +1,5 @@
 import { normalizeProject, addRasterMap } from './project.js';
-import { buildRealEarthGrid } from './realearth.js';
+import { buildRealEarthGrid, EARTH_RES } from './realearth.js';
 
 /**
  * 示例世界：真实地球地形 + 第一次世界大战。
@@ -13,15 +13,29 @@ import { buildRealEarthGrid } from './realearth.js';
  */
 const SAMPLE_URL = 'data/sample-world.json';
 
-export async function buildSampleProject() {
+/**
+ * @param {(detail: string, progress: number) => Promise<void>|void} [onProgress]
+ * @returns {Promise<{ project: object, grid: TerrainGrid }>}
+ *   网格一并交回：调用方可以放进解码缓存，省掉「编码成 PNG 再解码回来」那一趟。
+ */
+export async function buildSampleProject(onProgress) {
+  await onProgress?.('读取示例世界数据…', 0.03);
   const res = await fetch(SAMPLE_URL, { cache: 'no-cache' });
   if (!res.ok) throw new Error(`示例数据读取失败（HTTP ${res.status}）`);
   const p = normalizeProject(await res.json());
 
+  // 示例 JSON 里可能残留一张打包好的舞台图，但舞台一律由下面的栅格现场生成。
+  // 不先清掉的话，导出时会把这份旧图和生成的新图各存一遍（各约 5MB）。
+  p.rasterMaps = [];
+  p.baseRasterId = null;
+
   // 尺寸不在这里定，取网格自己报上来的：分辨率只有一个出处，见 EARTH_RES
-  const grid = await buildRealEarthGrid();
+  const grid = await buildRealEarthGrid(EARTH_RES, async (detail, progress) => {
+    await onProgress?.(detail, 0.08 + progress * 0.8);
+  });
+  await onProgress?.('打包地图…', 0.9);
   const rmap = addRasterMap(p, { name: '真实地球', w: grid.w, h: grid.h, dataUrl: grid.encodePNG() });
   p.baseRasterId = rmap.id;
 
-  return p;
+  return { project: p, grid };
 }
