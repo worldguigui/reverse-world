@@ -11,7 +11,7 @@
 import * as P from '../core/project.js';
 import { downloadProject } from '../core/storage.js';
 import { defaultCursor, clampCursor, nextTickEvent, nextTickYear, timeTicks, roundYear } from '../core/timeline.js';
-import { timeYear, yearToDateTime } from '../core/datetime.js';
+import { timeYear, yearToTime } from '../core/datetime.js';
 import { session } from '../session.js';
 
 /**
@@ -193,8 +193,9 @@ export const createWorldSlice = (set, get) => ({
    * 新建事件：草稿 + 落点 → 事件，并飞过去。
    * 没点球面就是「纯叙事事件」——它照样是一条正经事件，只是不上球、只进编年史。
    *
-   * 默认落在当前游标所在的那一年，时间补成 1 月 1 日零点：新事件若不占一个刻度，
+   * 默认落在当前游标所在的那一年，只写年份：新事件若不占一个刻度，
    * 它在时间轴上就是隐形的，与其让人再去填一遍，不如直接认下「就是此刻发生的事」。
+   * 月日时分秒不补——用户没写，就不该在输入框里看到它们。
    */
   commitEvent() {
     const p = get().project;
@@ -206,7 +207,7 @@ export const createWorldSlice = (set, get) => ({
       image: d.image ?? null,
       lat: c?.lat ?? null,
       lng: c?.lng ?? null,
-      from: d.from ?? yearToDateTime(roundYear(cursor)),
+      from: d.from ?? yearToTime(roundYear(cursor)),
       to: d.to ?? null,
       characters: d.characters ?? [],
       groupIds: d.groupIds ?? [],

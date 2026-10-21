@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { useStore } from '../../store/index.js';
 import { useProjectRevision } from './hooks.js';
 import { timeDomain, timeTicks, formatYear } from '../../core/timeline.js';
-import { timeYear } from '../../core/datetime.js';
+import { formatTime, timeYear } from '../../core/datetime.js';
 import { isViewFiltered } from '../../core/project.js';
 import { Chronicle } from './Chronicle.jsx';
 
@@ -103,7 +103,7 @@ export function Timeline() {
                 <button
                   className={`tl-tick${atCursor ? ' at-cursor' : ''}`}
                   style={{ left: `${posOf(fromYear)}%` }}
-                  title={`${t.title} · ${formatYear(fromYear)}`}
+                  title={`${t.title} · ${formatTime(t.from)}`}
                   onClick={() => jumpToEvent(t.id)}
                 />
               </span>

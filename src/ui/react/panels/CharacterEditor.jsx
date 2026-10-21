@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
-import { formatYear } from '../../../core/timeline.js';
-import { formatDate, timeYear } from '../../../core/datetime.js';
+import { formatTime } from '../../../core/datetime.js';
 import { useProjectRevision } from '../hooks.js';
-import { Labeled, BackToOverview, DateInput, searchCharacters } from '../common.jsx';
+import { Labeled, BackToOverview, TimeInput, searchCharacters } from '../common.jsx';
 
 /**
  * 人物的两张面板：清单与卡片。
@@ -13,11 +12,11 @@ import { Labeled, BackToOverview, DateInput, searchCharacters } from '../common.
  * 所以这里没有坐标、没有存续区间，录入整张卡都在面板里完成。
  */
 
-/** 生卒的紧凑写法：两端都有是「1451.1.1–1506.5.2」，缺一端写问号；两端都没有就整个不写 */
+/** 生卒的紧凑写法：只呈现写过的精度，缺一端写问号；两端都没有就整个不写 */
 function lifeDates(c) {
   if (c.born == null && c.died == null) return '';
-  const b = c.born == null ? '?' : formatDate(c.born);
-  const d = c.died == null ? '?' : formatDate(c.died);
+  const b = c.born == null ? '?' : formatTime(c.born);
+  const d = c.died == null ? '?' : formatTime(c.died);
   return `${b}–${d}`;
 }
 
@@ -147,11 +146,14 @@ export function CharacterEditor({ id }) {
       </Labeled>
 
       <Labeled label="出生日期">
-        <DateInput value={item.born} onChange={(v) => patch({ born: v })} placeholder="不详" />
+        <TimeInput value={item.born} onChange={(v) => patch({ born: v })} placeholder="不详" />
       </Labeled>
       <Labeled label="逝世日期">
-        <DateInput value={item.died} onChange={(v) => patch({ died: v })} placeholder="不详" />
+        <TimeInput value={item.died} onChange={(v) => patch({ died: v })} placeholder="不详" />
       </Labeled>
+      <p className="insp-hint">
+        时间可只写到年、月、日、时、分、秒；空格后的内容作为备注，例如「1919-11-11 待定时间」。
+      </p>
 
       <Labeled label="小传">
         <textarea
@@ -163,29 +165,34 @@ export function CharacterEditor({ id }) {
         />
       </Labeled>
 
-      <Labeled label="颜色">
-        <input type="color" value={item.color} onChange={(e) => patch({ color: e.target.value })} />
-      </Labeled>
+      {/* 不能包在 <label> 里：点标签或标签留白会再次激活取色器，
+          原生选色框刚关就被重新打开，看起来像关不掉。这里只让色块本身打开它。 */}
+      <div style={{ display: 'grid', gap: '4px' }}>
+        <span className="field-label">颜色</span>
+        <input
+          type="color"
+          value={item.color}
+          title="选择人物颜色"
+          onChange={(e) => patch({ color: e.target.value })}
+        />
+      </div>
 
       <Labeled label="涉及的事件">
         {events.length === 0 ? (
           <span className="insp-hint">还没有事件提到他。在事件详情里勾一下「涉及人物」。</span>
         ) : (
           <div className="char-list">
-            {events.map((ev) => {
-              const year = timeYear(ev.from);
-              return (
-                <button
-                  key={ev.id}
-                  className="char-row"
-                  title="跳到这条事件"
-                  onClick={() => select({ kind: 'event', id: ev.id })}
-                >
-                  <b>{year == null ? '未定年' : formatYear(year)}</b>
-                  <span>{ev.title}</span>
-                </button>
-              );
-            })}
+            {events.map((ev) => (
+              <button
+                key={ev.id}
+                className="char-row"
+                title="跳到这条事件"
+                onClick={() => select({ kind: 'event', id: ev.id })}
+              >
+                <b>{ev.from == null ? '未定年' : formatTime(ev.from)}</b>
+                <span>{ev.title}</span>
+              </button>
+            ))}
           </div>
         )}
       </Labeled>

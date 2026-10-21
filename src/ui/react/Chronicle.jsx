@@ -3,7 +3,7 @@ import { useStore } from '../../store/index.js';
 import { useProjectRevision } from './hooks.js';
 import { searchCharacters } from './common.jsx';
 import { timeTicks, formatYear } from '../../core/timeline.js';
-import { formatDate, timeYear } from '../../core/datetime.js';
+import { formatTime, timeYear } from '../../core/datetime.js';
 import { isViewFiltered } from '../../core/project.js';
 
 /** 章节标签上的时间范围：只有一年就只写那一年，算不出来就不写 */
@@ -244,7 +244,7 @@ export function Chronicle() {
               title={t.lat == null ? '没有地点：只在这条长卷里' : '跳到它发生的那一年并飞过去'}
               onClick={() => jumpToEvent(t.id)}
             >
-              <span className="chr-year">{formatDate(t.from)}</span>
+              <span className="chr-year">{formatTime(t.from)}</span>
               <span className="chr-name">{t.title}</span>
               {t.lat == null && <span className="chr-note">无地点</span>}
             </button>

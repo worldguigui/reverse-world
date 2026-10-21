@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../store/index.js';
-import { normalizeDate, normalizeDateTime } from '../../core/datetime.js';
+import { normalizeTime } from '../../core/datetime.js';
 
 /** 检查器里统一的「小标题 + 控件」排版 */
 export function Labeled({ label, children }) {
@@ -359,69 +359,17 @@ export function YearInput({ value, onChange, placeholder = '自始' }) {
 }
 
 /**
- * 日期输入：`yyyy-MM-dd`，人物生卒用。
+ * 事件 / 人物的时间输入：Y、YM、YMD、YMDH、YMDHM、YMDHMS 都可，空格后写备注。
  *
- * 与 YearInput 一样失焦或回车才提交；提交后把输入框改写成规范串——
- * 只敲「1863」也能存成 1863-01-01，但输入框若还停在「1863」，看起来就像没补全。
- * 非法输入退回上一次的有效值，不往数据里写半截日期。
- *
- * @param {string|null} value 规范日期串
- * @param {(value: string|null) => void} onChange
- * @param {string} placeholder 空值时的提示语
- */
-export function DateInput({ value, onChange, placeholder = 'yyyy-MM-dd' }) {
-  const shown = normalizeDate(value) ?? '';
-  const ref = useRef(null);
-
-  // 外部值变了（例如切换到另一个人物）就同步到输入框；正在输入时不打断
-  useEffect(() => {
-    if (ref.current && document.activeElement !== ref.current) ref.current.value = shown;
-  }, [shown]);
-
-  const commit = (raw) => {
-    const text = raw.trim();
-    if (!text) {
-      if (ref.current) ref.current.value = '';
-      onChange(null);
-      return;
-    }
-    const normalized = normalizeDate(text);
-    if (!normalized) {
-      if (ref.current) ref.current.value = shown;
-      return;
-    }
-    if (ref.current) ref.current.value = normalized;
-    onChange(normalized);
-  };
-
-  return (
-    <input
-      ref={ref}
-      className="inp"
-      type="text"
-      spellCheck={false}
-      placeholder={placeholder}
-      defaultValue={shown}
-      title="格式：yyyy-MM-dd；只写年会自动补成 1 月 1 日"
-      onBlur={(e) => commit(e.target.value)}
-      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-    />
-  );
-}
-
-/**
- * 事件时间输入：`yyyy-MM-ddThh:mm:ss`。
- *
- * 与 YearInput 一样失焦或回车才提交；区别是提交后要把输入框里的值改写成规范串——
- * 只敲「1914」也能存成完整时间，但输入框若还停在「1914」，看起来就像没有补零。
- * 非法输入退回上一次的有效值，不往数据里写半截日期。
+ * 与 YearInput 一样失焦或回车才提交；提交后只把各段补零并回写，没写的月日时分秒不会补。
+ * 日期与小时之间必须用 T——空格留给备注。非法输入退回上一次的有效值。
  *
  * @param {string|null} value 规范时间串
  * @param {(value: string|null) => void} onChange
  * @param {string} placeholder 空值时的提示语
  */
-export function DateTimeInput({ value, onChange, placeholder = 'yyyy-MM-ddThh:mm:ss' }) {
-  const shown = normalizeDateTime(value) ?? '';
+export function TimeInput({ value, onChange, placeholder = '如 1914、1914-06、1914-06-28T08:30' }) {
+  const shown = normalizeTime(value) ?? '';
   const ref = useRef(null);
 
   // 外部值变了（例如切换到另一条事件）就同步到输入框；正在输入时不打断
@@ -436,7 +384,7 @@ export function DateTimeInput({ value, onChange, placeholder = 'yyyy-MM-ddThh:mm
       onChange(null);
       return;
     }
-    const normalized = normalizeDateTime(text);
+    const normalized = normalizeTime(text);
     if (!normalized) {
       if (ref.current) ref.current.value = shown;
       return;
@@ -453,8 +401,39 @@ export function DateTimeInput({ value, onChange, placeholder = 'yyyy-MM-ddThh:mm
       spellCheck={false}
       placeholder={placeholder}
       defaultValue={shown}
-      title="格式：yyyy-MM-ddThh:mm:ss；只写年或月日会自动补齐 1 月 1 日与零点"
+      title="格式：1914 / 1914-06 / 1914-06-28 / 1914-06-28T08 / 1914-06-28T08:30 / 1914-06-28T08:30:15；空格后可写备注"
       onBlur={(e) => commit(e.target.value)}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+    />
+  );
+}
+
+/**
+ * 经纬度输入：失焦或回车提交，并夹到合法区间。
+ * 用 value 做 key 是为了让球面重新选点或提交后的规范值能立刻回显——
+ * 输入框在编辑过程中保持非受控，不会每敲一个字符就回写 store。
+ */
+export function CoordInput({ id, value, min, max, onChange, placeholder = '' }) {
+  const shown = typeof value === 'number' ? value.toFixed(4) : '';
+  const commit = (raw, input) => {
+    const text = raw.trim();
+    const n = Number(text);
+    if (!text || !Number.isFinite(n)) {
+      input.value = shown;
+      return;
+    }
+    onChange(Math.min(max, Math.max(min, n)));
+  };
+  return (
+    <input
+      id={id}
+      key={shown}
+      className="inp"
+      type="text"
+      inputMode="decimal"
+      placeholder={placeholder}
+      defaultValue={shown}
+      onBlur={(e) => commit(e.target.value, e.target)}
       onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
     />
   );

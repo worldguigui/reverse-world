@@ -550,6 +550,8 @@
     }
     .chr-year {
       font-size: 11px; color: var(--text-muted-raised); font-variant-numeric: tabular-nums;
+      /* 时间备注可能很长，在卡片宽度内折行，别把长卷撑出横向滚动 */
+      overflow-wrap: anywhere;
     }
     .chr-item.at-cursor .chr-year { color: var(--accent-text); }
     .chr-name { font-size: 13px; line-height: 1.4; color: var(--text-strong); }

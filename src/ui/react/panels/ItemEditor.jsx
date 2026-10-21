@@ -1,6 +1,8 @@
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
-import { Labeled, BackToOverview, YearInput, DateTimeInput, CharacterPicker, GroupPicker } from '../common.jsx';
+import {
+  Labeled, BackToOverview, YearInput, TimeInput, CoordInput, CharacterPicker, GroupPicker,
+} from '../common.jsx';
 
 const TITLES = { event: '事件', route: '路线', region: '势力区域' };
 
@@ -96,16 +98,45 @@ export function ItemEditor({ kind, id }) {
       )}
 
       {HAS_LATLNG.has(kind) && (
-        <Labeled label="坐标">
-          {item.lat == null || item.lng == null ? (
-            <span className="insp-hint">没有坐标：不上球，只进编年史</span>
-          ) : (
-            <span>
-              <span className="insp-hint">{`${item.lat.toFixed(2)}°, ${item.lng.toFixed(2)}° `}</span>
+        <div style={{ display: 'grid', gap: '4px' }}>
+          <span className="field-label">坐标</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <CoordInput
+              id="event-lat"
+              value={item.lat}
+              min={-90}
+              max={90}
+              placeholder="纬度"
+              onChange={(lat) => patch({ lat })}
+            />
+            <CoordInput
+              id="event-lng"
+              value={item.lng}
+              min={-180}
+              max={180}
+              placeholder="经度"
+              onChange={(lng) => patch({ lng })}
+            />
+          </div>
+          <span className="insp-hint">
+            {item.lat == null || item.lng == null
+              ? '两项都填才会落在球上；都留空就是纯叙事事件。'
+              : '可直接改上面的经纬度。'}
+          </span>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {item.lat != null && item.lng != null && (
               <button className="btn btn-mini" onClick={() => flyToItem(kind, item)}>飞到</button>
-            </span>
-          )}
-        </Labeled>
+            )}
+            {(item.lat != null || item.lng != null) && (
+              <button
+                className="btn btn-mini"
+                onClick={() => patch({ lat: null, lng: null })}
+              >
+                清除位置（改为纯叙事）
+              </button>
+            )}
+          </div>
+        </div>
       )}
       {kind === 'route' && (
         <Labeled label="途经点">
@@ -118,16 +149,18 @@ export function ItemEditor({ kind, id }) {
         </Labeled>
       )}
 
-      {/* 两端都留空 = 常驻。事件用完整日期时间，路线与区域仍用数值年（负数 = 公元前） */}
+      {/* 两端都留空 = 常驻。事件用可变精度时间，路线与区域仍用数值年（负数 = 公元前） */}
       {kind === 'event' ? (
         <>
           <Labeled label="出现于">
-            <DateTimeInput value={item.from} onChange={(v) => patch({ from: v })} />
+            <TimeInput value={item.from} onChange={(v) => patch({ from: v })} />
           </Labeled>
           <Labeled label="消失于">
-            <DateTimeInput value={item.to} onChange={(v) => patch({ to: v })} placeholder="至今" />
+            <TimeInput value={item.to} onChange={(v) => patch({ to: v })} placeholder="至今" />
           </Labeled>
-          <p className="insp-hint">时间记录到秒；时间轴仍按年划分。</p>
+          <p className="insp-hint">
+            时间可只写到年、月、日、时、分、秒；日期与小时之间用 T。空格后的内容作为备注，不参与排序。时间轴仍按年划分。
+          </p>
         </>
       ) : (
         <>

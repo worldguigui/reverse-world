@@ -3,7 +3,7 @@
  * 纯函数式 CRUD（直接改传入的 project 对象并返回创建的实体），
  * 持久化、渲染都不在这里。
  *
- * 事件时间存完整的 `yyyy-MM-ddThh:mm:ss`，人物生卒存 `yyyy-MM-dd`；
+ * 事件与人物时间存 Y / YM / YMD / YMDH / YMDHM / YMDHMS 之一，可带空格备注；
  * 路线、区域仍用数值年（可为负、可为小数）。
  * 所有 from / to 为空表示该端开放，两端都空就是常驻——「常驻」是默认形态，
  * 不写时间的内容一直在场。时间轴与在场判定只取年份，完整时间不把轴细分到月日。
@@ -12,7 +12,7 @@
  * 文件只有一种结构：当前代码写出的这一种。读入时字段缺失或格式不对就报错，
  * 不补默认值，也不接受别的形状。
  */
-import { compareDateTime, normalizeDate, normalizeDateTime, timeYear } from './datetime.js';
+import { compareDateTime, normalizeTime, timeYear } from './datetime.js';
 
 let _seq = (Date.now() % 1e6).toString(36);
 export function uid(prefix) {
@@ -32,13 +32,13 @@ export function createProject({ name = '未命名世界', description = '' } = {
     baseRasterId: null, // 地图 id（工坊可编辑的那种），空 = 深色空球
     rasterMaps: [], // { id, name, w, h, dataUrl } 地图（R+G=高度、B=水）
     events: [],     // { id, title, description, image, lat, lng, from, to } 事件
-                    //   from / to 是 yyyy-MM-ddThh:mm:ss 或 null
+                    //   from / to 是 Y…YMDHMS 时间串或 null；空格后是备注
                     //   lat / lng 为空 = 纯叙事事件：不上球、不渲染标注，只进编年史
     routes: [],     // { id, title, description, points: [{lat,lng}...], from, to }
     regions: [],    // { id, name, description, ring: [[lng,lat]...], from, to }
     // 人物。没有存续区间：born / died 是生平，不参与在场判定，也不撑开时间轴
     characters: [], // { id, name, aliases: [], born, died, description, image, color }
-                    //   born / died 是 yyyy-MM-dd 或 null
+                    //   born / died 与事件时间同一套精度，或 null
     // 章节。章节自己拥有一批事件（eventIds），一个事件因此可以同时属于多章；
     // 也可以暂时一个事件都没有（写大纲的常态）。姓名搜索出来的也只是这样一章
     groups: [],     // { id, name, eventIds }
@@ -81,17 +81,12 @@ function needId(item, what) {
   return item.id;
 }
 
-function needDate(v, what) {
-  if (v === null) return null;
-  const normalized = normalizeDate(v);
-  if (normalized !== v) formatError(`${what} 必须是 yyyy-MM-dd`);
-  return normalized;
-}
+const TIME_FORMAT = 'Y、YM、YMD、YMDH、YMDHM 或 YMDHMS';
 
-function needDateTime(v, what) {
+function needTime(v, what) {
   if (v === null) return null;
-  const normalized = normalizeDateTime(v);
-  if (normalized !== v) formatError(`${what} 必须是 yyyy-MM-ddThh:mm:ss`);
+  const normalized = normalizeTime(v);
+  if (normalized !== v) formatError(`${what} 必须是 ${TIME_FORMAT}，空格后可以写备注`);
   return normalized;
 }
 
@@ -134,8 +129,8 @@ export function normalizeProject(raw) {
       id: c.id,
       name: needString(c.name, `${what}.name`),
       aliases: needStrings(c.aliases, `${what}.aliases`),
-      born: needDate(c.born, `${what}.born`),
-      died: needDate(c.died, `${what}.died`),
+      born: needTime(c.born, `${what}.born`),
+      died: needTime(c.died, `${what}.died`),
       description: needString(c.description, `${what}.description`),
       image: c.image === null ? null : needString(c.image, `${what}.image`),
       color: needString(c.color, `${what}.color`),
@@ -153,8 +148,8 @@ export function normalizeProject(raw) {
       image: ev.image === null ? null : needString(ev.image, `${what}.image`),
       lat: ev.lat === null ? null : needNumber(ev.lat, `${what}.lat`),
       lng: ev.lng === null ? null : needNumber(ev.lng, `${what}.lng`),
-      from: needDateTime(ev.from, `${what}.from`),
-      to: needDateTime(ev.to, `${what}.to`),
+      from: needTime(ev.from, `${what}.from`),
+      to: needTime(ev.to, `${what}.to`),
       characters: needStrings(ev.characters, `${what}.characters`),
     };
   });
@@ -291,45 +286,33 @@ export function setEventGroups(project, eventId, groupIds = []) {
   }
 }
 
-/** 事件时间只收完整时间串；空值表示该端开放 */
-function eventTime(v) {
+/** 事件时间或人物时间；空值表示该端开放 / 不详 */
+function itemTime(v, what) {
   if (v === null) return null;
-  const normalized = normalizeDateTime(v);
-  if (normalized !== v) throw new Error(`事件时间必须是 yyyy-MM-ddThh:mm:ss：${String(v)}`);
+  const normalized = normalizeTime(v);
+  if (normalized !== v) {
+    throw new Error(`${what}必须是 ${TIME_FORMAT}，空格后可以写备注：${String(v)}`);
+  }
   return normalized;
 }
 
-/** 人物生卒只收 `yyyy-MM-dd`；空值表示不详 */
-function characterDate(v) {
-  if (v === null) return null;
-  const normalized = normalizeDate(v);
-  if (normalized !== v) throw new Error(`人物日期必须是 yyyy-MM-dd：${String(v)}`);
-  return normalized;
-}
-
-function normalizeEventTimes(data) {
+/** 事件收 from/to，人物收 born/died；两者共用同一套时间精度 */
+function normalizeTimes(kind, data) {
   const out = { ...data };
-  if ('from' in out) out.from = eventTime(out.from);
-  if ('to' in out) out.to = eventTime(out.to);
-  return out;
-}
-
-function normalizeCharacterDates(data) {
-  const out = { ...data };
-  if ('born' in out) out.born = characterDate(out.born);
-  if ('died' in out) out.died = characterDate(out.died);
+  const fields = kind === 'event' ? ['from', 'to'] : ['born', 'died'];
+  for (const key of fields) {
+    if (key in out) out[key] = itemTime(out[key], kind === 'event' ? '事件时间' : '人物时间');
+  }
   return out;
 }
 
 export function addItem(project, kind, data = {}) {
   // 过滤掉显式传入的 undefined，避免覆盖 id/color 等默认值
   let clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
-  if (kind === 'event') {
+  if (kind === 'event' || kind === 'character') {
     // 事件没有颜色字段：传入也丢掉
-    delete clean.color;
-    clean = normalizeEventTimes(clean);
-  } else if (kind === 'character') {
-    clean = normalizeCharacterDates(clean);
+    if (kind === 'event') delete clean.color;
+    clean = normalizeTimes(kind, clean);
   }
   // 章节关系写在章节那一侧：创建时把新事件的 id 同步进各章清单，事件上不存副本
   let groupIds = null;
@@ -356,9 +339,9 @@ export function updateItem(project, kind, id, patch) {
   if (kind === 'event') {
     // 事件没有颜色字段：传入也丢掉
     const { color: _unusedColor, ...rest } = patch;
-    patch = normalizeEventTimes(rest);
+    patch = normalizeTimes(kind, rest);
   } else if (kind === 'character') {
-    patch = normalizeCharacterDates(patch);
+    patch = normalizeTimes(kind, patch);
   }
   // 与创建同一条规则：groupIds 不是事件上的字段，而是各章节清单的增删
   if (kind === 'event' && 'groupIds' in patch) {

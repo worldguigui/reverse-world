@@ -90,7 +90,7 @@ export function installAPI({ ctx, project, cursor }) {
       + 'world.stepCursor(±1) / jumpToEvent(id)          前后跳一个刻度 / 跳到某条事件\n'
       + 'world.showChronicle(true)                       摊开 / 收起编年史长卷\n'
       + 'world.listEvents()                              当前游标下在场的事件\n'
-      + "world.addEvent({ title, lat, lng, from, to, groupIds }) 加事件（from/to 为 yyyy-MM-ddThh:mm:ss；lat/lng 可省 = 纯叙事）\n"
+      + "world.addEvent({ title, lat, lng, from, to, groupIds }) 加事件（from/to 为 Y…YMDHMS，日期与小时用 T，空格后可写备注；lat/lng 可省 = 纯叙事）\n"
       + "world.addRoute({ title, points: [{lat,lng}...] }) 加路线\n"
       + "world.addRegion({ name, ring: [[lng,lat]...] })  加区域\n"
       + 'world.listGroups() / eventsOfGroup(id)          章节清单 / 某章里的事件\n'
@@ -98,7 +98,7 @@ export function installAPI({ ctx, project, cursor }) {
       + 'world.filterByGroup(id) / filterByCharacter(id)  只看某一章 / 某个人物涉及的事件\n'
       + 'world.getViewFilter() / clearFilter()           当前筛选条件 / 退出筛选\n'
       + 'world.listCharacters()                        全部人物\n'
-      + "world.addCharacter({ name, aliases, born, died })  加人物（born/died 为 yyyy-MM-dd；留空 = 不详）\n"
+      + "world.addCharacter({ name, aliases, born, died })  加人物（born/died 与事件时间同格式；留空 = 不详）\n"
       + 'world.eventsOfCharacter(id)                     某个人物涉及的事件\n'
       + 'world.flyTo(lat, lng, { level, distance, duration }) 飞到坐标（level = 落到哪一档）\n'
       + 'world.where() / resetView()                     当前视角（经纬度/距离/档位）/ 复位视角\n'
