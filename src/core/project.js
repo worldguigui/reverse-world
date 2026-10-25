@@ -29,8 +29,9 @@ export function createProject({ name = '未命名世界', description = '' } = {
     events: [],     // { id, title, description, image, lat, lng, from, to } 事件
                     //   from / to 是 Y…YMDHMS 时间串或 null；空格后是备注
                     //   lat / lng 为空 = 纯叙事事件：不上球、不渲染标注，只进编年史
-    routes: [],     // { id, title, description, points: [{lat,lng}...], from, to }
-    regions: [],    // { id, name, description, ring: [[lng,lat]...], from, to }
+    routes: [],     // { id, title, description, points: [{lat,lng}...], from, to, color }
+                    //   color 为 null = 跟随界面默认配色
+    regions: [],    // { id, name, description, ring: [[lng,lat]...], from, to, color }
     // 人物。没有存续区间：born / died 是生平，不参与在场判定，也不撑开时间轴
     characters: [], // { id, name, aliases: [], born, died, description, image, color }
                     //   born / died 与事件时间同一套精度，或 null
@@ -162,6 +163,7 @@ export function normalizeProject(raw) {
       description: needString(r.description, `${what}.description`),
       from: r.from === null ? null : needNumber(r.from, `${what}.from`),
       to: r.to === null ? null : needNumber(r.to, `${what}.to`),
+      color: r.color === null ? null : needString(r.color, `${what}.color`),
       points: needArray(r.points, `${what}.points`).map((pt, j) => {
         const at = `${what}.points[${j}]`;
         needObject(pt, at);
@@ -179,6 +181,7 @@ export function normalizeProject(raw) {
       description: needString(r.description, `${what}.description`),
       from: r.from === null ? null : needNumber(r.from, `${what}.from`),
       to: r.to === null ? null : needNumber(r.to, `${what}.to`),
+      color: r.color === null ? null : needString(r.color, `${what}.color`),
       ring: needArray(r.ring, `${what}.ring`).map((pair, j) => {
         const at = `${what}.ring[${j}]`;
         if (!Array.isArray(pair) || pair.length !== 2) formatError(`${at} 必须是 [lng, lat]`);
@@ -255,10 +258,10 @@ const DEFAULTS = {
     lat: null, lng: null, characters: [], ...d,
   }),
   route: (d) => ({
-    title: '新路线', description: '', points: [], ...d,
+    title: '新路线', description: '', points: [], color: null, ...d,
   }),
   region: (d) => ({
-    name: '新区域', description: '', ring: [], ...d,
+    name: '新区域', description: '', ring: [], color: null, ...d,
   }),
   character: (d) => ({
     // 颜色不是必填：null 表示不指定，各处按默认配色显示

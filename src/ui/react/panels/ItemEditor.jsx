@@ -4,6 +4,9 @@ import { Labeled, BackToOverview, YearInput } from '../common.jsx';
 
 const TITLES = { route: '路线', region: '势力区域' };
 
+/** 没设颜色时取色器停在这个默认的暗金上；与球面图层的默认配色一致 */
+const DEFAULT_COLOR = '#b5a17b';
+
 /** 从项目里那条路线 / 区域取一份草稿；区域的名称字段是 name，路线是 title */
 function makeDraft(kind, item) {
   return {
@@ -11,6 +14,7 @@ function makeDraft(kind, item) {
     description: item.description || '',
     from: item.from,
     to: item.to,
+    color: item.color,
   };
 }
 
@@ -45,6 +49,7 @@ export function ItemEditor({ kind, id }) {
       description: draft.description,
       from: draft.from,
       to: draft.to,
+      color: draft.color,
     });
     toast(`${TITLES[kind]}已保存`);
     select(null);
@@ -90,6 +95,27 @@ export function ItemEditor({ kind, id }) {
       <Labeled label="消失于">
         <YearInput value={draft.to} onChange={(v) => patch({ to: v })} placeholder="至今" />
       </Labeled>
+
+      {/* 不能包在 <label> 里：点标签或标签留白会再次激活取色器，
+          原生选色框刚关就被重新打开，看起来像关不掉。这里只让色块本身打开它。 */}
+      <div style={{ display: 'grid', gap: '4px' }}>
+        <span className="field-label">颜色</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <input
+            type="color"
+            value={draft.color ?? DEFAULT_COLOR}
+            title={draft.color ? `选择${TITLES[kind]}颜色` : '未设颜色，点开可指定'}
+            onChange={(e) => patch({ color: e.target.value })}
+          />
+          {draft.color ? (
+            <button className="btn btn-mini" onClick={() => patch({ color: null })}>
+              使用默认配色
+            </button>
+          ) : (
+            <span className="insp-hint" style={{ margin: 0 }}>未设置，跟随默认配色</span>
+          )}
+        </div>
+      </div>
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
         <button className="btn" onClick={() => flyToItem(kind, item)}>定位</button>

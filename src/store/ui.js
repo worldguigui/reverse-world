@@ -30,6 +30,7 @@ export const createUISlice = (set, get) => ({
   workshopStrength: 0.08,
   workshopHard: true,      // true=硬笔（无扩散），false=软笔（高斯）
   workshopShowWater: false, // 画布是否改看黑白水陆掩膜（只影响预览）
+  workshopShowOverlay: false, // 是否把已有路线/区域作为只读参考叠在画布上
   workshopZoom: 1,         // 画布缩放倍数（1 = 适应窗口），只给顶栏读数用
   canUndo: false,
   canRedo: false,
@@ -112,7 +113,7 @@ export const createUISlice = (set, get) => ({
   resetWorkshopBrush() {
     set({
       workshopTool: 'raise', workshopSize: 8, workshopStrength: 0.08,
-      workshopHard: true, workshopShowWater: false, workshopZoom: 1,
+      workshopHard: true, workshopShowWater: false, workshopShowOverlay: false, workshopZoom: 1,
       canUndo: false, canRedo: false,
     });
   },

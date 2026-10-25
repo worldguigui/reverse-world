@@ -27,7 +27,7 @@ export class RouteLayer {
     this.group = new THREE.Group();
     this.group.name = 'routes';
     parent.add(this.group);
-    /** @type {Map<string, { line: Line2, mat: LineMaterial }>} */
+    /** @type {Map<string, { line: Line2, mat: LineMaterial, color: string|null }>} */
     this.byId = new Map();
     this.selectedId = null;
     this._resolution = new THREE.Vector2(1, 1);
@@ -60,19 +60,19 @@ export class RouteLayer {
       mat.resolution = this._resolution;
       const line = new Line2(new LineGeometry(), mat);
       line.userData.itemId = route.id;
-      this.byId.set(route.id, { line, mat, points: route.points });
+      this.byId.set(route.id, { line, mat, points: route.points, color: route.color ?? null });
       this._add(line);
     }
     this._applyStyles();
     this.relayout();
   }
 
-  /** 颜色、线宽与透明度都由「是否选中」决定，路线自己的 color 不再参与渲染 */
+  /** 路线自己的颜色是常态色；选中时统一换成铜橙，作为「正在编辑这条」的反馈 */
   _applyStyles() {
     const width = this.getConfig().markers.routeWidth;
-    for (const [id, { mat }] of this.byId) {
+    for (const [id, { mat, color }] of this.byId) {
       const selected = id === this.selectedId;
-      mat.color.set(selected ? OVERLAY_ACTIVE : OVERLAY_BASE);
+      mat.color.set(selected ? OVERLAY_ACTIVE : (color ?? OVERLAY_BASE));
       mat.linewidth = selected ? width + SELECTED_EXTRA_WIDTH : width;
       mat.opacity = selected ? 1 : NORMAL_OPACITY;
     }
@@ -116,12 +116,19 @@ export class RouteLayer {
     this._applyStyles();
   }
 
-  /** 射线拾取（Line2 的拾取按屏幕像素宽度计算） */
-  pick(raycaster) {
+  /**
+   * 射线拾取（Line2 的拾取按屏幕像素宽度计算）。
+   * 球背面的路线投影到屏幕上仍会被射线命中，所以按命中点与相机位置的夹角筛掉：
+   * 可见半球上的点与相机方向同侧，背面的点方向相反。
+   * @param {THREE.Raycaster} raycaster
+   * @param {THREE.Vector3} [cameraPosition] 相机世界坐标；不传则不筛背面
+   */
+  pick(raycaster, cameraPosition) {
     // 不在场的路线只是 visible=false，射线不看这个标志，得自己筛掉
     const lines = [...this.byId.values()].map((v) => v.line).filter((l) => l.visible);
     const hits = raycaster.intersectObjects(lines, false);
-    return hits.length ? hits[0].object.userData.itemId : null;
+    const hit = hits.find((h) => !cameraPosition || h.point.dot(cameraPosition) > 0);
+    return hit ? hit.object.userData.itemId : null;
   }
 
   /** 绘制中路线的预览（未提交） */

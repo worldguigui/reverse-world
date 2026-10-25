@@ -183,10 +183,12 @@ async function main() {
    */
   function pickAt(ndcVec) {
     raycaster.setFromCamera(ndcVec, camera);
+    // 路线画在区域之上（半径更高），拾取也按同一顺序：否则整条河落在一个国家里时，
+    // 点河永远先命中那大片区域，只能从区域外露出来的那截河选中
+    const routeId = routes.pick(raycaster, camera.position);
+    if (routeId) return { kind: 'route', id: routeId };
     const regionId = regions.pick(raycaster);
     if (regionId) return { kind: 'region', id: regionId };
-    const routeId = routes.pick(raycaster);
-    if (routeId) return { kind: 'route', id: routeId };
     return null;
   }
 

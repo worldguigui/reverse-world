@@ -25,7 +25,7 @@ export class RegionLayer {
     this.group = new THREE.Group();
     this.group.name = 'regions';
     parent.add(this.group);
-    /** @type {Map<string, { fill: THREE.Mesh|null, line: THREE.LineSegments, mat: THREE.MeshBasicMaterial, lineMat: THREE.LineBasicMaterial }>} */
+    /** @type {Map<string, { fill: THREE.Mesh|null, line: THREE.LineSegments, mat: THREE.MeshBasicMaterial, lineMat: THREE.LineBasicMaterial, color: string|null }>} */
     this.byId = new Map();
     this.hoverId = null;
     this.selectedId = null;
@@ -48,11 +48,12 @@ export class RegionLayer {
     this._clearBuilt();
     for (const region of regions) {
       const polygons = region.ring?.length >= 3 ? [region.ring] : [];
-      const entry = { fill: null, line: null, polygons };
+      const color = region.color ?? null;
+      const entry = { fill: null, line: null, polygons, color };
 
       if (polygons.length) {
         const mat = this._fillBin.take();
-        mat.color.set(OVERLAY_BASE);
+        mat.color.set(color ?? OVERLAY_BASE);
         entry.mat = mat;
         entry.fill = new THREE.Mesh(new THREE.BufferGeometry(), mat);
         entry.fill.userData.itemId = region.id;
@@ -60,7 +61,7 @@ export class RegionLayer {
       }
 
       const lineMat = this._lineBin.take();
-      lineMat.color.set(OVERLAY_BORDER);
+      lineMat.color.set(color ?? OVERLAY_BORDER);
       entry.lineMat = lineMat;
       entry.line = new THREE.LineSegments(new THREE.BufferGeometry(), lineMat);
       entry.line.userData.itemId = region.id;
@@ -112,15 +113,23 @@ export class RegionLayer {
     this.byId.clear();
   }
 
-  /** 填充色与边界色固定，选中/悬停只调整浓度与边界；区域自己的 color 不再参与渲染 */
+  /**
+   * 区域自己的颜色同时用在填充与边界上；没设颜色时分别退回默认填充色与默认边界色。
+   * 选中时边界统一换成铜橙，悬停时边界提亮——这两种反馈优先于区域自己的颜色。
+   */
   _applyStyles() {
     const base = this.getConfig().markers.fillOpacity;
     for (const [id, e] of this.byId) {
       const selected = id === this.selectedId;
       const hover = id === this.hoverId;
       const boost = selected ? SELECTED_FILL_BOOST : hover ? HOVER_FILL_BOOST : 0;
-      if (e.mat) e.mat.opacity = Math.min(0.85, base + boost);
-      e.lineMat.color.set(selected ? OVERLAY_ACTIVE : hover ? OVERLAY_BASE : OVERLAY_BORDER);
+      const fillColor = e.color ?? OVERLAY_BASE;
+      const borderColor = e.color ?? OVERLAY_BORDER;
+      if (e.mat) {
+        e.mat.color.set(fillColor);
+        e.mat.opacity = Math.min(0.85, base + boost);
+      }
+      e.lineMat.color.set(selected ? OVERLAY_ACTIVE : hover ? fillColor : borderColor);
       e.lineMat.opacity = selected ? 1 : hover ? HOVER_LINE_OPACITY : NORMAL_LINE_OPACITY;
     }
   }

@@ -50,6 +50,7 @@ export function Workshop({ container }) {
   const canRedo = useStore((s) => s.canRedo);
   const zoom = useStore((s) => s.workshopZoom);
   const showWater = useStore((s) => s.workshopShowWater);
+  const showOverlay = useStore((s) => s.workshopShowOverlay);
   const setWorkshopBrush = useStore((s) => s.setWorkshopBrush);
   const [generating, setGenerating] = useState(false);
   const wrapRef = useRef(null);
@@ -79,6 +80,9 @@ export function Workshop({ container }) {
 
   // 掩膜画布由 attachCanvas 顺带建好；开关只切它的显隐，打开时补画一次
   useEffect(() => { if (open) W.syncMaskView(); }, [showWater, open]);
+
+  // 路线/区域参考层同样是 attachCanvas 建的：开关只切显隐，打开时补画一次
+  useEffect(() => { if (open) W.syncOverlayView(); }, [showOverlay, open]);
 
   // 快捷键：Esc 取消，Ctrl+Z / Ctrl+Y 撤销重做
   useEffect(() => {
@@ -121,6 +125,13 @@ export function Workshop({ container }) {
           onClick={() => setWorkshopBrush({ workshopShowWater: !showWater })}
         >
           👁 水陆掩膜
+        </button>
+        <button
+          className={showOverlay ? 'btn active' : 'btn'}
+          title="把已有的路线与区域半透明叠在画布上，方便照着它们勾地形；只读，不能点选或编辑"
+          onClick={() => setWorkshopBrush({ workshopShowOverlay: !showOverlay })}
+        >
+          🗺 路线区域
         </button>
         <button className="btn" disabled={!canUndo} onClick={() => W.undo()}>↶ 撤销</button>
         <button className="btn" disabled={!canRedo} onClick={() => W.redo()}>↷ 重做</button>

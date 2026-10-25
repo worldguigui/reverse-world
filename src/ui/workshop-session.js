@@ -6,6 +6,8 @@
  * store 里只留三个廉价的布尔量（canUndo/canRedo）供按钮显示可用态。
  */
 import { useStore } from '../store/index.js';
+import { slerpLatLng, vec3ToLatLng } from '../utils.js';
+import { OVERLAY_BASE, OVERLAY_BORDER } from '../view/overlay-palette.js';
 
 export const workshop = {
   grid: null,        // 正在编辑的 TerrainGrid（由打开方决定是克隆还是直接绑定）
@@ -22,6 +24,11 @@ export const workshop = {
   maskCanvas: null,  // 水陆掩膜预览：黑=陆地，白=水
   maskCtx: null,
   maskImage: null,   // 掩膜的 ImageData，随网格尺寸重建
+  overlayCanvas: null, // 已有路线/区域的只读参考层（屏幕坐标重绘）
+  overlayCtx: null,
+  overlayRev: -1,      // 路径缓存对应的项目版本；项目一改就重建
+  overlayRegions: [],  // [{ path: Path2D, color: string|null }]，坐标是栅格像素
+  overlayRoutes: [],
   // 视图：zoom 是相对「适应窗口」的倍数，tx/ty 是画布左上角相对容器的偏移（屏幕像素）
   view: { zoom: 1, tx: 0, ty: 0 },
 };
@@ -63,6 +70,10 @@ export function beginWorkshop({ grid, binding = null, hooks }) {
   workshop.previewed = false;
   workshop.view = { zoom: 1, tx: 0, ty: 0 };
   workshop.maskImage = null;
+  // 每次打开的网格可能换了一张，上一轮按旧网格尺寸算好的路径不能再用
+  workshop.overlayRev = -1;
+  workshop.overlayRegions = [];
+  workshop.overlayRoutes = [];
   fitted = false;
   syncFlags();
 }
@@ -77,6 +88,11 @@ export function endWorkshop() {
   workshop.maskCanvas = null;
   workshop.maskCtx = null;
   workshop.maskImage = null;
+  workshop.overlayCanvas = null;
+  workshop.overlayCtx = null;
+  workshop.overlayRev = -1;
+  workshop.overlayRegions = [];
+  workshop.overlayRoutes = [];
 }
 
 // ---------------------------------------------------------------- 画布视图（缩放 / 平移）
@@ -110,6 +126,8 @@ function applyView() {
     maskCanvas.style.transform = transform;
     maskCanvas.style.imageRendering = rendering;
   }
+  // 路线/区域参考层按屏幕坐标重画，不吃这个 transform：平移缩放后要重新算一遍落点
+  drawRouteOverlay();
 }
 
 /** 缩放倍数同步给顶栏读数。平移不动缩放，所以只有缩放路径调它 */
@@ -280,6 +298,133 @@ export function syncMaskView() {
   if (on) drawMask();
 }
 
+// ---------------------------------------------------------------- 路线 / 区域参考层
+
+const DEG = Math.PI / 180;
+
+/**
+ * 往 Path2D 里接一段大圆弧（经纬度已是栅格像素）。
+ * 与球面路线层用同一套球面插值：相邻途经点之间走最短弧，而不是地图上的直线，
+ * 这样照着参考层画出来的地形，贴到球上仍与路线对得齐。
+ */
+function appendArc(path, a, b, xOf, yOf) {
+  const cos = Math.sin(a.lat * DEG) * Math.sin(b.lat * DEG) +
+    Math.cos(a.lat * DEG) * Math.cos(b.lat * DEG) * Math.cos((b.lng - a.lng) * DEG);
+  const angle = Math.acos(Math.max(-1, Math.min(1, cos))) / DEG;
+  const steps = Math.max(1, Math.ceil(angle / 2)); // 细分到 ≤2°，与球面路线一致
+  let prevLng = a.lng;
+  for (let s = 1; s <= steps; s++) {
+    const { lat, lng: rawLng } = vec3ToLatLng(slerpLatLng(a.lat, a.lng, b.lat, b.lng, s / steps));
+    // 跨 ±180° 时按短弧把经度接到前一点附近，避免一条线横穿整张地图
+    let lng = rawLng;
+    while (lng - prevLng > 180) lng -= 360;
+    while (prevLng - lng > 180) lng += 360;
+    prevLng = lng;
+    path.lineTo(xOf(lng), yOf(lat));
+  }
+}
+
+/**
+ * 把路线/区域的路径预先算成栅格像素坐标（Path2D）。
+ * 平移与缩放只改画布的 transform，不必每帧重新遍历所有顶点。
+ */
+function buildOverlayPaths() {
+  const { grid } = workshop;
+  const st = useStore.getState();
+  const project = st.project;
+  workshop.overlayRegions = [];
+  workshop.overlayRoutes = [];
+  workshop.overlayRev = st.contentRev;
+  if (!grid || !project) return;
+
+  // 整张栅格就是等经纬投影：x 从 -180° 铺到 180°，y 从 90° 铺到 -90°
+  const xOf = (lng) => ((lng + 180) / 360) * grid.w;
+  const yOf = (lat) => ((90 - lat) / 180) * grid.h;
+
+  for (const region of project.regions) {
+    const ring = region.ring;
+    if (!ring || ring.length < 3) continue;
+    const path = new Path2D();
+    path.moveTo(xOf(ring[0][0]), yOf(ring[0][1]));
+    for (let i = 1; i < ring.length; i++) path.lineTo(xOf(ring[i][0]), yOf(ring[i][1]));
+    path.closePath();
+    workshop.overlayRegions.push({ path, color: region.color ?? null });
+  }
+
+  for (const route of project.routes) {
+    const points = route.points;
+    if (!points || points.length < 2) continue;
+    const path = new Path2D();
+    path.moveTo(xOf(points[0].lng), yOf(points[0].lat));
+    for (let i = 1; i < points.length; i++) appendArc(path, points[i - 1], points[i], xOf, yOf);
+    workshop.overlayRoutes.push({ path, color: route.color ?? null });
+  }
+}
+
+/**
+ * 把已有的路线与区域画在画布上方，勾地形时对着它们找准位置。
+ *
+ * 路径只算一次，之后每次重画只换画布 transform：平移缩放因此是即时的，
+ * 线宽也按屏幕像素补偿（除以当前比例），放大后不会变成粗带。
+ * 参考层不看年份——工坊编的是整张底图，不是某一年的切面。
+ * 它只读：画布 pointer-events:none，不接任何绘制事件，也不改项目数据。
+ */
+function drawRouteOverlay() {
+  const { overlayCanvas, overlayCtx, wrap, grid, view } = workshop;
+  if (!overlayCanvas || !overlayCtx || !wrap || !grid) return;
+  if (!useStore.getState().workshopShowOverlay) return;
+  const cw = wrap.clientWidth;
+  const ch = wrap.clientHeight;
+  if (cw < 2 || ch < 2) return;
+
+  // 按设备像素比开画布，线条在高分屏上才不糊；样式尺寸仍是 CSS 像素
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (overlayCanvas.width !== Math.round(cw * dpr) ||
+      overlayCanvas.height !== Math.round(ch * dpr)) {
+    overlayCanvas.width = Math.round(cw * dpr);
+    overlayCanvas.height = Math.round(ch * dpr);
+    overlayCanvas.style.width = `${cw}px`;
+    overlayCanvas.style.height = `${ch}px`;
+  }
+  const ctx = overlayCtx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, cw * dpr, ch * dpr);
+  if (useStore.getState().contentRev !== workshop.overlayRev) buildOverlayPaths();
+
+  // 画布像素 → 栅格像素的变换：先缩放，再按视图偏移
+  const s = scaleOf();
+  ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * view.tx, dpr * view.ty);
+
+  // 先区域后路线：路线更细，压在上面才不会被区域边界淹没
+  for (const { path, color } of workshop.overlayRegions) {
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = color ?? OVERLAY_BASE;
+    ctx.fill(path);
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = color ?? OVERLAY_BORDER;
+    ctx.lineWidth = 1.5 / s;
+    ctx.stroke(path);
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 2 / s;
+  for (const { path, color } of workshop.overlayRoutes) {
+    ctx.strokeStyle = color ?? OVERLAY_BASE;
+    ctx.stroke(path);
+  }
+}
+
+/** 开关切换后同步参考层的显隐并立即重画；React 只负责改 store 里的布尔量 */
+export function syncOverlayView() {
+  const { overlayCanvas } = workshop;
+  if (!overlayCanvas) return;
+  const on = useStore.getState().workshopShowOverlay;
+  overlayCanvas.style.display = on ? 'block' : 'none';
+  if (on) drawRouteOverlay();
+}
+
 // ---------------------------------------------------------------- 指针绘制
 
 /**
@@ -338,8 +483,16 @@ export function attachCanvas(canvas, wrap) {
   workshop.maskCanvas = mask;
   workshop.maskCtx = mask.getContext('2d', { willReadFrequently: true });
   workshop.maskImage = null;
+  // 路线/区域参考层是第三张画布：按屏幕坐标画，不套画布的 transform，尺寸随容器走。
+  // 放在最上面，且不吃指针事件——涂抹全部落到下面的颜色画布上
+  const overlay = document.createElement('canvas');
+  overlay.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;display:none;';
+  wrap.appendChild(overlay);
+  workshop.overlayCanvas = overlay;
+  workshop.overlayCtx = overlay.getContext('2d');
   fitView();
   syncMaskView();
+  syncOverlayView();
 
   let panning = null; // 正在平移时记上一个指针位置
 
@@ -405,11 +558,14 @@ export function attachCanvas(canvas, wrap) {
     canvas.removeEventListener('wheel', onWheel);
     canvas.removeEventListener('contextmenu', onContext);
     mask.remove();
+    overlay.remove();
     workshop.canvas = null;
     workshop.wrap = null;
     workshop.maskCanvas = null;
     workshop.maskCtx = null;
     workshop.maskImage = null;
+    workshop.overlayCanvas = null;
+    workshop.overlayCtx = null;
   };
 }
 
