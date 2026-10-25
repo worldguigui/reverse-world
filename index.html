@@ -605,7 +605,33 @@
     .set-row { display: grid; gap: 4px; font-size: 13px; }
     .set-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
     .set-val { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .set-choice { display: grid; gap: 4px; }
+    .set-choice-btn {
+      height: 24px; padding: 0;
+      background: var(--surface-input); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-muted);
+      font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer;
+    }
+    .set-choice-btn:hover { color: var(--text); border-color: var(--border-strong); }
+    .set-choice-btn.active {
+      color: var(--accent-text); background: var(--accent-soft); border-color: var(--accent-border);
+    }
+    .set-note { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
     .set-row input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }
+    /* ± 在滑块两端：不改滑块的拖动精度，只给键盘/鼠标一个可点的小步长 */
+    .set-slider { display: flex; align-items: center; gap: 6px; }
+    .set-slider input[type="range"] { flex: 1; width: auto; min-width: 0; }
+    .set-step {
+      width: 17px; height: 17px; padding: 0; line-height: 1;
+      flex: none;
+      display: inline-grid; place-items: center;
+      background: none; border: 0;
+      color: var(--text-muted-raised);
+      font-size: 14px; font-family: inherit; cursor: pointer;
+      transition: color 0.12s ease;
+    }
+    .set-step:hover:not(:disabled) { color: var(--accent-text); }
+    .set-step:disabled { opacity: 0.25; cursor: default; }
     .set-row input[type="color"] {
       width: 100%; height: 28px; padding: 0; cursor: pointer;
       background: var(--surface-input); border: 1px solid var(--border); border-radius: var(--radius);

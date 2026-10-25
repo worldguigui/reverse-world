@@ -9,6 +9,13 @@ export const STARS_COUNT_MIN = 0;
 export const STARS_COUNT_MAX = 1999;
 
 /**
+ * 球面网格精度的四档（宽度段数）。
+ * 256 给低端设备兜底；512 是默认；2048 才能与 2048×1024 的高度图一一对应。
+ * 实际段数还会受地图宽度限制，见 view/globe.js。
+ */
+export const TERRAIN_MESH_SEGMENTS = [256, 512, 1024, 2048];
+
+/**
  * 配图上传：长边压到这么多像素；源文件超过这个体积时直接拒收，不读入内存。
  * 输出 WebP：照片类体积接近 JPEG，又能保留透明通道，无背景的图标不会被迫铺底。
  */
@@ -46,6 +53,8 @@ export const DEFAULT_CONFIG = {
   },
   terrain: {
     exaggeration: 0.06, // 地形夸张系数：真实山峰/半径太小，视觉上必须放大
+    // 球面网格宽度段数上限：256 极低 / 512 流畅 / 1024 标准 / 2048 精细
+    meshSegments: 512,
   },
   atmosphere: {
     enabled: true,
@@ -81,6 +90,10 @@ export function loadViewConfig() {
     STARS_COUNT_MAX,
     Math.max(STARS_COUNT_MIN, Math.round(config.stars.count)),
   );
+  // 网格精度只认预设档位，存档里被改坏就回到默认
+  if (!TERRAIN_MESH_SEGMENTS.includes(config.terrain.meshSegments)) {
+    config.terrain.meshSegments = DEFAULT_CONFIG.terrain.meshSegments;
+  }
   return config;
 }
 

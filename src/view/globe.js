@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DEFAULT_CONFIG, TERRAIN_MESH_SEGMENTS } from '../config.js';
 import { LAYER_MASK } from './render-layers.js';
 
 /**
@@ -38,6 +39,7 @@ export class Globe {
     // 真正上栅格时由 setRaster 按网格尺寸改写
     this._uHeightTexel = { value: new THREE.Vector2(1, 1) };
     this._segments = null;
+    this._grid = null;       // 当前贴图对应的栅格；改网格精度时据此重算段数
     this._colorTex = null;
     this._heightTex = null;
     this._lastStarsCount = config.stars.count;
@@ -119,11 +121,29 @@ export class Globe {
     this.group.add(this.overlayMask);
   }
 
-  /** 球体分段数跟随栅格分辨率，保证顶点密度 ≥ 高度纹理密度 */
+  /**
+   * 设置里选的网格精度是宽度段数上限；再按地图宽度截一次：
+   * 2048 宽的地图配 2048 段时，一个顶点对应一个高度纹素；地图更窄时没必要造更密的网格。
+   */
+  _meshCap() {
+    const value = this.config?.terrain?.meshSegments;
+    return TERRAIN_MESH_SEGMENTS.includes(value)
+      ? value
+      : DEFAULT_CONFIG.terrain.meshSegments;
+  }
+
   _makeGeometry(segW) {
-    segW = Math.min(1024, Math.max(192, segW));
+    segW = Math.min(this._meshCap(), Math.max(192, segW));
     this._segments = segW;
     return new THREE.SphereGeometry(1, segW, segW / 2);
+  }
+
+  /** 按当前地图与设置重建球面网格；段数没变就什么都不做 */
+  _applyMesh(gridW) {
+    const segW = Math.min(this._meshCap(), Math.max(192, gridW));
+    if (this._segments === segW) return;
+    this.sphere.geometry.dispose();
+    this.sphere.geometry = this._makeGeometry(segW);
   }
 
   /**
@@ -136,6 +156,7 @@ export class Globe {
 
   /** 没有地图：深色空球，高度回到海平面 */
   setBlank() {
+    this._grid = null;
     this._disposeRasterTextures();
     this.sphereMat.map = this._blankTex;
     this._uHeightTex.value = this._flatHeightTex;
@@ -146,11 +167,8 @@ export class Globe {
    * 工坊绘制过程中反复调用 updateRasterTextures() 即可实时看到山体变形。
    */
   setRaster(grid) {
-    const segW = Math.min(1024, Math.max(192, grid.w));
-    if (this._segments !== segW) {
-      this.sphere.geometry.dispose();
-      this.sphere.geometry = this._makeGeometry(segW);
-    }
+    this._grid = grid;
+    this._applyMesh(grid.w);
     this._disposeRasterTextures();
     this._colorTex = new THREE.CanvasTexture(grid.colorCanvas);
     this._colorTex.colorSpace = THREE.SRGBColorSpace;
@@ -323,6 +341,8 @@ export class Globe {
       this._buildStars();
       this.stars.visible = config.stars.enabled;
     }
+    // 精度档位变了就按当前地图重建；段数没变时这里只是一次比较
+    if (this._grid) this._applyMesh(this._grid.w);
   }
 
   update(dt, camera) {

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../../store/index.js';
-import { STARS_COUNT_MIN, STARS_COUNT_MAX } from '../../config.js';
+import {
+  STARS_COUNT_MIN, STARS_COUNT_MAX, TERRAIN_MESH_SEGMENTS,
+} from '../../config.js';
 
 /** 浮点累加会出现 0.30000000000000004，显示前按步长精度收一下 */
 const fmt = (v) => Number(Number(v).toFixed(3));
@@ -25,32 +27,102 @@ function Group({ title, children }) {
  * 滑块。commit='release' 用于代价高的设置（如重建星场）：
  * 拖动过程中只更新本地显示，松手才真正写进 store。
  * format 只改显示文本，不改提交的值。
+ * nudgeStep 是 ± 按钮一次走多远：默认与滑块步长一致；显示值四舍五入过的项
+ * （如镜头档位只显示整数）要单独给一个看得见变化的步长。
  */
-function Slider({ label, value, min, max, step, commit = 'live', format = fmt, onChange }) {
+function Slider({
+  label, value, min, max, step, commit = 'live', format = fmt, nudgeStep = step, onChange,
+}) {
   const [draft, setDraft] = useState(value);
   // 数值被外部改掉（如滚轮改了镜头档位）时跟上；拖动期间 value 没变，不会打断手上的操作
   useEffect(() => setDraft(value), [value]);
   const shown = commit === 'release' ? draft : value;
   const send = (v) => onChange(fmt(v));
 
+  // 从当前显示值朝 min 对齐到格点，再跨一格；这样 0.1+0.2 不会攒出浮点尾巴
+  const nudge = (dir) => {
+    const k = Math.round((shown - min) / nudgeStep);
+    send(Math.min(max, Math.max(min, min + (k + dir) * nudgeStep)));
+  };
+
   return (
-    <label className="set-row">
+    // 不能再用 <label> 包整行：里面有 ± 两个按钮，点标签空白会把第一个按钮当成
+    // 被标注的控件一起触发。范围输入用 aria-label 保留读屏名称。
+    <div className="set-row">
       <span className="set-row-top">
         <span>{label}</span>
         <span className="set-val">{format(shown)}</span>
       </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={shown}
-        onChange={(e) => (commit === 'release' ? setDraft(Number(e.target.value)) : send(e.target.value))}
-        // 松手（或键盘调完后抬手）再提交，避免拖一次就重建一遍
-        onPointerUp={() => commit === 'release' && send(draft)}
-        onKeyUp={() => commit === 'release' && send(draft)}
-      />
-    </label>
+      {/* ± 放在滑块两端，数字仍留在上方原来的位置 */}
+      <span className="set-slider">
+        <button
+          type="button"
+          className="set-step"
+          title={`减小 ${nudgeStep}`}
+          disabled={shown <= min}
+          onClick={() => nudge(-1)}
+        >
+          -
+        </button>
+        <input
+          type="range"
+          aria-label={label}
+          min={min}
+          max={max}
+          step={step}
+          value={shown}
+          onChange={(e) => (commit === 'release' ? setDraft(Number(e.target.value)) : send(e.target.value))}
+          // 松手（或键盘调完后抬手）再提交，避免拖一次就重建一遍
+          onPointerUp={() => commit === 'release' && send(draft)}
+          onKeyUp={() => commit === 'release' && send(draft)}
+        />
+        <button
+          type="button"
+          className="set-step"
+          title={`增大 ${nudgeStep}`}
+          disabled={shown >= max}
+          onClick={() => nudge(1)}
+        >
+          +
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** 各档网格精度的说明；2048 只有在 2048 宽的地图上才会真正一一对应 */
+const MESH_HINT = {
+  256: '极低精度，最省性能；夸张后山形会明显变块',
+  512: '流畅精度（默认），省性能，山形较粗',
+  1024: '标准精度，山形较细',
+  2048: '最高精度，较吃显卡；地图宽 2048 时可完整使用高度图',
+};
+
+/** 分段选择：用于只有几个固定档位的设置 */
+function Choice({ label, value, hint, options, onChange }) {
+  return (
+    <div className="set-row">
+      <span>{label}</span>
+      <div
+        className="set-choice"
+        role="group"
+        aria-label={label}
+        style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      >
+        {options.map((v) => (
+          <button
+            key={v}
+            type="button"
+            className={`set-choice-btn${v === value ? ' active' : ''}`}
+            aria-pressed={v === value}
+            onClick={() => onChange(v)}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+      {hint && <span className="set-note">{hint}</span>}
+    </div>
   );
 }
 
@@ -116,6 +188,13 @@ export function SettingsPanel() {
       </Group>
 
       <Group title="地形">
+        <Choice
+          label="地形网格"
+          value={config.terrain.meshSegments}
+          hint={MESH_HINT[config.terrain.meshSegments]}
+          options={TERRAIN_MESH_SEGMENTS}
+          onChange={(v) => set({ terrain: { meshSegments: v } })}
+        />
         <Slider label="地形夸张" value={config.terrain.exaggeration} min={0} max={0.15} step={0.005}
           onChange={(v) => set({ terrain: { exaggeration: v } })} />
       </Group>
@@ -133,7 +212,7 @@ export function SettingsPanel() {
         {/* 与滚轮共用「当前档位」：拖动滑块就是缩放，滚轮转了滑块也跟着走。
             数字与「事件镜头档位」同一套 1–64；滚轮拉远超过出厂（档位 <1）时滑块停在 1。 */}
         <Slider label="视角镜头档位" value={cameraLevel}
-          min={1} max={64} step={0.01}
+          min={1} max={64} step={0.01} nudgeStep={1}
           format={(v) => Math.max(1, Math.round(v))}
           onChange={(v) => setCameraLevel(v)} />
         {/* 点开一条事件时镜头落到哪一档，1 = 出厂视角，64 = 推到底再加满镜头倍率 */}
