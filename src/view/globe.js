@@ -173,7 +173,9 @@ export class Globe {
     this._colorTex = new THREE.CanvasTexture(grid.colorCanvas);
     this._colorTex.colorSpace = THREE.SRGBColorSpace;
     this._colorTex.anisotropy = this.maxAnisotropy;
-    this._heightTex = new THREE.CanvasTexture(grid.heightCanvas);
+    // 高度纹理画布：R+G=16 位高度，alpha 恒为 255。
+    // 颜色低位不能塞进 alpha：canvas 会预乘 alpha，连 R/G 的高度一起压坏。
+    this._heightTex = new THREE.CanvasTexture(grid.packedCanvas);
     // 高度纹理用线性色空间 + 双线性采样（理由见文件头）
     this._heightTex.colorSpace = THREE.LinearSRGBColorSpace;
     this._heightTex.magFilter = THREE.LinearFilter;

@@ -4,6 +4,7 @@
  */
 import * as P from '../core/project.js';
 import { buildRealEarthGrid, EARTH_RES } from '../core/realearth.js';
+import { hexTo565 } from '../core/raster.js';
 import { importProjectFile } from '../core/storage.js';
 import {
   saveProjectToCloud, loadProjectFromCloud, rememberCloudToken, formatCloudTime,
@@ -101,17 +102,24 @@ export const createActionsSlice = (set, get) => ({
   /**
    * 用画笔在指定经纬度改地形（编程接口/自动化用）。
    * 画笔改的是内存里的网格，必须重新编码回 PNG 才会被持久化。
+   * color 只对 paint 笔有效；shape 对高度笔和颜色笔都有效。
    */
-  paintTerrain(lat, lng, { tool = 'raise', size = 10, strength = 0.08, passes = 1 } = {}) {
+  paintTerrain(lat, lng, {
+    tool = 'raise', size = 10, strength = 0.08, passes = 1,
+    hard = false, shape = 'round', color = '#2e7aa0',
+  } = {}) {
     const g = session.currentGrid;
     const p = get().project;
     if (!g || !p) return null;
     const cx = ((lng + 180) / 360) * g.w;
     const cy = ((90 - lat) / 180) * g.h;
+    const color565 = hexTo565(color);
     // 每一笔返回的脏区都一样（同一个圆心、同一个半径），最后那个就是并集；
     // 拿它去重绘颜色画布，省掉整张网格的全量重算
     let dirty = null;
-    for (let i = 0; i < passes; i++) dirty = g.applyBrush(tool, cx, cy, size, strength);
+    for (let i = 0; i < passes; i++) {
+      dirty = g.applyBrush(tool, cx, cy, size, strength, hard, shape, color565);
+    }
     g.renderColor(dirty);
     // 这里刻意不走 mutateProject：它会连 derived 快照一起重建，而 bridge 一见 derived
     // 变化就把路线/区域整层重做——内容一条没变，

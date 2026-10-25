@@ -3,10 +3,11 @@ import { LandMask } from './landmask.js';
 import { loadImage } from '../utils/files.js';
 
 /**
- * 真实地球数据管线：两张原料图各自成层。
+ * 真实地球数据管线：两张原料图合成初稿。
  *   高程图  → TerrainGrid.height（海陆同一个数，含海底）
- *   海陆掩膜 → 只写 water（哪里有水）
- * 河网随后也只往 water 上盖窄条，不碰高度。
+ *   海陆掩膜 → 临时的 water 掩膜，只用来决定初稿哪里是水色
+ * 河网随后也只往这张临时掩膜上盖窄条，不碰高度。
+ * 最后把高度、水陆与坡度烘焙成 RGB565 颜色存进栅格；之后颜色就是普通数据。
  * 数据文件在 public/textures/、public/data/（Terrarium / Natural Earth，公共领域）。
  */
 
@@ -28,7 +29,7 @@ export const EARTH_RES = 2048;
 const RIVER_REF_W = 512;
 
 /**
- * 真实地球栅格：高程图直接当高度，海陆掩膜只决定水，最后把河流盖进水通道。
+ * 真实地球栅格：高程图直接当高度，海陆掩膜只决定初稿的水色，河流盖进同一张临时掩膜。
  *
  * @param {number} resolution 栅格宽度
  * @param {(detail: string, progress: number) => Promise<void>|void} [onProgress]
@@ -46,16 +47,18 @@ export async function buildRealEarthGrid(resolution = EARTH_RES, onProgress) {
   await onProgress?.('计算海陆边界…', 0.38);
   const grid = new TerrainGrid(w, h);
   grid.height.set(relief); // 海陆同一个数：海底就是负高度，不再另算
+  // 水陆只是生成初稿时的输入；栅格本身只存高度与最终颜色
+  const water = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
     const lat = 90 - ((y + 0.5) / h) * 180;
     for (let x = 0; x < w; x++) {
-      grid.water[y * w + x] = mask.isLand(lat, ((x + 0.5) / w) * 360 - 180) ? 0 : 255;
+      water[y * w + x] = mask.isLand(lat, ((x + 0.5) / w) * 360 - 180) ? 0 : 255;
     }
   }
   await onProgress?.('绘制河流…', 0.7);
-  await rasterizeRivers(grid);
+  await rasterizeRivers(grid, water);
   await onProgress?.('生成地形颜色…', 0.86);
-  grid.renderColor();
+  grid.bakeHeightColors(water);
   await onProgress?.('地图数据准备完成', 1);
   return grid;
 }
@@ -108,7 +111,7 @@ function resampleBox(src, sw, sh, w, h) {
 }
 
 /** Natural Earth 河流 → 河流通路（只留干流，跳过湖中线；细活留给用户的画笔） */
-export async function rasterizeRivers(grid) {
+export async function rasterizeRivers(grid, water) {
   const geo = await fetch(RIVERS_URL).then((r) => r.json());
   const k = grid.w / RIVER_REF_W; // 宽度随分辨率缩放
   for (const feature of geo.features) {
@@ -120,16 +123,16 @@ export async function rasterizeRivers(grid) {
       ? [feature.geometry.coordinates]
       : feature.geometry?.type === 'MultiLineString' ? feature.geometry.coordinates : [];
     for (const line of lines) {
-      stampPolyline(grid, line, width);
+      stampPolyline(water, grid.w, grid.h, line, width);
     }
   }
 }
 
-/** 折线刷进水通道：相邻经纬点之间插值步进，逐点盖圆章。河流只是窄一点的海洋 */
-function stampPolyline(grid, coords, radius) {
+/** 折线刷进临时水掩膜：相邻经纬点之间插值步进，逐点盖圆章。河流只是窄一点的海洋 */
+function stampPolyline(water, w, h, coords, radius) {
   const toCell = ([lng, lat]) => [
-    ((lng + 180) / 360) * grid.w,
-    ((90 - lat) / 180) * grid.h,
+    ((lng + 180) / 360) * w,
+    ((90 - lat) / 180) * h,
   ];
   for (let i = 1; i < coords.length; i++) {
     const [x0, y0] = toCell(coords[i - 1]);
@@ -137,7 +140,7 @@ function stampPolyline(grid, coords, radius) {
     const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (radius * 0.6)));
     for (let s = 0; s <= steps; s++) {
       const t = s / steps;
-      stampCircle(grid.water, grid.w, grid.h, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, radius);
+      stampCircle(water, w, h, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, radius);
     }
   }
 }

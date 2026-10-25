@@ -6,7 +6,7 @@ import { EventDotLayer } from './view/event-dot.js';
 import { RouteLayer } from './view/routes.js';
 import { RegionLayer } from './view/regions.js';
 import * as P from './core/project.js';
-import { TerrainGrid } from './core/raster.js';
+import { TerrainGrid, OCEAN_COLOR } from './core/raster.js';
 import { buildRealEarthGrid, EARTH_RES } from './core/realearth.js';
 import { loadStoredProject, createAutoSaver } from './core/storage.js';
 import { createPanels } from './ui/registry.js';
@@ -59,10 +59,12 @@ async function main() {
 
   // 光点/路线/区域贴着地形走。海面以下是负高度，只贴到海平面为止——
   // 否则海上那条内容会沉到球面以下（比深度掩膜还低），直接看不见。
+  // 高度要先按球面的实际渲染口径夹到 [-4, 4] 再插值：球面顶点读的是
+  // 逐格 clamp 后的纹理，直接用原始采样值会把内容抬到实际地形上方。
   const terrainRadius = (lat, lng) => {
     const grid = session.currentGrid;
     if (!grid) return 0;
-    return Math.max(0, grid.sample(lat, lng)) * viewConfig().terrain.exaggeration;
+    return Math.max(0, grid.sampleClamped(lat, lng)) * viewConfig().terrain.exaggeration;
   };
   eventDot.terrainRadius = terrainRadius;
   routes.terrainRadius = terrainRadius;
@@ -92,7 +94,7 @@ async function main() {
       } else {
         // 白纸起步的画布与真实地球同分辨率：画到一半按「真实地球」不会突然换一档精度
         grid = new TerrainGrid(EARTH_RES, EARTH_RES / 2);
-        grid.fill(-0.45, 255); // 一片汪洋：高度压到海平面以下，整张表写满水
+        grid.fill(-0.45, OCEAN_COLOR); // 一片汪洋：高度压到海平面以下，整张表刷上海洋色
         s.toast('一片汪洋：拿画笔造出你的大陆吧');
       }
 

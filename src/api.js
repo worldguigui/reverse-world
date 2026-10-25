@@ -66,11 +66,15 @@ export function installAPI({ ctx, project, cursor }) {
     // —— 地形 ——
     /** 打开地图工坊 */
     openWorkshop: () => ctx.openWorkshop(),
-    /** 生成真实地球地图（高程 + 水） */
+    /** 生成真实地球地图（高程 + 烘焙好的地表颜色） */
     generateRealEarth: () => ctx.generateRealEarth(),
-    /** 采样某经纬度的归一化高度（-1..1，0=海平面），无地形返回 null */
+    /** 采样某经纬度的地形高度（0=海平面，设计范围 -4..4；球面渲染按 ±4 截断），无地形返回 null */
     sampleTerrain: (lat, lng) => ctx.sampleTerrain(lat, lng),
-    /** 在指定经纬度涂画笔：{ tool: 'raise'|'lower'|'smooth'|'water'|'dry', size, strength, passes } */
+    /**
+     * 在指定经纬度涂画笔：
+     * { tool: 'raise'|'lower'|'smooth'|'paint'|'clearColor',
+     *   size, strength, passes, hard, shape: 'round'|'square', color: '#rrggbb' }
+     */
     paintTerrain: (lat, lng, opts) => ctx.paintTerrain(lat, lng, opts),
 
     // —— 项目 ——
@@ -103,8 +107,8 @@ export function installAPI({ ctx, project, cursor }) {
       + 'world.flyTo(lat, lng, { level, distance, duration }) 飞到坐标（level = 落到哪一档）\n'
       + 'world.where() / resetView()                     当前视角（经纬度/距离/档位）/ 复位视角\n'
       + 'world.openWorkshop() / generateRealEarth()       地图工坊 / 真实地球\n'
-      + 'world.paintTerrain(lat, lng, { tool, size, strength, passes }) 涂画笔\n'
-      + 'world.sampleTerrain(lat, lng)                    查询归一化高度\n'
+      + 'world.paintTerrain(lat, lng, { tool, size, strength, passes, hard, shape, color }) 涂画笔\n'
+      + 'world.sampleTerrain(lat, lng)                    查询地形高度（0=海平面）\n'
       + 'world.getProject() / exportProject()            项目读写\n'
       + 'world.loadSample()                              载入示例世界',
       'background:#6ea8ff;color:#000;padding:2px 6px;border-radius:4px 0 0 4px;font-weight:bold',

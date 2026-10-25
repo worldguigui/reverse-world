@@ -758,9 +758,12 @@
     /* 画笔按「写哪个通道」分组：组名一行小字，组内按钮竖排 */
     .wk-group { display: flex; flex-direction: column; gap: 6px; }
     .wk-group-label { font-size: 11px; color: var(--text-muted); letter-spacing: 1px; margin-left: 2px; }
+    .wk-row { display: flex; gap: 6px; }
+    .wk-row .wk-tool { flex: 1; min-width: 0; text-align: center; padding: 8px 6px; }
     .wk-slider { display: grid; gap: 4px; font-size: 12px; color: var(--text-muted); margin-top: 6px; }
     .wk-slider b { color: var(--text-strong); font-variant-numeric: tabular-nums; }
     .wk-slider input { width: 100%; accent-color: var(--accent); }
+    .wk-slider input[type="color"] { height: 30px; }
     .wk-canvas-wrap {
       flex: 1; min-width: 0; display: flex; overflow: hidden;
       border: 1px solid var(--border); border-radius: var(--radius-lg);

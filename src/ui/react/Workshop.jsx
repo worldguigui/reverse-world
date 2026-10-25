@@ -4,7 +4,7 @@ import * as W from '../workshop-session.js';
 
 /**
  * 五支画笔，按「写哪个通道」分成两组。
- * 形态组只改高度（球面的凹凸），水组只改水的浓度（颜色），两组互不影响：
+ * 形态组只改高度（球面的凹凸），颜色组只改 RGB565 地表色，两组互不影响：
  * 蓝色高山、绿色盆地都是许画出来的，不必符合物理。
  */
 const TOOL_GROUPS = [
@@ -13,19 +13,19 @@ const TOOL_GROUPS = [
     ['lower', '⬇ 压低', '压低地形，挖出海盆地、崖壁与峡谷'],
     ['smooth', '🪄 抹平', '把崎岖的区域磨平'],
   ]],
-  ['水', [
-    ['water', '💧 加水', '给格子涂上水色：海洋、湖泊与细长的河流都用它'],
-    ['dry', '🏝 去水', '把水擦掉，露出下面的陆地色'],
+  ['颜色', [
+    ['paint', '🎨 上色', '用下方颜色涂格子：海洋、湖泊、草地与河流都用它'],
+    ['clearColor', '🧽 去色', '把格子恢复成按当前高度与坡度生成的地形色'],
   ]],
 ];
 
-/** 当前画笔写哪个通道：水笔只改颜色，形态笔只改几何 */
+/** 当前画笔写哪个通道：颜色笔只改颜色，形态笔只改几何 */
 const TOOL_WRITES = {
   raise: '写入：高度（球面起伏）',
   lower: '写入：高度（球面起伏）',
   smooth: '写入：高度（球面起伏）',
-  water: '写入：水（只改颜色，不动高度）',
-  dry: '写入：水（只改颜色，不动高度）',
+  paint: '写入：颜色（RGB565，不动高度）',
+  clearColor: '写入：颜色（RGB565，不动高度）',
 };
 
 /**
@@ -46,10 +46,11 @@ export function Workshop({ container }) {
   const storedSize = useStore((s) => s.workshopSize);
   const strength = useStore((s) => s.workshopStrength);
   const hard = useStore((s) => s.workshopHard);
+  const shape = useStore((s) => s.workshopShape);
+  const color = useStore((s) => s.workshopColor);
   const canUndo = useStore((s) => s.canUndo);
   const canRedo = useStore((s) => s.canRedo);
   const zoom = useStore((s) => s.workshopZoom);
-  const showWater = useStore((s) => s.workshopShowWater);
   const showOverlay = useStore((s) => s.workshopShowOverlay);
   const setWorkshopBrush = useStore((s) => s.setWorkshopBrush);
   const [generating, setGenerating] = useState(false);
@@ -78,10 +79,7 @@ export function Workshop({ container }) {
     };
   }, [open]);
 
-  // 掩膜画布由 attachCanvas 顺带建好；开关只切它的显隐，打开时补画一次
-  useEffect(() => { if (open) W.syncMaskView(); }, [showWater, open]);
-
-  // 路线/区域参考层同样是 attachCanvas 建的：开关只切显隐，打开时补画一次
+  // 路线/区域参考层由 attachCanvas 建好：开关只切显隐，打开时补画一次
   useEffect(() => { if (open) W.syncOverlayView(); }, [showOverlay, open]);
 
   // 快捷键：Esc 取消，Ctrl+Z / Ctrl+Y 撤销重做。
@@ -100,6 +98,7 @@ export function Workshop({ container }) {
 
   if (!open) return null;
   const grid = W.workshop.grid;
+  const colorTool = tool === 'paint' || tool === 'clearColor';
 
   const loadRealEarth = async () => {
     setGenerating(true);
@@ -122,13 +121,6 @@ export function Workshop({ container }) {
           ⤢ 适应窗口
         </button>
         <span style={{ flex: 1 }} />
-        <button
-          className={showWater ? 'btn active' : 'btn'}
-          title="把画布切换成黑白水陆掩膜：黑=陆地，白=水（只影响预览，不改数据）"
-          onClick={() => setWorkshopBrush({ workshopShowWater: !showWater })}
-        >
-          👁 水陆掩膜
-        </button>
         <button
           className={showOverlay ? 'btn active' : 'btn'}
           title="把已有的路线与区域半透明叠在画布上，方便照着它们勾地形；只读，不能点选或编辑"
@@ -166,6 +158,38 @@ export function Workshop({ container }) {
           <div className="wk-dim">{TOOL_WRITES[tool]}</div>
 
           <div className="wk-slider">
+            <span className="field-label">上色颜色</span>
+            <input
+              type="color"
+              aria-label="上色颜色"
+              value={color}
+              onChange={(e) => setWorkshopBrush({ workshopColor: e.target.value })}
+            />
+          </div>
+
+          <div className="wk-slider">
+            <span className="field-label">笔形</span>
+            <div className="wk-row" role="group" aria-label="笔形">
+              <button
+                type="button"
+                className={`wk-tool${shape === 'round' ? ' active' : ''}`}
+                aria-pressed={shape === 'round'}
+                onClick={() => setWorkshopBrush({ workshopShape: 'round' })}
+              >
+                ● 圆形
+              </button>
+              <button
+                type="button"
+                className={`wk-tool${shape === 'square' ? ' active' : ''}`}
+                aria-pressed={shape === 'square'}
+                onClick={() => setWorkshopBrush({ workshopShape: 'square' })}
+              >
+                ■ 方形
+              </button>
+            </div>
+          </div>
+
+          <div className="wk-slider">
             <span className="field-label">笔刷大小 </span><b>{size} 格</b>
             <input
               type="range"
@@ -177,7 +201,8 @@ export function Workshop({ container }) {
           </div>
 
           <div className="wk-slider">
-            <span className="field-label">厚度 </span><b>{Math.round(strength * 100)}%</b>
+            <span className="field-label">{colorTool ? '颜料浓度' : '厚度'} </span>
+            <b>{Math.round(strength * 100)}%</b>
             <input
               type="range"
               min={1}
@@ -196,10 +221,11 @@ export function Workshop({ container }) {
           </button>
 
           <p className="insp-hint">
-            形态笔改高低，水笔改颜色，两个通道互不影响——蓝色高山、绿色盆地都画得出来。
-            细的水笔一拖就是河流，海与湖就是大片的水。打开顶栏「水陆掩膜」检查水的分布。
+            形态笔改高低，颜色笔改地表色，两个通道互不影响——蓝色高山、绿色盆地都画得出来。
+            颜色存成 RGB565，换设备打开也会保持同一套颜色。
             <br />
-            硬笔=半径内全强度，画垂直悬崖/方柱/笔直边界；软笔=高斯自然山脉。按住拖动连续涂抹。
+            圆形笔按半径覆盖，方形笔按边长覆盖；硬笔=半径内全强度，画垂直悬崖/方柱/笔直边界，
+            软笔=高斯自然过渡。按住拖动连续涂抹。
             <br />
             <b>滚轮</b>缩放（以光标为中心），<b>Shift+左键 / 中键 / 右键拖动</b>平移。
             笔刷最小 1 格，放大到看得清落点再抠细节。

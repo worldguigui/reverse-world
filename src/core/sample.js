@@ -34,7 +34,9 @@ export async function buildSampleProject(onProgress) {
     await onProgress?.(detail, 0.08 + progress * 0.8);
   });
   await onProgress?.('打包地图…', 0.9);
-  const rmap = addRasterMap(p, { name: '真实地球', w: grid.w, h: grid.h, dataUrl: grid.encodePNG() });
+  const rmap = addRasterMap(p, {
+    name: '真实地球', w: grid.w, h: grid.h, dataUrl: grid.encodePNG(),
+  });
   p.baseRasterId = rmap.id;
 
   return { project: p, grid };
