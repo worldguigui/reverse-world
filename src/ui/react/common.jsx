@@ -14,12 +14,12 @@ export function Labeled({ label, children }) {
 
 /** 从任何详情页回到世界概览 */
 export function BackToOverview() {
-  const select = useStore((s) => s.select);
+  const openOverview = useStore((s) => s.openOverview);
   return (
     <button
       className="btn btn-ghost"
       style={{ marginTop: '10px' }}
-      onClick={() => select(null)}
+      onClick={() => openOverview()}
     >
       ← 返回概览
     </button>
@@ -352,21 +352,41 @@ export function GroupPicker({ ids = [], onChange }) {
  * @param {string} placeholder 空值时的提示语（自始 / 至今）
  */
 export function YearInput({ value, onChange, placeholder = '自始' }) {
-  const commit = (raw) => {
-    const text = raw.trim();
-    if (!text) return onChange(null);
-    const n = Number(text);
-    if (Number.isFinite(n)) onChange(n);
+  const shown = value ?? '';
+  const ref = useRef(null);
+
+  // 外部值变了（例如换到另一条内容）就同步到输入框；正在输入时不打断
+  useEffect(() => {
+    if (ref.current && document.activeElement !== ref.current) ref.current.value = shown;
+  }, [shown]);
+
+  const commit = (input) => {
+    const text = input.value.trim();
+    if (!text) {
+      input.value = '';
+      onChange(null);
+      return;
+    }
+    // 只认十进制：Number() 还会把 0x10、1e3 当成合法年份，界面显示的与实际存入的对不上
+    const n = /^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text) ? Number(text) : NaN;
+    if (!Number.isFinite(n)) {
+      input.value = shown;
+      return;
+    }
+    input.value = String(n);
+    onChange(n);
   };
+
   return (
     <input
+      ref={ref}
       className="inp"
       type="text"
       inputMode="numeric"
       placeholder={placeholder}
-      defaultValue={value ?? ''}
-      onBlur={(e) => commit(e.target.value)}
-      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+      defaultValue={shown}
+      onBlur={(e) => commit(e.target)}
+      onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.target.blur(); }}
     />
   );
 }
@@ -416,7 +436,7 @@ export function TimeInput({ value, onChange, placeholder = '如 1914、1914-06�
       defaultValue={shown}
       title="格式：1914 / 1914-06 / 1914-06-28 / 1914-06-28T08 / 1914-06-28T08:30 / 1914-06-28T08:30:15；空格后可写备注"
       onBlur={(e) => commit(e.target.value)}
-      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+      onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.target.blur(); }}
     />
   );
 }
@@ -447,7 +467,7 @@ export function CoordInput({ id, value, min, max, onChange, placeholder = '' }) 
       placeholder={placeholder}
       defaultValue={shown}
       onBlur={(e) => commit(e.target.value, e.target)}
-      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+      onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.target.blur(); }}
     />
   );
 }

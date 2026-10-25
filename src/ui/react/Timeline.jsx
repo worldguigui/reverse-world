@@ -47,6 +47,8 @@ export function Timeline() {
   };
 
   const onPointerDown = (e) => {
+    // 只有主键/第一根手指拖游标；右键与中键要留给浏览器和后续交互
+    if (e.button !== 0 || !e.isPrimary) return;
     // 点在刻度上就交给刻度自己处理，别在这里又拖一次游标
     if (e.target.closest('.tl-tick')) return;
     dragging.current = true;

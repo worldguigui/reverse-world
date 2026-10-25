@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { formatTime } from '../../../core/datetime.js';
@@ -119,6 +119,9 @@ export function CharacterEditor({ id }) {
 
   const item = (project?.characters ?? []).find((c) => c.id === id);
   const [draft, setDraft] = useState(() => (item ? makeDraft(item) : null));
+  // 图片解码结束前可能已经切到别的人物；迟到的结果不能写进下一张卡
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
   if (!item || !draft) return null;
 
   // 名字、生卒、配图都先落在草稿里，按「保存」才回写项目
@@ -148,7 +151,9 @@ export function CharacterEditor({ id }) {
           className="btn"
           onClick={async () => {
             const file = await pickImage();
-            if (file) patch({ image: await fileToDataUrl(file) });
+            if (!file || !alive.current) return;
+            const image = await fileToDataUrl(file);
+            if (alive.current) patch({ image });
           }}
         >
           ⬆ 上传配图
@@ -170,7 +175,7 @@ export function CharacterEditor({ id }) {
           placeholder="用顿号或逗号分开"
           value={draft.aliases}
           onChange={(e) => patch({ aliases: e.target.value })}
-          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.target.blur(); }}
         />
       </Labeled>
 

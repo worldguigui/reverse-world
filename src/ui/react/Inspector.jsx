@@ -18,6 +18,7 @@ export function Inspector() {
   const project = useStore((s) => s.project);
   const mode = useStore((s) => s.mode);
   const selection = useStore((s) => s.selection);
+  const overviewOpen = useStore((s) => s.overviewOpen);
   useProjectRevision(); // 选中对象被改名或删除后要重画
 
   if (!project) return <WelcomePanel />;
@@ -25,7 +26,8 @@ export function Inspector() {
   // 两种绘制模式是同一个组件，直接切换时 React 会复用实例、输入框留旧值，故用 key 强制重挂载
   if (mode === 'draw-route') return <DrawForm key="draw-route" kind="route" />;
   if (mode === 'draw-region') return <DrawForm key="draw-region" kind="region" />;
-  if (!selection) return <OverviewPanel />;
+  // 概览可以被手动收起；收起后检查器渲染空，容器靠 :empty 隐掉
+  if (!selection) return overviewOpen ? <OverviewPanel /> : null;
   // 清单页与详情页共用同一个选中入口，不必再多一个开关去跟选中态对齐
   if (selection.kind === 'events') return <EventList />;
   if (selection.kind === 'characters') return <CharacterList />;

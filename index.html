@@ -181,7 +181,9 @@
       padding: 0 12px;
     }
     .bar-side { display: flex; align-items: center; gap: 8px; flex: 1; }
-    .bar-side:last-child { justify-content: flex-end; }
+    /* 用显式类而不是 :last-child：菜单打开时它也是顶栏的子元素，会把「最后一项」抢走，
+       右侧那组按钮于是从贴右变成紧跟中间，一开一关就左右跳 */
+    .bar-side.bar-right { justify-content: flex-end; }
     .bar-center { display: flex; gap: 4px; }
     .brand {
       background: none; border: none; color: var(--text-strong);

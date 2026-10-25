@@ -12,7 +12,8 @@ export function ProjectMenu({ onClose, onCloud }) {
   const exportProject = useStore((s) => s.exportProject);
   const openWorkshop = useStore((s) => s.openWorkshop);
   const generateRealEarth = useStore((s) => s.generateRealEarth);
-  const select = useStore((s) => s.select);
+  const openOverview = useStore((s) => s.openOverview);
+  const setMode = useStore((s) => s.setMode);
 
   const item = (label, run) => (
     <button className="menu-item" onClick={() => { onClose(); run(); }}>{label}</button>
@@ -31,7 +32,7 @@ export function ProjectMenu({ onClose, onCloud }) {
       {item('导出项目', exportProject)}
       {item('云端存档…', onCloud)}
       <div className="menu-sep" />
-      {item('世界概览', () => select(null))}
+      {item('世界概览', () => { setMode('browse'); openOverview(); })}
     </div>
   );
 }

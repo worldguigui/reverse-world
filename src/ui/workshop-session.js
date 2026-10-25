@@ -206,11 +206,16 @@ const canvasReady = () => !!(workshop.canvas && workshop.wrap && workshop.grid);
 
 const snapshot = () => ({ h: workshop.grid.height.slice(), w: workshop.grid.water.slice() });
 
-function pushUndo() {
-  workshop.undoStack.push(snapshot());
+/** 把一份已经拍好的快照压进撤销栈；异步操作要在结果确认有效之后再调用 */
+function pushSnapshot(snap) {
+  workshop.undoStack.push(snap);
   if (workshop.undoStack.length > undoLimit()) workshop.undoStack.shift();
   workshop.redoStack.length = 0;
   syncFlags();
+}
+
+function pushUndo() {
+  pushSnapshot(snapshot());
 }
 
 function restore(snap) {
@@ -246,14 +251,25 @@ export function resetOcean() {
   workshop.hooks.onChange(workshop.grid);
 }
 
-/** 用真实地球高程覆盖整张网格（下载解码由调用方提供） */
+/**
+ * 用真实地球高程覆盖整张网格（下载解码由调用方提供）。
+ * 返回 false 表示等待期间已经关闭工坊或换了另一张网格，这次结果被丢弃。
+ */
 export async function copyFromRealEarth() {
-  pushUndo();
-  const real = await workshop.hooks.loadRealEarth();
-  workshop.grid.copyFrom(real);
+  const grid = workshop.grid;
+  const load = workshop.hooks?.loadRealEarth;
+  if (!grid || !load) return false;
+  // 撤销步要在覆盖之前拍；但等数据回来、确认仍是同一张网格之后才入栈，
+  // 否则关掉工坊会留下一个指向已结束会话的空撤销步
+  const before = snapshot();
+  const real = await load();
+  if (workshop.grid !== grid) return false;
+  pushSnapshot(before);
+  grid.copyFrom(real);
   drawMask();
   workshop.dirty = true;
-  workshop.hooks.onChange(workshop.grid);
+  workshop.hooks.onChange(grid);
+  return true;
 }
 
 // ---------------------------------------------------------------- 水陆掩膜预览

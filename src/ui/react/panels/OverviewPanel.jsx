@@ -20,14 +20,27 @@ export function OverviewPanel() {
   const updateProject = useStore((s) => s.updateProject);
   const openWorkshop = useStore((s) => s.openWorkshop);
   const generateRealEarth = useStore((s) => s.generateRealEarth);
+  const setOverviewOpen = useStore((s) => s.setOverviewOpen);
   useProjectRevision(); // 新建 / 生成地图后，这张脸的名字要跟着变
 
   const baseRaster = project.rasterMaps.find((m) => m.id === project.baseRasterId) ?? null;
-  const face = baseRaster ? `地图 · ${baseRaster.name}` : '深色空球';
+  const face = baseRaster ? `地图 · ${baseRaster.name}` : '空世界';
 
   return (
     <div className="insp-block">
-      <div className="insp-title">世界概览</div>
+      <div
+        className="set-row-top"
+        style={{ paddingBottom: 8, borderBottom: '1px solid var(--border)' }}
+      >
+        <div className="insp-title">世界概览</div>
+        <button
+          className="icon-btn"
+          title="收起世界概览；从左上角世界名或项目菜单可以再打开"
+          onClick={() => setOverviewOpen(false)}
+        >
+          ✕
+        </button>
+      </div>
 
       <Labeled label="名称">
         <input
@@ -58,13 +71,11 @@ export function OverviewPanel() {
 
       <hr className="sep" />
 
-      {/* 舞台：球自己的那张脸。与时间无关——拖游标不会换脸，换脸也不动游标 */}
-      <div className="field-label">舞台 · 球长什么样</div>
       <p className="insp-hint">{`当前：${face}`}</p>
 
       <div style={{ display: 'grid', gap: '6px' }}>
         <button className="btn" onClick={() => openWorkshop()}>
-          {baseRaster ? '编辑地图' : '画一张地图'}
+          {baseRaster ? '编辑地图' : '自己画一个地图'}
         </button>
         <button className="btn" onClick={() => generateRealEarth()}>从真实地球生成地图</button>
       </div>

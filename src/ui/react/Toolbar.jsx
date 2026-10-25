@@ -9,7 +9,7 @@ const MODE_HINTS = {
   browse: '',
   'add-event': '单击球面给它一个坐标（也可以不点），Esc 退出',
   'draw-route': '单击依次添加途经点，Enter 完成',
-  'draw-region': '单击勾画边界（≥3 点），靠近起点点击或 Enter 闭合',
+  'draw-region': '单击勾画边界，靠近起点点击或 Enter 自动闭合',
 };
 
 const MODES = [
@@ -27,6 +27,7 @@ export function Toolbar() {
   const mode = useStore((s) => s.mode);
   const setMode = useStore((s) => s.setMode);
   const select = useStore((s) => s.select);
+  const openOverview = useStore((s) => s.openOverview);
   const toggleSettings = useStore((s) => s.toggleSettings);
   useProjectRevision(); // 世界改名后标题要跟着变
 
@@ -35,12 +36,33 @@ export function Toolbar() {
 
   // 点菜单以外的任何地方都收起菜单。菜单按钮与菜单本身各自 stopPropagation，
   // 否则这一次点击会先把菜单关掉、再被按钮的 onClick 重新打开。
+  // Esc 只收起菜单，不再传给全局：否则会顺带退出正在进行的编辑模式。
   useEffect(() => {
     if (!menuOpen) return undefined;
     const close = () => setMenuOpen(false);
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      setMenuOpen(false);
+      document.activeElement?.blur?.();
+    };
     document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('click', close);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [menuOpen]);
+
+  // 清单与概览不改变球面的编辑方式，但检查器同一时间只显示一页：
+  // 编辑模式下要先退回浏览，否则点了「人物」右侧仍是原来的绘制表单。
+  const showPage = (selection) => {
+    setMode('browse');
+    // 世界概览可以被手动收起，从品牌位点进来时顺带把它打开
+    if (selection) select(selection);
+    else openOverview();
+  };
 
   return (
     <div className="topbar-inner">
@@ -52,7 +74,7 @@ export function Toolbar() {
         >
           ☰
         </button>
-        <button className="brand" title="查看世界概览" onClick={() => select(null)}>
+        <button className="brand" title="查看世界概览" onClick={() => showPage(null)}>
           {project ? project.name : '世界观工具'}
         </button>
       </div>
@@ -70,7 +92,7 @@ export function Toolbar() {
         ))}
       </div>
 
-      <div className="bar-side">
+      <div className="bar-side bar-right">
         <span className="mode-hint" id="mode-hint">{MODE_HINTS[mode] ?? ''}</span>
         {/* 事件、人物与章节的清单都不进模式那一排：它们不改球面的交互方式，
             只是把检查器翻到另一页；球面上的「事件」模式是另一回事，管的是新建 */}
@@ -78,7 +100,7 @@ export function Toolbar() {
           className="mode-btn"
           id="tb-events"
           title="事件：按时间查看全部事件"
-          onClick={() => select({ kind: 'events' })}
+          onClick={() => showPage({ kind: 'events' })}
         >
           事件
         </button>
@@ -86,7 +108,7 @@ export function Toolbar() {
           className="mode-btn"
           id="tb-characters"
           title="人物：录入角色，看他们各自涉及哪些事件"
-          onClick={() => select({ kind: 'characters' })}
+          onClick={() => showPage({ kind: 'characters' })}
         >
           人物
         </button>
@@ -94,7 +116,7 @@ export function Toolbar() {
           className="mode-btn"
           id="tb-groups"
           title="章节：把事件分成有名字的一组组"
-          onClick={() => select({ kind: 'groups' })}
+          onClick={() => showPage({ kind: 'groups' })}
         >
           章节
         </button>

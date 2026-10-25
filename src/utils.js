@@ -64,6 +64,11 @@ export class TweenManager {
     this.#tweens.push({ tag, duration, ease, onUpdate, onComplete, start: performance.now(), dead: false });
   }
 
+  /** 指定 tag 是否还有动画在跑（飞行期间据此暂停自动旋转） */
+  has(tag) {
+    return this.#tweens.some((t) => t.tag === tag && !t.dead);
+  }
+
   cancel(tag) {
     // 打标记而不是只删数组里的：此刻可能有一批动画正被 update() 拿在手上，
     // 不标记的话它们会在这一圈结束时被放回去，取消就白取消了

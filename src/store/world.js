@@ -38,6 +38,9 @@ export function buildDerived(project, cursor, viewFilter = null) {
   };
 }
 
+/** 绘制表单的初始值；换世界时与模式一起复位，免得旧世界的名称和年份跟过来 */
+const blankDrawForm = () => ({ title: '', description: '', from: null, to: null });
+
 export const createWorldSlice = (set, get) => ({
   project: null,
   cursor: 0,
@@ -53,8 +56,12 @@ export const createWorldSlice = (set, get) => ({
     const p = get().project;
     if (!p) return null;
     const out = fn?.(p);
+    // 改内容可能同时收窄时间轴的定义域（删掉最早/最晚的一条）；游标不能留在域外，
+    // 派生快照也按夹取后的游标算，轴上的位置与实际上场的内容才对得上
+    const cursor = clampCursor(p, get().cursor);
     set({
-      derived: buildDerived(p, get().cursor, get().viewFilter),
+      cursor,
+      derived: buildDerived(p, cursor, get().viewFilter),
       contentRev: get().contentRev + 1,
     });
     session.autosaver?.save(p);
@@ -118,14 +125,13 @@ export const createWorldSlice = (set, get) => ({
 
   /** 新建空白世界；有线内容未导出时先确认（与原行为一致） */
   newProject() {
-    const p = get().project;
-    const s = p ? P.stats(p) : null;
-    if (s && (s.events || s.routes || s.regions)
+    if (P.hasContent(get().project)
         && !confirm('当前世界尚未导出，新建会覆盖自动保存的内容，确定？')) return;
     const fresh = P.createProject();
     set({
-      project: fresh, cursor: 0, selection: null,
-      eventDraft: {}, drawCoords: [], pendingCoords: null,
+      project: fresh, cursor: 0, selection: null, mode: 'browse', newCharacterId: null,
+      overviewOpen: true,
+      eventDraft: {}, drawCoords: [], pendingCoords: null, drawForm: blankDrawForm(),
       // 换了世界就回到「全部」：上一个世界的章节 id 与姓名快照在新世界里毫无意义
       viewFilter: P.noView(),
     });
@@ -152,7 +158,8 @@ export const createWorldSlice = (set, get) => ({
     set({
       project, cursor, viewFilter,
       derived: buildDerived(project, cursor, viewFilter),
-      selection: null, eventDraft: {}, drawCoords: [], pendingCoords: null,
+      selection: null, mode: 'browse', newCharacterId: null, overviewOpen: true,
+      eventDraft: {}, drawCoords: [], pendingCoords: null, drawForm: blankDrawForm(),
     });
     get().mutateProject(() => {});
     get().touchStage();
@@ -173,10 +180,13 @@ export const createWorldSlice = (set, get) => ({
 
   /** 改事件/路线/区域/人物/章节：derived 一变，bridge 会重建三维图层 */
   updateItem(kind, id, patch) {
+    // 人物卡按下保存：从此它就是正式条目，离开时不该再被当成占位删掉
+    if (kind === 'character' && get().newCharacterId === id) set({ newCharacterId: null });
     get().mutateProject((p) => P.updateItem(p, kind, id, patch));
   },
 
   deleteItem(kind, id) {
+    if (kind === 'character' && get().newCharacterId === id) set({ newCharacterId: null });
     // 只清掉正被删的那一项的选中；删章节不该把检查器里正在看的事件也一并关掉
     const sel = get().selection;
     if (sel?.kind === kind && sel.id === id) set({ selection: null });
@@ -249,7 +259,7 @@ export const createWorldSlice = (set, get) => ({
   /** 新建人物并直接选中：录入整张卡都在面板里完成，不必再点一次 */
   addCharacter() {
     const item = get().mutateProject((p) => P.addItem(p, 'character', {}));
-    if (item) set({ selection: { kind: 'character', id: item.id } });
+    if (item) set({ selection: { kind: 'character', id: item.id }, newCharacterId: item.id });
     return item;
   },
 

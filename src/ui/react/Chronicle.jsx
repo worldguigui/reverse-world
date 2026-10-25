@@ -61,6 +61,18 @@ export function Chronicle() {
   // 输着字且光标还在框里时才展开候选；一失焦就收，免得挡住长卷
   const searching = focused && query.trim().length > 0;
 
+  // 长卷打开时 Esc 先收起它；光标还在输入框里时不抢，留给「清空搜索」
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || e.isComposing) return;
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      setChronicleOpen(false);
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, [open, setChronicleOpen]);
+
   // 候选可能比菜单高；键盘移到看不见的那条时把它滚进视野
   const hitRef = useRef(null);
   useEffect(() => {

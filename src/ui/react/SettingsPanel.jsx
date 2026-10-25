@@ -28,7 +28,7 @@ function Group({ title, children }) {
  */
 function Slider({ label, value, min, max, step, commit = 'live', format = fmt, onChange }) {
   const [draft, setDraft] = useState(value);
-  // 数值被外部改掉（如飞行暂停了自动旋转）时跟上；拖动期间 value 没变，不会打断手上的操作
+  // 数值被外部改掉（如滚轮改了镜头档位）时跟上；拖动期间 value 没变，不会打断手上的操作
   useEffect(() => setDraft(value), [value]);
   const shown = commit === 'release' ? draft : value;
   const send = (v) => onChange(fmt(v));

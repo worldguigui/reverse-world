@@ -44,7 +44,15 @@ export const createActionsSlice = (set, get) => ({
 
   /** 下载并解码真实地球高程与水，作为全局地图 */
   async generateRealEarth() {
-    if (!get().project || get().loading) return;
+    if (!get().project) {
+      get().toast('先新建一个世界，再生成地图');
+      return;
+    }
+    if (get().loading) return;
+    // 真实地球会换掉当前舞台地形；内容（事件、路线、区域）一条不动，但手绘的地图会被覆盖
+    const p = get().project;
+    if (P.getRasterMap(p, p.baseRasterId)
+        && !confirm('生成真实地球会覆盖当前地形地图，事件、路线与区域都会保留。确定？')) return;
     const title = '正在生成真实地球';
     const show = async (detail, progress) => {
       get().setLoading({ title, detail, progress });
@@ -120,6 +128,10 @@ export const createActionsSlice = (set, get) => ({
 
   async loadSample() {
     if (get().loading) return;
+    const current = get().project;
+    if (P.hasContent(current) && !confirm(
+      `载入示例世界会替换当前世界「${current.name}」，本机自动保存也会随之更新。确定？`,
+    )) return;
     const title = '正在载入示例世界';
     const show = async (detail, progress) => {
       get().setLoading({ title, detail, progress });
@@ -144,6 +156,10 @@ export const createActionsSlice = (set, get) => ({
 
   async importFile(file) {
     if (get().loading) return;
+    const current = get().project;
+    if (P.hasContent(current) && !confirm(
+      `导入项目会替换当前世界「${current.name}」，本机自动保存也会随之更新。确定？`,
+    )) return;
     get().setLoading({ title: '正在导入项目', detail: '读取文件…', progress: null });
     await nextPaint();
     try {
@@ -184,9 +200,7 @@ export const createActionsSlice = (set, get) => ({
     rememberCloudToken(token);
 
     const current = get().project;
-    const counts = current ? P.stats(current) : null;
-    const hasContent = counts && (counts.events || counts.routes || counts.regions || counts.characters);
-    if (hasContent && !confirm(
+    if (P.hasContent(current) && !confirm(
       `载入「${info.project.name}」（云端保存于 ${formatCloudTime(info.savedAt)}）`
       + `会替换当前世界「${current.name}」，本机自动保存也会随之更新。确定？`,
     )) return null;

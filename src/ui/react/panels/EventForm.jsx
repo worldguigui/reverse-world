@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { Labeled, TimeInput, CoordInput, CharacterPicker, GroupPicker, ItemImage } from '../common.jsx';
@@ -21,6 +22,10 @@ export function EventForm() {
   const setMode = useStore((s) => s.setMode);
   const setPendingCoords = useStore((s) => s.setPendingCoords);
   const pickImage = useStore((s) => s.pickImage);
+
+  // 读图要等文件解码；读到一半切走表单时，结果不能再写回（否则会串到下一条草稿里）
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
 
   return (
     <div className="insp-block">
@@ -87,7 +92,9 @@ export function EventForm() {
         id="event-image-btn"
         onClick={async () => {
           const file = await pickImage();
-          if (file) saveDraft({ image: await fileToDataUrl(file) });
+          if (!file || !alive.current) return;
+          const image = await fileToDataUrl(file);
+          if (alive.current) saveDraft({ image });
         }}
       >
         {draft.image ? '已选配图（再点可更换）' : '配图（长宽比建议1:1）'}

@@ -12,6 +12,12 @@ export const createUISlice = (set, get) => ({
   // 检查器正在展示什么。复数 kind 是清单页（没有 id），单数 kind 是某一条的详情，
   // 让「翻列表」与「看某一个」共用同一份状态，不必再多一个开关去跟选中态对齐
   selection: null,       // { kind: 'event'|'route'|'region'|'character', id } | { kind: 'events'|'characters'|'groups' }
+  // 刚新建、还没保存过的人物 id。人物卡是先落数据再编辑的，若用户直接取消或离开，
+  // 这个占位人物要跟着消失，否则清单里会越点越多「新人物」。
+  newCharacterId: null,
+  // 世界概览是否展开。默认开着；点面板上的 ✕ 收起，给球面让出位置。
+  // 只有明确从「世界概览」入口回来时才重新打开，单击球面空白处不会把它弹回来。
+  overviewOpen: true,
   // 「当前在看什么」是一组同时生效的事件集合：选中的章节（含姓名搜索生成的章节）
   // 与编程接口的实时人物筛，取交集。章节都存在 project.groups 里，取消选中只是退出交集，
   // 章节本身不会消失。
@@ -65,11 +71,20 @@ export const createUISlice = (set, get) => ({
     }
     // 每轮绘制重新开始，表单回到初始值（React 侧靠 key 重挂载生效）
     if (mode === 'draw-route' || mode === 'draw-region') patch.drawForm = blankDrawForm();
+    // 新建事件也从头开始：上一次残留的草稿不能带进这一条
+    if (mode === 'add-event') patch.eventDraft = {};
     set(patch);
   },
 
   /** 选中：检查器据此换成对应对象的详情表单，三维侧据此改高亮 */
-  select(selection) { set({ selection }); },
+  select(selection) {
+    const { newCharacterId } = get();
+    // 离开一张没保存过的新人物卡，就把占位人物一并删掉
+    if (newCharacterId && !(selection?.kind === 'character' && selection.id === newCharacterId)) {
+      get().deleteItem('character', newCharacterId);
+    }
+    set({ selection });
+  },
 
   /**
    * 改视图条件。收窄只是换一批「谁在场」，一个像素都不用重画，
@@ -82,6 +97,14 @@ export const createUISlice = (set, get) => ({
     const viewFilter = { ...get().viewFilter, ...patch };
     const p = get().project;
     set({ viewFilter, derived: buildDerived(p, get().cursor, viewFilter) });
+  },
+
+  setOverviewOpen(open) { set({ overviewOpen: open }); },
+
+  /** 回到世界概览：既取消选中，也确保面板是展开的（它可能被 ✕ 收起过） */
+  openOverview() {
+    set({ overviewOpen: true });
+    get().select(null);
   },
 
   /** 当前视图条件的一份副本，给编程接口读 */

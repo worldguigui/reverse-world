@@ -23,7 +23,11 @@ export function CloudDialog({ onClose }) {
 
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape' && !busy) onClose();
+      if (e.key !== 'Escape') return;
+      // 对话框在最上层：Esc 归它处理，不能继续传给窗口去退出底下的编辑模式
+      e.preventDefault();
+      e.stopPropagation();
+      if (!busy) onClose();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);

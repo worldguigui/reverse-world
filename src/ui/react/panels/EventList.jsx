@@ -73,7 +73,8 @@ export function EventList() {
                   </button>
                   <button
                     className="btn btn-mini"
-                    title="在编年史里打开这条事件"
+                    title={ev.from == null ? '未定年事件不上编年史' : '在编年史里打开这条事件'}
+                    disabled={ev.from == null}
                     onClick={() => look(ev)}
                   >
                     看

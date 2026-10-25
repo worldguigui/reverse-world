@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { useProjectRevision } from '../hooks.js';
@@ -43,6 +43,9 @@ export function EventEditor({ id }) {
 
   const item = (project?.events ?? []).find((ev) => ev.id === id);
   const [draft, setDraft] = useState(() => (item ? makeDraft(project, item) : null));
+  // 图片解码结束前可能已经切到另一条事件；迟到的结果只属于打开它的那一张卡
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
   if (!item || !draft) return null;
 
   const patch = (p) => setDraft((d) => ({ ...d, ...p }));
@@ -72,7 +75,9 @@ export function EventEditor({ id }) {
           className="btn"
           onClick={async () => {
             const file = await pickImage();
-            if (file) patch({ image: await fileToDataUrl(file) });
+            if (!file || !alive.current) return;
+            const image = await fileToDataUrl(file);
+            if (alive.current) patch({ image });
           }}
         >
           ⬆ 上传配图

@@ -84,17 +84,19 @@ export function Workshop({ container }) {
   // 路线/区域参考层同样是 attachCanvas 建的：开关只切显隐，打开时补画一次
   useEffect(() => { if (open) W.syncOverlayView(); }, [showOverlay, open]);
 
-  // 快捷键：Esc 取消，Ctrl+Z / Ctrl+Y 撤销重做
+  // 快捷键：Esc 取消，Ctrl+Z / Ctrl+Y 撤销重做。
+  // 真实地球还在下载时不能取消：此时关掉会话会让下载结果落空，也让“生成中”的按钮无处可归。
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => {
-      if (e.key === 'Escape') W.cancelWorkshop();
+      if (e.key === 'Escape' && !generating) W.cancelWorkshop();
+      if (generating) return;
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); W.undo(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); W.redo(); }
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, [open]);
+  }, [open, generating]);
 
   if (!open) return null;
   const grid = W.workshop.grid;
@@ -105,8 +107,9 @@ export function Workshop({ container }) {
       await W.copyFromRealEarth();
     } catch (err) {
       alert('真实地球数据加载失败：' + err.message);
+    } finally {
+      setGenerating(false);
     }
-    setGenerating(false);
   };
 
   return (
@@ -133,14 +136,14 @@ export function Workshop({ container }) {
         >
           🗺 路线区域
         </button>
-        <button className="btn" disabled={!canUndo} onClick={() => W.undo()}>↶ 撤销</button>
-        <button className="btn" disabled={!canRedo} onClick={() => W.redo()}>↷ 重做</button>
-        <button className="btn" onClick={() => W.resetOcean()}>重置为海洋</button>
+        <button className="btn" disabled={!canUndo || generating} onClick={() => W.undo()}>↶ 撤销</button>
+        <button className="btn" disabled={!canRedo || generating} onClick={() => W.redo()}>↷ 重做</button>
+        <button className="btn" disabled={generating} onClick={() => W.resetOcean()}>重置为海洋</button>
         <button className="btn" disabled={generating} onClick={loadRealEarth}>
           {generating ? '生成中…' : '🌐 真实地球'}
         </button>
-        <button className="btn btn-primary" onClick={() => W.commitWorkshop()}>✔ 完成</button>
-        <button className="btn" onClick={() => W.cancelWorkshop()}>取消</button>
+        <button className="btn btn-primary" disabled={generating} onClick={() => W.commitWorkshop()}>✔ 完成</button>
+        <button className="btn" disabled={generating} onClick={() => W.cancelWorkshop()}>取消</button>
       </div>
 
       <div className="wk-body">

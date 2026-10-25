@@ -479,6 +479,19 @@ export function activeItems(project, kind, cursor) {
   return getList(project, kind).filter((it) => isActiveAt(cursor, it));
 }
 
+/** 项目里是否有用户录入的内容；覆盖、新建或载入前的确认据此决定是否提醒 */
+export function hasContent(project) {
+  if (!project) return false;
+  return Boolean(
+    project.events.length
+    || project.routes.length
+    || project.regions.length
+    || project.characters.length
+    || project.groups.length
+    || project.rasterMaps.length,
+  );
+}
+
 /** 统计信息（检查器概览用） */
 export function stats(project) {
   return {

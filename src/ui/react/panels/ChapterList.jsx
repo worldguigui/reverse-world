@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../../store/index.js';
 import { formatYear } from '../../../core/timeline.js';
 import { useProjectRevision } from '../hooks.js';
@@ -36,10 +36,16 @@ export function ChapterList() {
   // 输入框会跟着整行一起消失，打到一半的字就没了。
   const [query, setQuery] = useState('');
   const [editingId, setEditingId] = useState(null);
+  const editRef = useRef(null);
   const key = query.trim().toLowerCase();
   const shown = key
     ? groups.filter((g) => g.id === editingId || g.name.toLowerCase().includes(key))
     : groups;
+
+  // 新章节刚建出来时要滚进视野；切到已有行编辑同样保证它没被列表裁掉
+  useEffect(() => {
+    if (editingId) editRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [editingId, groups.length]);
 
   return (
     <div className="insp-block insp-list-page">
@@ -66,10 +72,11 @@ export function ChapterList() {
                 const n = countOf(g);
                 const span = spanText(groupSpan(g.id));
                 return (
-                  <div className="chap-row" key={g.id}>
+                  <div className="chap-row" key={g.id} ref={g.id === editingId ? editRef : null}>
                     <input
                       className="inp"
                       defaultValue={g.name}
+                      autoFocus={g.id === editingId}
                       onFocus={() => setEditingId(g.id)}
                       onBlur={() => setEditingId(null)}
                       onChange={(e) => updateItem('group', g.id, { name: e.target.value })}
@@ -109,7 +116,18 @@ export function ChapterList() {
         </>
       )}
 
-      <button className="btn btn-primary" id="chap-new" onClick={() => addGroup()}>
+      <button
+        className="btn btn-primary"
+        id="chap-new"
+        title={key ? '新建章节并清空搜索，让新行立刻可见' : '新建章节'}
+        onClick={() => {
+          const g = addGroup();
+          if (!g) return;
+          // 搜索词非空时新章节多半不匹配，不清掉搜索就会“点了没反应”
+          setQuery('');
+          setEditingId(g.id);
+        }}
+      >
         ＋ 新建章节
       </button>
       <BackToOverview />

@@ -268,8 +268,9 @@ export class CameraRig {
    */
   update(dt = 0) {
     // 自转绕世界 Y 轴（南北极），不是相机自己的上方向——
-    // 翻过球之后两者会不一致，用相机 up 当轴会变成绕屏幕竖线打转
-    if (this.config.enabled && dt > 0) {
+    // 翻过球之后两者会不一致，用相机 up 当轴会变成绕屏幕竖线打转。
+    // 飞行期间先让位：两个动画同时改位置会互相抵消；飞完自动恢复，用户的自转开关不动。
+    if (this.config.enabled && dt > 0 && !this.tweens.has('camera')) {
       _qSpin.setFromAxisAngle(WORLD_UP, this.config.speed * (Math.PI / 180) * dt);
       this.camera.position.applyQuaternion(_qSpin);
       this.camera.up.applyQuaternion(_qSpin);
@@ -300,7 +301,6 @@ export class CameraRig {
    * @param {{ distance?: number, level?: number, duration?: number }} opts
    */
   flyToLatLng(lat, lng, { distance = null, level = null, duration = 1400 } = {}) {
-    this.onFlyStart?.(); // 飞行前通知外部（默认用来暂停自动旋转，否则飞到了又转走）
     const c = this.camera;
     const fromDir = c.position.clone().normalize();
     const fromDist = c.position.length();

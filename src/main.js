@@ -69,74 +69,82 @@ async function main() {
   regions.terrainRadius = terrainRadius;
 
   // ---------------------------------------------------------- 地图工坊面板
+  // 解码地图是异步的：连点两次入口会让两次打开交错，第二次换掉网格时画布已经绑在第一次上
+  let workshopOpening = false;
   /**
    * 打开地图工坊。球只有一张脸，所以工坊改的就是这一次性的全局地图：
    * 已有地图就直接编辑它，没有就先给一片汪洋。
    */
   async function openWorkshopPanel() {
     const s = store.getState();
+    if (workshopOpening || s.workshopOpen) return;
     const p = s.project;
     if (!p) { s.toast('先新建一个世界再画地图'); return; }
 
-    let grid;
-    let binding = null; // 直接编辑已存在的地图时记下它的 id
-    const rmap = P.getRasterMap(p, p.baseRasterId);
-    if (rmap) {
-      grid = await getGridCached(rmap);
-      binding = { rmapId: rmap.id };
-    } else {
-      // 白纸起步的画布与真实地球同分辨率：画到一半按「真实地球」不会突然换一档精度
-      grid = new TerrainGrid(EARTH_RES, EARTH_RES / 2);
-      grid.fill(-0.45, 255); // 一片汪洋：高度压到海平面以下，整张表写满水
-      s.toast('一片汪洋：拿画笔造出你的大陆吧');
-    }
+    workshopOpening = true;
+    try {
+      let grid;
+      let binding = null; // 直接编辑已存在的地图时记下它的 id
+      const rmap = P.getRasterMap(p, p.baseRasterId);
+      if (rmap) {
+        grid = await getGridCached(rmap);
+        binding = { rmapId: rmap.id };
+      } else {
+        // 白纸起步的画布与真实地球同分辨率：画到一半按「真实地球」不会突然换一档精度
+        grid = new TerrainGrid(EARTH_RES, EARTH_RES / 2);
+        grid.fill(-0.45, 255); // 一片汪洋：高度压到海平面以下，整张表写满水
+        s.toast('一片汪洋：拿画笔造出你的大陆吧');
+      }
 
-    s.resetWorkshopBrush();
-    W.beginWorkshop({
-      grid,
-      binding,
-      hooks: {
-        onChange(g) {
-          // 球体实时预览：第一次建纹理，之后只刷新内容
-          if (!W.workshop.previewed) { globe.setRaster(g); W.workshop.previewed = true; }
-          else globe.updateRasterTextures();
-          session.currentGrid = g;
-          // 只重定位，不重建：这里每次指针移动都会被调用，
-          // 重建一遍路线 + 区域正是「地形编辑卡顿」的来源
-          relayoutLayers();
+      s.resetWorkshopBrush();
+      W.beginWorkshop({
+        grid,
+        binding,
+        hooks: {
+          onChange(g) {
+            // 球体实时预览：第一次建纹理，之后只刷新内容
+            if (!W.workshop.previewed) { globe.setRaster(g); W.workshop.previewed = true; }
+            else globe.updateRasterTextures();
+            session.currentGrid = g;
+            // 只重定位，不重建：这里每次指针移动都会被调用，
+            // 重建一遍路线 + 区域正是「地形编辑卡顿」的来源
+            relayoutLayers();
+          },
+          loadRealEarth: () => buildRealEarthGrid(grid.w),
+          onCommit(g) {
+            const st = store.getState();
+            const png = g.encodePNG();
+            // 先把新地形接上，再改数据——改数据会立刻触发整层重建，
+            // 那时 terrainRadius 读到的必须是新网格，否则内容会按旧高度贴一次地
+            session.currentGrid = g;
+            globe.setRaster(g);
+            st.mutateProject((proj) => {
+              let rmapId = binding?.rmapId;
+              if (rmapId) {
+                P.getRasterMap(proj, rmapId).dataUrl = png;
+              } else {
+                rmapId = P.addRasterMap(proj, { name: '地图', w: g.w, h: g.h, dataUrl: png }).id;
+                proj.baseRasterId = rmapId;
+              }
+              // 刚编好的网格就在手上，直接回填缓存：下次打开工坊或贴地都不必再解一次 PNG
+              session.gridCache.set(rmapId, g);
+            });
+            st.setWorkshopOpen(false);
+            st.toast('地图已保存');
+          },
+          onCancel() {
+            // 工坊是在缓存里那份网格上就地改的，取消时必须把它丢掉重新解码，
+            // 否则球上会一直留着改到一半的样子
+            if (binding) session.gridCache.delete(binding.rmapId);
+            store.getState().setWorkshopOpen(false);
+            applyStage();
+          },
         },
-        loadRealEarth: () => buildRealEarthGrid(grid.w),
-        onCommit(g) {
-          const st = store.getState();
-          const png = g.encodePNG();
-          // 先把新地形接上，再改数据——改数据会立刻触发整层重建，
-          // 那时 terrainRadius 读到的必须是新网格，否则内容会按旧高度贴一次地
-          session.currentGrid = g;
-          globe.setRaster(g);
-          st.mutateProject((proj) => {
-            let rmapId = binding?.rmapId;
-            if (rmapId) {
-              P.getRasterMap(proj, rmapId).dataUrl = png;
-            } else {
-              rmapId = P.addRasterMap(proj, { name: '地图', w: g.w, h: g.h, dataUrl: png }).id;
-              proj.baseRasterId = rmapId;
-            }
-            // 刚编好的网格就在手上，直接回填缓存：下次打开工坊或贴地都不必再解一次 PNG
-            session.gridCache.set(rmapId, g);
-          });
-          st.setWorkshopOpen(false);
-          st.toast('地图已保存');
-        },
-        onCancel() {
-          // 工坊是在缓存里那份网格上就地改的，取消时必须把它丢掉重新解码，
-          // 否则球上会一直留着改到一半的样子
-          if (binding) session.gridCache.delete(binding.rmapId);
-          store.getState().setWorkshopOpen(false);
-          applyStage();
-        },
-      },
-    });
-    s.setWorkshopOpen(true);
+      });
+      s.setWorkshopOpen(true);
+    } finally {
+      workshopOpening = false;
+    }
   }
 
   // ---------------------------------------------------------- UI 组装
@@ -156,12 +164,6 @@ async function main() {
   rig.onLevelChange = (level) => store.getState().syncCameraLevel(level);
   // 自转的每一帧把同样的旋转交给星场，背景星空在屏幕上不跟着转
   rig.onAutoSpin = (q) => globe.spinStars(q);
-  // 飞行开始时暂停自动旋转，避免「飞到了又被转走」
-  rig.onFlyStart = () => {
-    if (store.getState().viewConfig.rotation.enabled) {
-      store.getState().setViewConfig({ rotation: { enabled: false } });
-    }
-  };
   // 用户自己动了镜头：打断进行中的 flyTo，让用户立即接管镜头
   rig.onUserInterrupt = () => {}; // 回调保留，便于将来扩展镜头相关行为
 
@@ -285,9 +287,21 @@ async function main() {
   // ---------------------------------------------------------- 键盘
   addEventListener('keydown', (e) => {
     const s = store.getState();
+    // 加载页、地图工坊与编年史都是全屏浮层：键盘先归它们，别在背后改动编辑状态
+    if (s.loading || s.workshopOpen || s.chronicleOpen) return;
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
-    if (e.key === 'Escape' && s.mode !== 'browse') s.setMode('browse');
-    if (typing) return;
+    // 输入框里的 Esc / Enter 属于控件本身（收起候选、提交输入），中文组字时同理
+    if (typing || e.isComposing || e.defaultPrevented) return;
+    if (e.key === 'Escape') {
+      if (s.mode !== 'browse') s.setMode('browse');
+      // 鼠标点过的顶栏按钮会一直持有焦点；再按 Esc 属于键盘操作，浏览器会给它
+      // 补上 :focus-visible 轮廓，看上去像一圈卡住的高亮。退出时把焦点交还给页面。
+      const active = document.activeElement;
+      if (active?.closest?.('.topbar-inner')) active.blur();
+    }
+    // Enter 是按钮/链接的标准激活键，不能同时当成「完成绘制」；
+    // 方向键也只在画布这类非交互区域上才接管，免得抢走控件自己的键盘操作
+    if (e.target.closest?.('button, a, [role="button"]')) return;
     if (e.key === 'Enter' && (s.mode === 'draw-route' || s.mode === 'draw-region')) {
       s.commitDraw(s.mode === 'draw-route' ? 'route' : 'region'); // 点数不足时 commitDraw 自己会忽略
     }
