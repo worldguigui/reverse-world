@@ -92,7 +92,7 @@ export const createActionsSlice = (set, get) => ({
     }
   },
 
-  openWorkshop() { hooks.openWorkshop(); },
+  openWorkshop() { return hooks.openWorkshop(); },
 
   /** 采样某经纬度的归一化高度；没有地形时返回 null */
   sampleTerrain(lat, lng) {
@@ -151,10 +151,9 @@ export const createActionsSlice = (set, get) => ({
     await show('准备数据…', 0.01);
     try {
       const { project, grid } = await buildSampleProject(show);
-      // 建好的网格直接进缓存：否则 applyStage 还要把刚编码好的 PNG 再解码一遍
-      session.gridCache.set(project.baseRasterId, grid);
+      // 建好的网格随项目一起交给 loadProjectInto：它先清缓存再回填，不会多解一次 PNG
       await show('准备舞台…', 0.99);
-      get().loadProjectInto(project);
+      get().loadProjectInto(project, { grid });
       await waitForStage();
       await nextPaint();
       get().setLoading(null);

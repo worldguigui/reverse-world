@@ -157,6 +157,16 @@ export function Workshop({ container, preview }) {
   // 这一步必须排在下面挂画布之前：容器还 display:none 时量不出尺寸，算不出适应窗口的比例。
   useEffect(() => { container.classList.toggle('hidden', !open); }, [container, open]);
 
+  // 全屏层必须让背景真正不可操作：否则 Tab 会把焦点带到被工坊盖住的顶栏/检查器/
+  // 时间轴上，回车就能执行看不见的按钮（换世界、导入文件等），与工坊会话冲突。
+  useEffect(() => {
+    const background = ['topbar', 'inspector', 'timeline', 'settings']
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
+    for (const el of background) el.inert = open;
+    return () => { for (const el of background) el.inert = false; };
+  }, [open]);
+
   // 把网格的画布插进容器并装上涂抹/平移/缩放；关掉时原样摘走，画布留着下次用
   useEffect(() => {
     const canvas = open ? W.workshop.grid?.colorCanvas : null;
@@ -202,7 +212,9 @@ export function Workshop({ container, preview }) {
     return () => removeEventListener('keydown', onKey);
   }, [open, generating]);
 
-  if (!open) return null;
+  // 会话可能已经被项目替换/结束（见 main.js 的 onCommit 兜底）：
+  // 这里再守一道，宁可什么都不画，也不能在渲染里读 null.w
+  if (!open || !W.workshop.grid) return null;
   const grid = W.workshop.grid;
 
   const loadRealEarth = async () => {

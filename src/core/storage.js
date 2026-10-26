@@ -43,18 +43,76 @@ async function idbGet(key) {
   });
 }
 
+async function idbDelete(key) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).delete(key);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+const CORRUPT_PREFIX = `${KEY}-corrupt-`;
+
+/**
+ * 坏档备份失败时置位：本次会话禁止任何写入。
+ * 此时唯一副本还躺在 KEY 上，一次自动保存就会把它覆盖，而这个副本已经复制不出来了。
+ */
+let writesBlocked = false;
+
+/**
+ * 读取本机存档。结果必须区分「读不到库」「没有档」「有档但校验不过」：
+ * 三者混成同一个 null 时，坏档会被当成空世界，第一次自动保存就把唯一副本覆盖掉。
+ * @returns {Promise<{
+ *   status: 'ok'|'empty'|'unavailable'|'corrupt',
+ *   project: object|null,
+ *   error?: Error,
+ *   backupKey?: string|null,
+ * }>}
+ */
 export async function loadStoredProject() {
+  let raw;
   try {
-    const raw = await idbGet(KEY);
-    return raw ? normalizeProject(raw) : null;
+    raw = await idbGet(KEY);
   } catch (err) {
     console.warn('[storage] IndexedDB 不可用，本次会话不会自动保存：', err);
-    return null;
+    return { status: 'unavailable', project: null, error: err };
+  }
+  if (raw == null) return { status: 'empty', project: null };
+
+  try {
+    return { status: 'ok', project: normalizeProject(raw) };
+  } catch (err) {
+    // 坏档隔离：先原样备份到独立键，再清掉当前键。
+    // 不做这一步，用户随手「新建世界」就会用空白项目覆盖掉唯一副本。
+    const backupKey = `${CORRUPT_PREFIX}${new Date().toISOString()}`;
+    let savedKey = null;
+    try {
+      await idbPut(backupKey, raw);
+      savedKey = backupKey;
+    } catch (backupErr) {
+      // 备份不成功时原记录仍在 KEY 上：此时必须锁写。
+      // 触发条件不多（配额不足、磁盘写满类），但一旦发生就是不可逆的数据丢失。
+      writesBlocked = true;
+      console.error('[storage] 坏档备份失败，本次会话停止保存：', backupErr);
+    }
+    if (savedKey) {
+      try {
+        await idbDelete(KEY);
+      } catch (delErr) {
+        console.error('[storage] 坏记录清理失败：', delErr);
+      }
+    }
+    console.error('[storage] 上次的世界校验失败，已隔离：', savedKey ?? '（未备份）', err);
+    return { status: 'corrupt', project: null, error: err, backupKey: savedKey };
   }
 }
 
 /** 直接保存（导入、退出前 flush 用） */
 export async function saveNow(project) {
+  // 坏档还没复制出去：宁可不存新档，也不能覆盖唯一副本
+  if (writesBlocked) return false;
   try {
     await idbPut(KEY, project);
     return true;

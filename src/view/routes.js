@@ -89,14 +89,31 @@ export class RouteLayer {
     for (const { line, points } of this.byId.values()) {
       const pts = arcPositions(points, radiusFn);
       if (pts.length < 6) continue;
-      const attr = line.geometry.attributes.instanceStart;
-      if (!attr || attr.data.array.length !== pts.length) {
-        line.geometry.setPositions(pts); // 顶点数变了（理论上不会），走重建
+      const geom = line.geometry;
+      const attr = geom.attributes.instanceStart;
+      const buf = attr?.data;
+      // LineGeometry.setPositions 把 N 个点展开成 N-1 段、每段 6 个 float 的交错缓冲，
+      // 长度是 6N-6；pts 是 3N。拿 3N 去比永远对不上，会每次都走重建。
+      const need = pts.length * 2 - 6;
+      if (!buf || buf.array.length !== need) {
+        // 顶点数真的变了：setPositions 会新建 InstancedInterleavedBuffer，
+        // 旧的 GPU buffer 只有 dispose 几何时才释放，否则每次重排都漏一份
+        geom.dispose();
+        geom.setPositions(pts);
         continue;
       }
-      attr.data.array.set(pts);
-      attr.data.needsUpdate = true;
-      line.geometry.computeBoundingSphere(); // 拾取要按新顶点算
+      const arr = buf.array;
+      // 原地按线段对写入：第 i 段 arr[6i..6i+5] = pts[3i..3i+5]
+      for (let d = 0, s = 0; d < need; d += 6, s += 3) {
+        arr[d] = pts[s];
+        arr[d + 1] = pts[s + 1];
+        arr[d + 2] = pts[s + 2];
+        arr[d + 3] = pts[s + 3];
+        arr[d + 4] = pts[s + 4];
+        arr[d + 5] = pts[s + 5];
+      }
+      buf.needsUpdate = true;
+      geom.computeBoundingSphere(); // 拾取要按新顶点算
     }
   }
 

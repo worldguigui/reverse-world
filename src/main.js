@@ -175,6 +175,16 @@ async function main() {
           onCommit(g) {
             const st = store.getState();
             const png = g.encodePNG();
+            // 工坊打开期间项目可能已被替换（例如键盘或脚本触发换世界）：
+            // 会话里的网格属于旧世界，绝不能再把旧地形写进去。
+            // 项目对象只在换世界时被替换，普通编辑都原地改，所以引用比较就能认出换档；
+            // 再看一眼绑定的地图是否还在，兜住同一项目内被删掉底图的情况
+            if (st.project !== p || (binding && !P.getRasterMap(st.project, binding.rmapId))) {
+              st.setWorkshopOpen(false);
+              st.toast('世界已被替换，本次工坊改动已丢弃');
+              applyStage();
+              return;
+            }
             // 先把新地形接上，再改数据——改数据会立刻触发整层重建，
             // 那时 terrainRadius 读到的必须是新网格，否则内容会按旧高度贴一次地
             session.currentGrid = g;
@@ -203,6 +213,12 @@ async function main() {
         },
       });
       s.setWorkshopOpen(true);
+    } catch (err) {
+      // 解码失败（dataUrl 损坏、位深/颜色类型不支持）不能静默：
+      // 没有 catch 时这里是一条未处理的 rejection，面板不开、也没有任何提示
+      console.error('[workshop] 打开失败：', err);
+      if (W.workshop.grid) W.endWorkshop(); // 万一已经建到一半，清掉半成品会话
+      store.getState().toast(`地图工坊打不开：${err.message}`);
     } finally {
       workshopOpening = false;
     }
@@ -391,13 +407,26 @@ async function main() {
 
   // ---------------------------------------------------------- 启动
   const restored = await loadStoredProject();
-  if (restored) {
+  if (restored.status === 'corrupt') {
+    // 坏档已被隔离；必须让用户看见，否则「世界没了」会被当成数据丢失事故
+    const reason = restored.error?.message ?? String(restored.error);
+    alert(restored.backupKey
+      ? `上次的世界读取失败：${reason}\n\n原数据已原样备份到 IndexedDB 键「${restored.backupKey}」，`
+        + '可从开发者工具（Application → IndexedDB → worldbuilding-tool → kv）复制后重新导入。\n'
+        + '本次从空白世界开始。'
+      : `上次的世界读取失败：${reason}\n\n备份失败，原记录仍留在 IndexedDB 键「current-project」。`
+        + '本次会话已停止自动保存，新建或导入都不会覆盖它。\n'
+        + '请先用开发者工具（Application → IndexedDB → worldbuilding-tool → kv）复制这条记录，再刷新页面。');
+  } else if (restored.status === 'unavailable') {
+    store.getState().toast('本机存储不可用：本次不会自动保存，请记得导出');
+  }
+  if (restored.project) {
     // 恢复的世界可能在球上贴一张大图：先立起加载页，等舞台贴完再让它退场。
     // 这里不等 rAF：地图解码本身是异步的，浏览器总有机会先把加载页画出来；
     // 反过来在后台标签页里等 rAF 会一直等不到，把整个启动卡住。
     store.getState().setLoading({ title: '正在恢复上次的世界', detail: '准备地图…', progress: null });
     try {
-      store.getState().hydrateProject(restored);
+      store.getState().hydrateProject(restored.project);
       await waitForStage();
     } finally {
       // 恢复失败也要收掉：加载页在最上层，留着会把下面的启动失败提示一起盖住

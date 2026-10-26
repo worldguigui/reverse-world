@@ -77,12 +77,19 @@ export function encodePngRgba(width, height, rgba) {
  * 只接受 8 位、非隔行的 RGB / RGBA；其他格式直接报错，避免静默读错地形。
  * @returns {{ width: number, height: number, data: Uint8Array }}
  */
-export function decodePngRgba(dataUrl) {
-  return decodePngBytes(base64ToBytes(dataUrl));
+/**
+ * @param {string} dataUrl
+ * @param {{ maxCells?: number }} [opts]
+ */
+export function decodePngRgba(dataUrl, opts = {}) {
+  return decodePngBytes(base64ToBytes(dataUrl), opts);
 }
 
+/** 地形 PNG 的格数上限：内置真实地球 2048×1024，再留四倍余量 */
+export const MAX_TERRAIN_CELLS = 4096 * 2048;
+
 /** 解码 PNG 字节流；与 decodePngRgba 共用同一套解析逻辑，便于单独测试。 */
-export function decodePngBytes(bytes) {
+export function decodePngBytes(bytes, { maxCells = MAX_TERRAIN_CELLS } = {}) {
   if (bytes.length < 8 || PNG_SIGNATURE.some((b, i) => bytes[i] !== b)) {
     throw new Error('不是有效的 PNG 文件');
   }
@@ -123,11 +130,22 @@ export function decodePngBytes(bytes) {
     throw new Error(`不支持颜色类型 ${colorType} 的地形 PNG`);
   }
   if (!idat.length) throw new Error('PNG 缺少图像数据');
+  // IHDR 宽高都是 4 字节无符号：构造一份 65535×65535 的头，
+  // 下面的 Float32Array/canvas 分配会直接吃掉十几 GB
+  if (width * height > maxCells) {
+    throw new Error(`地形 PNG 尺寸过大：${width}×${height}`);
+  }
 
   const bpp = colorType === 6 ? 4 : 3;
   const stride = width * bpp;
-  const raw = unzlibSync(concatBytes(idat));
-  if (raw.length < height * (stride + 1)) throw new Error('PNG 图像数据不完整');
+  const expected = height * (stride + 1);
+  // 解压输出按声明尺寸开缓冲区：fflate 拿到 out 后不再扩容，超出部分被丢弃，
+  // 内存因此钉在 expected 量级（否则几 MB 的压缩流能在解压时把标签页撑爆）。
+  // 多开 1 字节用来发现「解出来的比声明的更多」。
+  const out = new Uint8Array(expected + 1);
+  const raw = unzlibSync(concatBytes(idat), { out });
+  if (raw.length < expected) throw new Error('PNG 图像数据不完整');
+  if (raw.length > expected) throw new Error('PNG 图像数据与声明尺寸不符');
 
   const data = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) {
@@ -138,13 +156,13 @@ export function decodePngBytes(bytes) {
       ? raw.subarray((y - 1) * (stride + 1) + 1, (y - 1) * (stride + 1) + 1 + stride)
       : new Uint8Array(stride);
     unfilterRow(filter, line, prev, bpp);
-    const out = y * width * 4;
+    const outRow = y * width * 4;
     if (bpp === 4) {
-      data.set(line, out);
+      data.set(line, outRow);
     } else {
       for (let x = 0; x < width; x++) {
         const s = x * 3;
-        const d = out + x * 4;
+        const d = outRow + x * 4;
         data[d] = line[s];
         data[d + 1] = line[s + 1];
         data[d + 2] = line[s + 2];

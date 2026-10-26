@@ -127,6 +127,9 @@ export const createWorldSlice = (set, get) => ({
   newProject() {
     if (P.hasContent(get().project)
         && !confirm('当前世界尚未导出，新建会覆盖自动保存的内容，确定？')) return;
+    // 缓存键是地图 id，同一份世界的旧导出/云存档会沿用同一个 id；
+    // 不清掉的话，之后载入的旧档会直接命中上一份网格
+    session.gridCache.clear();
     const fresh = P.createProject();
     set({
       project: fresh, cursor: 0, selection: null, mode: 'browse', newCharacterId: null,
@@ -141,6 +144,7 @@ export const createWorldSlice = (set, get) => ({
 
   /** 启动时从 IndexedDB 恢复：只装载并对齐三维视图，不回写保存 */
   hydrateProject(project) {
+    session.gridCache.clear();
     const cursor = defaultCursor(project);
     const viewFilter = P.noView();
     set({
@@ -151,8 +155,17 @@ export const createWorldSlice = (set, get) => ({
     get().touchStage();
   },
 
-  /** 载入一份完整项目（示例世界 / 导入文件共用） */
-  loadProjectInto(project) {
+  /**
+   * 载入一份完整项目（示例世界 / 导入文件 / 云存档共用）。
+   * @param {object} project
+   * @param {{ grid?: object }} [options] grid：调用方已经解好的网格，直接回填缓存
+   */
+  loadProjectInto(project, { grid } = {}) {
+    // 同一个世界 id 会在不同版本之间复用，旧网格必须作废：
+    // 否则 applyStage 命中的是会话里那份更新的地形，载入的旧档根本不显示，
+    // 之后工坊点「完成」还会把这份旧地形写回项目。
+    session.gridCache.clear();
+    if (grid && project.baseRasterId) session.gridCache.set(project.baseRasterId, grid);
     const cursor = defaultCursor(project);
     const viewFilter = P.noView();
     set({
