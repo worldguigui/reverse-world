@@ -3,12 +3,12 @@ import { useStore } from '../../store/index.js';
 import * as W from '../workshop-session.js';
 
 /**
- * 五支画笔分两组：
+ * 五支画笔分两组，笔刷统一是正方形：
  * 形态组改高度，并用「高度基色」按新高度与坡度重算被涂格的 RGB565 地表色——
  * 0 高度的平地就是基色，越高越亮、越低越暗，坡度再叠一层西北光明暗，
  * 起伏与沟壑在顶视图里都看得见；颜色组只改地表色，不动高度。
- * 颜色仍然可以画得与物理无关：抬高后再刷成蓝色的高山、绿色盆地
- * 都保持原样，直到下一次形态笔经过。
+ * 颜色笔按矩形满铺，重复点击结果不变；上色时可以额外开启「加入阴影」，
+ * 按地形坡度给所选颜色叠明暗。手动颜色一直保留到下一次形态笔经过该格。
  */
 const TOOL_GROUPS = [
   ['形态', [
@@ -27,8 +27,8 @@ const TOOL_WRITES = {
   raise: '写入：高度 + 按高度/坡度重算基色',
   lower: '写入：高度 + 按高度/坡度重算基色',
   smooth: '写入：高度 + 按高度/坡度重算基色',
-  paint: '写入：颜色（RGB565，不动高度）',
-  clearColor: '写入：颜色（RGB565，不动高度）',
+  paint: '写入：颜色（RGB565，矩形满铺，不动高度）',
+  clearColor: '写入：颜色（RGB565，矩形满铺，不动高度）',
 };
 
 /**
@@ -49,8 +49,8 @@ export function Workshop({ container }) {
   const storedSize = useStore((s) => s.workshopSize);
   const strength = useStore((s) => s.workshopStrength);
   const hard = useStore((s) => s.workshopHard);
-  const shape = useStore((s) => s.workshopShape);
   const color = useStore((s) => s.workshopColor);
+  const paintShadow = useStore((s) => s.workshopPaintShadow);
   const heightColor = useStore((s) => s.workshopHeightColor);
   const canUndo = useStore((s) => s.canUndo);
   const canRedo = useStore((s) => s.canRedo);
@@ -61,9 +61,10 @@ export function Workshop({ container }) {
   const wrapRef = useRef(null);
 
   // 上限跟着当前栅格的分辨率走（见 brushSizeMax）。store 里的值可能是上一张网格留下的，
-  // 读数与滑块都夹到当前上限，免得显示一个落不到的数
+  // 读数与滑块都夹到当前上限，免得显示一个落不到的数；滑块只停奇数，显示值也取奇数
   const sizeMax = W.brushSizeMax();
-  const size = Math.min(storedSize, sizeMax);
+  const clampedSize = Math.min(storedSize, sizeMax);
+  const size = clampedSize % 2 === 1 ? clampedSize : clampedSize + 1;
 
   // 容器常驻 DOM，只切 .hidden——不卸载，E2E 与样式都按这个来。
   // 这一步必须排在下面挂画布之前：容器还 display:none 时量不出尺寸，算不出适应窗口的比例。
@@ -183,67 +184,62 @@ export function Workshop({ container }) {
             />
           </div>
 
-          <div className="wk-slider">
-            <span className="field-label">笔形</span>
-            <div className="wk-row" role="group" aria-label="笔形">
-              <button
-                type="button"
-                className={`wk-tool${shape === 'round' ? ' active' : ''}`}
-                aria-pressed={shape === 'round'}
-                onClick={() => setWorkshopBrush({ workshopShape: 'round' })}
-              >
-                ● 圆形
-              </button>
-              <button
-                type="button"
-                className={`wk-tool${shape === 'square' ? ' active' : ''}`}
-                aria-pressed={shape === 'square'}
-                onClick={() => setWorkshopBrush({ workshopShape: 'square' })}
-              >
-                ■ 方形
-              </button>
-            </div>
-          </div>
+          {tool === 'paint' && (
+            <button
+              className={`btn wk-tool${paintShadow ? ' active' : ''}`}
+              aria-pressed={paintShadow}
+              title={'开启后，上色会按当前地形坡度给所选颜色叠明暗：只改亮度，不改色相。关闭则平涂精确颜色'}
+              onClick={() => setWorkshopBrush({ workshopPaintShadow: !paintShadow })}
+            >
+              {paintShadow ? '🌗 已加入阴影' : '🌑 加入阴影'}
+            </button>
+          )}
 
           <div className="wk-slider">
-            <span className="field-label">笔刷大小 </span><b>{size} 格</b>
+            <span className="field-label">笔刷边长 </span><b>{size} 格</b>
             <input
               type="range"
               min={1}
               max={sizeMax}
+              step={2}
               value={size}
               onChange={(e) => setWorkshopBrush({ workshopSize: +e.target.value })}
             />
           </div>
 
-          <div className="wk-slider">
-            <span className="field-label">{colorTool ? '颜料浓度' : '厚度'} </span>
-            <b>{Math.round(strength * 100)}%</b>
-            <input
-              type="range"
-              min={1}
-              max={500}
-              value={Math.round(strength * 100)}
-              onChange={(e) => setWorkshopBrush({ workshopStrength: +e.target.value / 100 })}
-            />
-          </div>
+          {!colorTool && (
+            <>
+              <div className="wk-slider">
+                <span className="field-label">厚度 </span>
+                <b>{Math.round(strength * 100)}%</b>
+                <input
+                  type="range"
+                  min={1}
+                  max={500}
+                  value={Math.round(strength * 100)}
+                  onChange={(e) => setWorkshopBrush({ workshopStrength: +e.target.value / 100 })}
+                />
+              </div>
 
-          <button
-            className={`btn wk-tool${hard ? ' active' : ''}`}
-            title={'开：半径内全强度，无扩散——画垂直悬崖 / 高塔 / 笔直边界\n关：高斯衰减的软笔，自然平滑山脉'}
-            onClick={() => setWorkshopBrush({ workshopHard: !hard })}
-          >
-            {hard ? '■ 硬笔（无扩散）' : '● 软笔（高斯）'}
-          </button>
+              <button
+                className={`btn wk-tool${hard ? ' active' : ''}`}
+                title={'开：矩形内全强度，无扩散——画垂直悬崖 / 高塔 / 笔直边界\n关：从四边向中心衰减的软笔，自然平滑山脉'}
+                onClick={() => setWorkshopBrush({ workshopHard: !hard })}
+              >
+                {hard ? '■ 硬笔（无扩散）' : '● 软笔（高斯）'}
+              </button>
+            </>
+          )}
 
           <p className="insp-hint">
             形态笔改高低，并按「高度基色」重算被涂格的地表色：越高越亮、越低越暗，
             坡度再叠一层西北光明暗，山脊与沟壑会重新显出来；压回原高度颜色也会恢复。
-            颜色笔只改色、不动高度；形态笔再经过时，这些格子会以基色为准重新着色。
-            颜色存成 RGB565，换设备打开仍是同一套颜色。
+            颜色笔按矩形满铺、不动高度，重复点击同一格结果不变；形态笔再经过时，
+            这些格子会以基色为准重新着色。「加入阴影」让上色按当前坡度叠明暗，
+            只改亮度、不改色相，平地上仍是精确的所选色。
             <br />
-            圆形笔按半径覆盖，方形笔按边长覆盖；硬笔=半径内全强度，画垂直悬崖/方柱/笔直边界，
-            软笔=高斯自然过渡。按住拖动连续涂抹。
+            笔刷是正方形，边长恒为奇数：1 格只涂指针所在格，更大的以该格为中心
+            向四周对称展开。硬笔=矩形内全强度，软笔=从四边向中心衰减。
             <br />
             <b>滚轮</b>缩放（以光标为中心），<b>Shift+左键 / 中键 / 右键拖动</b>平移。
             笔刷最小 1 格，放大到看得清落点再抠细节。

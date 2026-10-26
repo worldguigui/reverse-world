@@ -102,12 +102,14 @@ export const createActionsSlice = (set, get) => ({
   /**
    * 用画笔在指定经纬度改地形（编程接口/自动化用）。
    * 画笔改的是内存里的网格，必须重新编码回 PNG 才会被持久化。
-   * color 只对 paint 笔有效；reliefColor 是高度笔的基色，颜色还会叠加
-   * 高度明暗与坡度明暗；shape 对高度笔和颜色笔都有效。
+   * size 是正方形笔刷的边长（格，按奇数处理）：1 只涂落点所在格，
+   * 更大的奇数以该格为中心向四周展开；偶数向上取到相邻奇数。
+   * color 只对 paint 笔有效；shadow 让 paint 按坡度给颜色叠明暗（只改亮度）；
+   * reliefColor 是高度笔的基色。
    */
   paintTerrain(lat, lng, {
-    tool = 'raise', size = 10, strength = 0.08, passes = 1,
-    hard = false, shape = 'round', color = '#2e7aa0', reliefColor = '#6f8f5a',
+    tool = 'raise', size = 9, strength = 0.08, passes = 1,
+    hard = false, shadow = false, color = '#2e7aa0', reliefColor = '#6f8f5a',
   } = {}) {
     const g = session.currentGrid;
     const p = get().project;
@@ -115,11 +117,11 @@ export const createActionsSlice = (set, get) => ({
     const cx = ((lng + 180) / 360) * g.w;
     const cy = ((90 - lat) / 180) * g.h;
     const color565 = hexTo565(tool === 'paint' ? color : reliefColor);
-    // 每一笔返回的脏区都一样（同一个圆心、同一个半径），最后那个就是并集；
+    // 每一笔返回的脏区都一样（同一个落点、同一个边长），最后那个就是并集；
     // 拿它去重绘颜色画布，省掉整张网格的全量重算
     let dirty = null;
     for (let i = 0; i < passes; i++) {
-      dirty = g.applyBrush(tool, cx, cy, size, strength, hard, shape, color565);
+      dirty = g.applyBrush(tool, cx, cy, size, strength, hard, color565, shadow);
     }
     g.renderColor(dirty);
     // 这里刻意不走 mutateProject：它会连 derived 快照一起重建，而 bridge 一见 derived

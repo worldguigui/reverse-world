@@ -39,15 +39,19 @@ const BRUSH_MAX_CELLS = 48;
 const BRUSH_REF_W = 512;
 
 /**
- * 笔刷大小上限（格）。
+ * 笔刷大小上限（格，奇数）。
  *
  * 「格」是相对单位：同样 48 格，栅格宽一倍，盖住的地面就只剩一半。
  * 按栅格宽度缩放上限，滑块两端盖住的地面范围才与分辨率无关——
  * 否则换一档分辨率，同一支笔就成了另一支笔。
  */
-export const brushSizeMax = () => Math.round(
-  (BRUSH_MAX_CELLS * (workshop.grid?.w ?? BRUSH_REF_W)) / BRUSH_REF_W,
-);
+export const brushSizeMax = () => {
+  const n = Math.round(
+    (BRUSH_MAX_CELLS * (workshop.grid?.w ?? BRUSH_REF_W)) / BRUSH_REF_W,
+  );
+  // 滑块只能停在奇数上；上限也取奇数，免得上限本身选不到
+  return Math.max(1, n % 2 === 1 ? n : n - 1);
+};
 
 /** 把撤销/重做的可用态同步给按钮 */
 function syncFlags() {
@@ -409,9 +413,10 @@ function paint(canvas, e) {
   const g = workshop.grid;
   // 上色笔用颜料色；形态笔用高度基色，画笔内部按最终高度和坡度重算颜色
   const brushColor = st.workshopTool === 'paint' ? st.workshopColor : st.workshopHeightColor;
+  // 颜色笔直接写目标色，重复点击结果不变；「加入阴影」只影响 paint，按坡度给目标色叠明暗
   const dirty = g.applyBrush(
     st.workshopTool, gx, gy, size, st.workshopStrength,
-    st.workshopHard, st.workshopShape, hexTo565(brushColor),
+    st.workshopHard, hexTo565(brushColor), st.workshopPaintShadow,
   );
   if (!dirty) return;
   g.renderColor(dirty);

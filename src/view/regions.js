@@ -145,12 +145,14 @@ export class RegionLayer {
     this._applyStyles();
   }
 
-  /** 射线拾取填充面，返回区域 id 或 null */
-  pick(raycaster) {
+  /** 射线拾取填充面，返回区域 id 或 null。cameraPosition 用来排除地球背面的命中 */
+  pick(raycaster, cameraPosition) {
     // 不在场的区域只是 visible=false，射线不看这个标志，得自己筛掉
     const meshes = [...this.byId.values()].map((e) => e.fill).filter((f) => f && f.visible);
     const hits = raycaster.intersectObjects(meshes, false);
-    return hits.length ? hits[0].object.userData.itemId : null;
+    // 填充面是双面材质，射线会命中地球背面；只接受与相机同侧（点积为正）的命中
+    const hit = hits.find((h) => !cameraPosition || h.point.dot(cameraPosition) > 0);
+    return hit ? hit.object.userData.itemId : null;
   }
 
   // ------------------------------------------------ 绘制预览

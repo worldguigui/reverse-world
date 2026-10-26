@@ -32,11 +32,11 @@ export const createUISlice = (set, get) => ({
   workshopOpen: false,
   // 工坊的画笔参数与撤销可用态。网格、撤销栈太大，放在 ui/workshop-session.js 的模块级会话对象里
   workshopTool: 'raise',   // raise | lower | smooth | paint | clearColor
-  workshopSize: 8,
+  workshopSize: 9,         // 正方形笔刷的边长（格，奇数）
   workshopStrength: 0.08,
-  workshopHard: true,      // true=硬笔（无扩散），false=软笔（高斯）
-  workshopShape: 'round',  // round | square
+  workshopHard: true,      // 形态笔：true=硬笔（全强度），false=软笔（向四边衰减）
   workshopColor: '#2e7aa0', // 上色笔的颜色（#rrggbb）；存成 PNG 时会量化到 RGB565
+  workshopPaintShadow: false, // 上色时按坡度给颜色叠明暗；只改亮度，不改色相
   workshopHeightColor: '#6f8f5a', // 高度笔的基色：0 高度的平地用它，越高越亮、越低越暗，坡度另算明暗
   workshopShowOverlay: false, // 是否把已有路线/区域作为只读参考叠在画布上
   workshopZoom: 1,         // 画布缩放倍数（1 = 适应窗口），只给顶栏读数用
@@ -137,8 +137,8 @@ export const createUISlice = (set, get) => ({
   /** 每次开工坊都从默认画笔开始（撤销栈由会话对象自己清零） */
   resetWorkshopBrush() {
     set({
-      workshopTool: 'raise', workshopSize: 8, workshopStrength: 0.08,
-      workshopHard: true, workshopShape: 'round', workshopColor: '#2e7aa0',
+      workshopTool: 'raise', workshopSize: 9, workshopStrength: 0.08,
+      workshopHard: true, workshopColor: '#2e7aa0', workshopPaintShadow: false,
       workshopHeightColor: '#6f8f5a',
       workshopShowOverlay: false, workshopZoom: 1,
       canUndo: false, canRedo: false,

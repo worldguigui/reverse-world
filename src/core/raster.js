@@ -7,7 +7,9 @@
  * 重算被涂格的颜色，让顶视图里也看得出起伏与沟壑；手动涂色会一直保留，
  * 直到下一次形态笔经过该格。
  *
- * 画笔支持「软笔（高斯衰减）/ 硬笔（方波硬边）」与圆形 / 方形两种笔形。
+ * 画笔是正方形：大小就是边长，支持「软笔（向四边衰减）/ 硬笔（全强度）」。
+ * 边长总是奇数，因此恒有中心格：以指针所在格为中心向四周对称展开，
+ * 边长 1 只落指针所在的那一格。
  * PNG 编码：R+G 打包 16-bit 高度，B+A 打包 RGB565 颜色。
  * 颜色在 alpha 通道里，而 canvas 会预乘 alpha、破坏低位数据，所以 PNG 编解码
  * 都直接走字节，不经过 canvas（见 core/png.js）；球面高度纹理画布也让 alpha
@@ -61,59 +63,47 @@ export class TerrainGrid {
   // ---------------------------------------------------------------- 画笔
 
   /**
-   * 在格点 (cx, cy) 应用画笔：
+   * 在格点 (cx, cy) 应用正方形画笔：
    *   raise / lower / smooth → 改高度，再按最终高度与坡度重算颜色
    *   paint / clearColor     → 只改颜色，不动高度
    * @param {'raise'|'lower'|'smooth'|'paint'|'clearColor'} kind
-   * @param {number} radius 半径（格）。1 = 只落当前这一格（最小笔刷）
-   * @param {number} strength 强度：高度笔是归一化高度增量，颜色笔是颜料浓度
-   * @param {boolean} [hard=false] true=硬笔（半径内全强度，不做衰减）
-   * @param {'round'|'square'} [shape='round'] 圆形按欧氏距离，方形按最大轴向距离
+   * @param {number} size 边长（格）。恒按奇数处理，偶数向上取到相邻奇数；
+   *   1 = 只落指针所在的那一格
+   * @param {number} strength 强度：高度笔是归一化高度增量；颜色笔不读取
+   * @param {boolean} [hard=false] true=全强度硬笔；false=向四边衰减的软笔
    * @param {number} [color=0] paint 笔写入的 RGB565 颜色；高度笔用作高度基色
+   * @param {boolean} [shadow=false] paint 笔按当前坡度给颜色叠明暗；只改亮度，不改色相
    * @returns {[x,y,w,h]|null} 受影响矩形（渲染脏区）
    */
-  applyBrush(kind, cx, cy, radius, strength, hard = false, shape = 'round', color = 0) {
-    const x0 = Math.max(0, Math.floor(cx - radius) - 1);
-    const y0 = Math.max(0, Math.floor(cy - radius) - 1);
-    const x1 = Math.min(this.w - 1, Math.ceil(cx + radius) + 1);
-    const y1 = Math.min(this.h - 1, Math.ceil(cy + radius) + 1);
+  applyBrush(kind, cx, cy, size, strength, hard = false, color = 0, shadow = false) {
+    const rounded = Math.max(1, Math.round(size));
+    // 只有奇数边长才有中心格；外部传入偶数时向上取到相邻奇数
+    const side = rounded % 2 === 1 ? rounded : rounded + 1;
+    // 格 (x,y) 覆盖 [x,x+1)；指针落在哪一格，就用那一格作中心向四周展开
+    const anchorX = Math.floor(cx);
+    const anchorY = Math.floor(cy);
+    const before = (side - 1) / 2;
+    const bx0 = anchorX - before;
+    const by0 = anchorY - before;
+    const bx1 = anchorX + before;
+    const by1 = anchorY + before;
     // 笔完全落在画布外时没有脏区；负宽高不能交给 putImageData
-    if (x0 > x1 || y0 > y1) return null;
-    const r2 = radius * radius;
-    const square = shape === 'square';
-
-    // 半径 1 是「一格笔刷」：只落指针所在的那一格（格 (x,y) 覆盖 [x,x+1)，中心在 x+0.5）。
-    // 不能走距离判据——正交的四个邻居距离正好等于 1，会被一并圈进来，
-    // 变成十字形的 5 格，那不是「1 像素」。
-    const single = radius <= 1;
-    const tx = Math.floor(cx);
-    const ty = Math.floor(cy);
-    if (single && (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h)) return null;
+    if (bx1 < 0 || by1 < 0 || bx0 >= this.w || by0 >= this.h) return null;
+    const x0 = Math.max(0, bx0);
+    const y0 = Math.max(0, by0);
+    const x1 = Math.min(this.w - 1, bx1);
+    const y1 = Math.min(this.h - 1, by1);
 
     const heightKind = kind === 'raise' || kind === 'lower' || kind === 'smooth';
-    // 高度笔下真正被改到的格子范围；颜色要等高度全部落定后再按这个范围重算
-    let ax0 = Infinity, ay0 = Infinity, ax1 = -Infinity, ay1 = -Infinity;
+    // 软笔从矩形四边向中心衰减。用矩形内的实际位置算，奇偶边长都成立；
+    // 边长 1 只有中心格，衰减恒为 1。
+    const half = side / 2;
 
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
-        const dx = x - cx, dy = y - cy;
-        let d2;
-        if (single) {
-          if (x !== tx || y !== ty) continue;
-          d2 = 0;
-        } else if (square) {
-          const ax = Math.abs(dx), ay = Math.abs(dy);
-          // 方形笔的边界由切比雪夫距离决定；衰减仍用这个距离，
-          // 这样软笔的方形四角会自然变淡，而不是一圈硬角。
-          d2 = Math.max(ax * ax, ay * ay);
-          if (d2 > r2) continue;
-        } else {
-          d2 = dx * dx + dy * dy;
-          if (d2 > r2) continue;
-        }
         const i = this.idx(x, y);
-        // fall 决定该格影响力度：硬笔=1（半径内全强度），软笔=高斯衰减边缘趋 0
-        const fall = hard ? 1 : Math.exp((-4.5 * d2) / Math.max(1e-6, r2));
+        const edge = Math.min(x - x0 + 0.5, x1 - x + 0.5, y - y0 + 0.5, y1 - y + 0.5);
+        const fall = hard ? 1 : Math.exp(-4.5 * (1 - Math.min(1, edge / half)) ** 2);
         if (heightKind) {
           if (kind === 'smooth') {
             const avg = this._neighborAvg(x, y);
@@ -122,39 +112,36 @@ export class TerrainGrid {
             // 画笔纯累加，不做任何高度 clamp——开发者绝对自由
             this.height[i] += (kind === 'raise' ? 1 : -1) * strength * fall;
           }
-          if (x < ax0) ax0 = x;
-          if (y < ay0) ay0 = y;
-          if (x > ax1) ax1 = x;
-          if (y > ay1) ay1 = y;
           continue;
         }
-        // 颜色笔按浓度混合到现有颜色里；去色则混合回按高度与坡度生成的地形色。
-        // 颜色是独立通道，不动高度。
-        const target = kind === 'paint' ? color : this._autoColor565(x, y);
-        const alpha = Math.min(1, strength * 10) * fall;
-        this.color[i] = blend565(this.color[i], target, alpha);
+        // 颜色笔每次直接写目标色，不按浓度混合：同一格点两次和一次结果相同。
+        // 上色可以按坡度加一层明暗，关闭时就是精确的平涂色；去色回到自动地形色。
+        if (kind === 'paint') {
+          this.color[i] = shadow
+            ? shadeColor565(color, this._shadeAt(x, y) / FLAT_SHADE)
+            : color;
+        } else {
+          this.color[i] = this._autoColor565(x, y);
+        }
       }
     }
 
     // 高度先全部写完，再统一重着色：否则同一次落笔里，先算的格子会读到
     // 一半新、一半旧的邻居高度，坡面颜色随扫描方向偏。
-    // 重着色会向外扩一格：边界格自己的高度没变，但邻居变了，坡度也变了。
-    if (heightKind && ax0 <= ax1) this._recolorHeightArea(ax0, ay0, ax1, ay1, color);
+    // 重着色范围与画笔矩形完全相同，画笔不会碰它没选中的格子。
+    if (heightKind) this._recolorHeightArea(x0, y0, x1, y1, color);
     return [x0, y0, x1 - x0 + 1, y1 - y0 + 1];
   }
 
   /**
    * 按当前高度重算一片格子的地表色，只写颜色、不碰高度。
+   * 范围就是画笔矩形本身；矩形外的格子即使坡度受影响也保持原色。
    * @param {number} x0 受高度影响的格子范围（含端点）
    * @param {number} color 高度基色（RGB565）
    */
   _recolorHeightArea(x0, y0, x1, y1, color) {
-    const rx0 = Math.max(0, x0 - 1);
-    const ry0 = Math.max(0, y0 - 1);
-    const rx1 = Math.min(this.w - 1, x1 + 1);
-    const ry1 = Math.min(this.h - 1, y1 + 1);
-    for (let y = ry0; y <= ry1; y++) {
-      for (let x = rx0; x <= rx1; x++) {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
         const i = this.idx(x, y);
         // 以平地为基准：平地不改变基色，坡面才在此之上加亮或压暗
         this.color[i] = heightTint565(color, this.height[i], this._shadeAt(x, y) / FLAT_SHADE);
@@ -415,6 +402,24 @@ export function unpack565(c) {
 }
 
 /**
+ * 只按坡度调整亮度，保留色相：factor = 1 时原样返回。
+ * 上色笔的「加入阴影」用它，把地形明暗乘到所选颜色上，而不替换颜色本身。
+ */
+export function shadeColor565(base, factor) {
+  if (factor === 1) return base;
+  const r5 = (base >>> 11) & 0x1f;
+  const g6 = (base >>> 5) & 0x3f;
+  const b5 = base & 0x1f;
+  const r8 = (r5 << 3) | (r5 >>> 2);
+  const g8 = (g6 << 2) | (g6 >>> 4);
+  const b8 = (b5 << 3) | (b5 >>> 2);
+  const r = clampI(Math.round(r8 * factor), 0, 255);
+  const g = clampI(Math.round(g8 * factor), 0, 255);
+  const b = clampI(Math.round(b8 * factor), 0, 255);
+  return ((r >>> 3) << 11) | ((g >>> 2) << 5) | (b >>> 3);
+}
+
+/**
  * 地形着色：基色先按高度调明暗，再乘坡度阴影。
  * 高度 0 且平地就是基色，越高越亮、越低越暗；|h|/(|h|+0.5) 软饱和，
  * -4..4 整个设计域都有响应，h=1 与 h=4 不会压成同一种颜色。
@@ -450,18 +455,6 @@ export function hexTo565(hex) {
   if (!m) return OCEAN_COLOR;
   const n = parseInt(m[1], 16);
   return pack565((n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff);
-}
-
-/** 在两个 RGB565 颜色之间按 t 混合；直接在各通道上插值，避免反复量化 */
-function blend565(a, b, t) {
-  if (t <= 0) return a;
-  if (t >= 1) return b;
-  const ar = (a >>> 11) & 0x1f, ag = (a >>> 5) & 0x3f, ab = a & 0x1f;
-  const br = (b >>> 11) & 0x1f, bg = (b >>> 5) & 0x3f, bb = b & 0x1f;
-  const r = Math.round(ar + (br - ar) * t);
-  const g = Math.round(ag + (bg - ag) * t);
-  const bl = Math.round(ab + (bb - ab) * t);
-  return (r << 11) | (g << 5) | bl;
 }
 
 // ---------------------------------------------------------------- 工具函数

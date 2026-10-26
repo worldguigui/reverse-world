@@ -190,7 +190,7 @@ async function main() {
     // 点河永远先命中那大片区域，只能从区域外露出来的那截河选中
     const routeId = routes.pick(raycaster, camera.position);
     if (routeId) return { kind: 'route', id: routeId };
-    const regionId = regions.pick(raycaster);
+    const regionId = regions.pick(raycaster, camera.position);
     if (regionId) return { kind: 'region', id: regionId };
     return null;
   }

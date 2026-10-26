@@ -73,7 +73,8 @@ export function installAPI({ ctx, project, cursor }) {
     /**
      * 在指定经纬度涂画笔：
      * { tool: 'raise'|'lower'|'smooth'|'paint'|'clearColor',
-     *   size, strength, passes, hard, shape: 'round'|'square',
+     *   size（正方形边长，格，按奇数处理）, strength, passes, hard,
+     *   shadow（仅 paint：按坡度给颜色叠明暗，只改亮度）,
      *   color: '#rrggbb'（仅 paint）,
      *   reliefColor: '#rrggbb'（高度笔基色，另叠高度与坡度明暗） }
      */
@@ -109,7 +110,7 @@ export function installAPI({ ctx, project, cursor }) {
       + 'world.flyTo(lat, lng, { level, distance, duration }) 飞到坐标（level = 落到哪一档）\n'
       + 'world.where() / resetView()                     当前视角（经纬度/距离/档位）/ 复位视角\n'
       + 'world.openWorkshop() / generateRealEarth()       地图工坊 / 真实地球\n'
-      + 'world.paintTerrain(lat, lng, { tool, size, strength, passes, hard, shape, color, reliefColor }) 涂画笔\n'
+      + 'world.paintTerrain(lat, lng, { tool, size, strength, passes, hard, shadow, color, reliefColor }) 涂画笔（size = 正方形奇数边长）\n'
       + 'world.sampleTerrain(lat, lng)                    查询地形高度（0=海平面）\n'
       + 'world.getProject() / exportProject()            项目读写\n'
       + 'world.loadSample()                              载入示例世界',
