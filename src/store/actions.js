@@ -102,18 +102,19 @@ export const createActionsSlice = (set, get) => ({
   /**
    * 用画笔在指定经纬度改地形（编程接口/自动化用）。
    * 画笔改的是内存里的网格，必须重新编码回 PNG 才会被持久化。
-   * color 只对 paint 笔有效；shape 对高度笔和颜色笔都有效。
+   * color 只对 paint 笔有效；reliefColor 是高度笔的基色，颜色还会叠加
+   * 高度明暗与坡度明暗；shape 对高度笔和颜色笔都有效。
    */
   paintTerrain(lat, lng, {
     tool = 'raise', size = 10, strength = 0.08, passes = 1,
-    hard = false, shape = 'round', color = '#2e7aa0',
+    hard = false, shape = 'round', color = '#2e7aa0', reliefColor = '#6f8f5a',
   } = {}) {
     const g = session.currentGrid;
     const p = get().project;
     if (!g || !p) return null;
     const cx = ((lng + 180) / 360) * g.w;
     const cy = ((90 - lat) / 180) * g.h;
-    const color565 = hexTo565(color);
+    const color565 = hexTo565(tool === 'paint' ? color : reliefColor);
     // 每一笔返回的脏区都一样（同一个圆心、同一个半径），最后那个就是并集；
     // 拿它去重绘颜色画布，省掉整张网格的全量重算
     let dirty = null;

@@ -407,9 +407,11 @@ function paint(canvas, e) {
   const size = Math.min(st.workshopSize, brushSizeMax());
   const [gx, gy] = toGrid(canvas, e);
   const g = workshop.grid;
+  // 上色笔用颜料色；形态笔用高度基色，画笔内部按最终高度和坡度重算颜色
+  const brushColor = st.workshopTool === 'paint' ? st.workshopColor : st.workshopHeightColor;
   const dirty = g.applyBrush(
     st.workshopTool, gx, gy, size, st.workshopStrength,
-    st.workshopHard, st.workshopShape, hexTo565(st.workshopColor),
+    st.workshopHard, st.workshopShape, hexTo565(brushColor),
   );
   if (!dirty) return;
   g.renderColor(dirty);

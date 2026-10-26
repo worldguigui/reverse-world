@@ -57,14 +57,13 @@ async function main() {
     autosaver: createAutoSaver(500),
   });
 
-  // 光点/路线/区域贴着地形走。海面以下是负高度，只贴到海平面为止——
-  // 否则海上那条内容会沉到球面以下（比深度掩膜还低），直接看不见。
+  // 光点/路线/区域始终贴着实际地形走，包括海平面以下的凹陷。
   // 高度要先按球面的实际渲染口径夹到 [-4, 4] 再插值：球面顶点读的是
   // 逐格 clamp 后的纹理，直接用原始采样值会把内容抬到实际地形上方。
   const terrainRadius = (lat, lng) => {
     const grid = session.currentGrid;
     if (!grid) return 0;
-    return Math.max(0, grid.sampleClamped(lat, lng)) * viewConfig().terrain.exaggeration;
+    return grid.sampleClamped(lat, lng) * viewConfig().terrain.exaggeration;
   };
   eventDot.terrainRadius = terrainRadius;
   routes.terrainRadius = terrainRadius;
@@ -353,10 +352,11 @@ async function main() {
   /**
    * 一帧三趟，靠 render-layers.js 里的层号分工：
    *   ① 球体/大气/星空 —— 正常写颜色和深度
-   *   ② 深度掩膜球（半径 1 的光滑正球，只写深度不写颜色）
+   *   ② 深度掩膜平面（过球心、正对相机，只写深度不写颜色）
    *   ③ 事件光点/路线/区域 —— 对着②留下的深度做测试
-   * 于是内容不会被鼓起来的山挡住，转到球背面时又会被②挡住。
-   * 末尾把相机层号复位成默认，免得影响拾取或别处。
+   * ① 的地形深度在第二趟前被清掉，所以山体不会挡住内容；② 只按近/远半球
+   * 做遮挡：近半球内容（包括贴到海平面以下凹陷的路线与区域）可见，
+   * 转到背面时被平面挡住。末尾把相机层号复位成默认，免得影响拾取或别处。
    */
   function render() {
     renderer.clear();
@@ -376,8 +376,9 @@ async function main() {
     const dt = Math.min((now - clock.last) / 1000, 0.05);
     clock.last = now;
     tweens.update();
-    globe.update?.(dt, camera);
     rig.update(dt); // 自转按真实秒数走，帧率高低都转一样快
+    // 掩膜平面要按这一帧最终的相机朝向摆放，所以排在 rig.update 之后
+    globe.update?.(dt, camera);
     // 光点的大小只跟相机有关，所以每帧现算，不走 store 的信号
     eventDot.update(camera);
     processHover();

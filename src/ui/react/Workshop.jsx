@@ -3,9 +3,12 @@ import { useStore } from '../../store/index.js';
 import * as W from '../workshop-session.js';
 
 /**
- * 五支画笔，按「写哪个通道」分成两组。
- * 形态组只改高度（球面的凹凸），颜色组只改 RGB565 地表色，两组互不影响：
- * 蓝色高山、绿色盆地都是许画出来的，不必符合物理。
+ * 五支画笔分两组：
+ * 形态组改高度，并用「高度基色」按新高度与坡度重算被涂格的 RGB565 地表色——
+ * 0 高度的平地就是基色，越高越亮、越低越暗，坡度再叠一层西北光明暗，
+ * 起伏与沟壑在顶视图里都看得见；颜色组只改地表色，不动高度。
+ * 颜色仍然可以画得与物理无关：抬高后再刷成蓝色的高山、绿色盆地
+ * 都保持原样，直到下一次形态笔经过。
  */
 const TOOL_GROUPS = [
   ['形态', [
@@ -19,11 +22,11 @@ const TOOL_GROUPS = [
   ]],
 ];
 
-/** 当前画笔写哪个通道：颜色笔只改颜色，形态笔只改几何 */
+/** 当前画笔写哪个通道：颜色笔只改颜色，形态笔改高度并按高度、坡度重算颜色 */
 const TOOL_WRITES = {
-  raise: '写入：高度（球面起伏）',
-  lower: '写入：高度（球面起伏）',
-  smooth: '写入：高度（球面起伏）',
+  raise: '写入：高度 + 按高度/坡度重算基色',
+  lower: '写入：高度 + 按高度/坡度重算基色',
+  smooth: '写入：高度 + 按高度/坡度重算基色',
   paint: '写入：颜色（RGB565，不动高度）',
   clearColor: '写入：颜色（RGB565，不动高度）',
 };
@@ -48,6 +51,7 @@ export function Workshop({ container }) {
   const hard = useStore((s) => s.workshopHard);
   const shape = useStore((s) => s.workshopShape);
   const color = useStore((s) => s.workshopColor);
+  const heightColor = useStore((s) => s.workshopHeightColor);
   const canUndo = useStore((s) => s.canUndo);
   const canRedo = useStore((s) => s.canRedo);
   const zoom = useStore((s) => s.workshopZoom);
@@ -168,6 +172,18 @@ export function Workshop({ container }) {
           </div>
 
           <div className="wk-slider">
+            <span className="field-label" title="0 高度的平地就是这支颜色；抬高渐亮、压低渐暗，坡度另叠一层西北光明暗">
+              高度基色
+            </span>
+            <input
+              type="color"
+              aria-label="高度基色"
+              value={heightColor}
+              onChange={(e) => setWorkshopBrush({ workshopHeightColor: e.target.value })}
+            />
+          </div>
+
+          <div className="wk-slider">
             <span className="field-label">笔形</span>
             <div className="wk-row" role="group" aria-label="笔形">
               <button
@@ -221,8 +237,10 @@ export function Workshop({ container }) {
           </button>
 
           <p className="insp-hint">
-            形态笔改高低，颜色笔改地表色，两个通道互不影响——蓝色高山、绿色盆地都画得出来。
-            颜色存成 RGB565，换设备打开也会保持同一套颜色。
+            形态笔改高低，并按「高度基色」重算被涂格的地表色：越高越亮、越低越暗，
+            坡度再叠一层西北光明暗，山脊与沟壑会重新显出来；压回原高度颜色也会恢复。
+            颜色笔只改色、不动高度；形态笔再经过时，这些格子会以基色为准重新着色。
+            颜色存成 RGB565，换设备打开仍是同一套颜色。
             <br />
             圆形笔按半径覆盖，方形笔按边长覆盖；硬笔=半径内全强度，画垂直悬崖/方柱/笔直边界，
             软笔=高斯自然过渡。按住拖动连续涂抹。

@@ -1,10 +1,11 @@
 /**
  * 栅格地形引擎：16 位高度 + RGB565 颜色的双通道网格，加上画笔、采样与 PNG 编解码。
- * 两个通道互相独立：
- *   height  多高（归一化单位，设计范围 [-4, 4]）——只决定球面几何
- *   color   RGB565 地表颜色——渲染时按存储值一比一使用，不再由高度推导
- * 高度 0.8 + 颜色 0x2e7a 就是一座蓝色的高山；高度 -0.2 + 颜色 0x4a8a
- * 就是一个绿色盆地。颜色笔与形态笔各写各的，互不覆盖。
+ * 两个通道分开存储：
+ *   height  多高（归一化单位，设计范围 [-4, 4]）——决定球面几何
+ *   color   RGB565 地表颜色——渲染时按存储值一比一使用
+ * 颜色笔只写颜色。形态笔改完高度后，会用「高度基色」按新高度与坡度
+ * 重算被涂格的颜色，让顶视图里也看得出起伏与沟壑；手动涂色会一直保留，
+ * 直到下一次形态笔经过该格。
  *
  * 画笔支持「软笔（高斯衰减）/ 硬笔（方波硬边）」与圆形 / 方形两种笔形。
  * PNG 编码：R+G 打包 16-bit 高度，B+A 打包 RGB565 颜色。
@@ -26,6 +27,9 @@ const clampI = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 /** 浅海色，也是「重置为海洋」时用的底色 */
 export const OCEAN_COLOR = pack565(46, 122, 160);
+
+/** 坡度明暗在完全平坦处的取值；高度着色以它为「不变色」的基准 */
+export const FLAT_SHADE = 0.76 + 0.34 * 0.45;
 
 export class TerrainGrid {
   /**
@@ -57,15 +61,15 @@ export class TerrainGrid {
   // ---------------------------------------------------------------- 画笔
 
   /**
-   * 在格点 (cx, cy) 应用画笔。每支笔只碰自己的通道：
-   *   raise / lower / smooth → height
-   *   paint / clearColor     → color
+   * 在格点 (cx, cy) 应用画笔：
+   *   raise / lower / smooth → 改高度，再按最终高度与坡度重算颜色
+   *   paint / clearColor     → 只改颜色，不动高度
    * @param {'raise'|'lower'|'smooth'|'paint'|'clearColor'} kind
    * @param {number} radius 半径（格）。1 = 只落当前这一格（最小笔刷）
    * @param {number} strength 强度：高度笔是归一化高度增量，颜色笔是颜料浓度
    * @param {boolean} [hard=false] true=硬笔（半径内全强度，不做衰减）
    * @param {'round'|'square'} [shape='round'] 圆形按欧氏距离，方形按最大轴向距离
-   * @param {number} [color=0] paint 笔要写入的 RGB565 颜色
+   * @param {number} [color=0] paint 笔写入的 RGB565 颜色；高度笔用作高度基色
    * @returns {[x,y,w,h]|null} 受影响矩形（渲染脏区）
    */
   applyBrush(kind, cx, cy, radius, strength, hard = false, shape = 'round', color = 0) {
@@ -85,6 +89,10 @@ export class TerrainGrid {
     const tx = Math.floor(cx);
     const ty = Math.floor(cy);
     if (single && (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h)) return null;
+
+    const heightKind = kind === 'raise' || kind === 'lower' || kind === 'smooth';
+    // 高度笔下真正被改到的格子范围；颜色要等高度全部落定后再按这个范围重算
+    let ax0 = Infinity, ay0 = Infinity, ax1 = -Infinity, ay1 = -Infinity;
 
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
@@ -106,22 +114,52 @@ export class TerrainGrid {
         const i = this.idx(x, y);
         // fall 决定该格影响力度：硬笔=1（半径内全强度），软笔=高斯衰减边缘趋 0
         const fall = hard ? 1 : Math.exp((-4.5 * d2) / Math.max(1e-6, r2));
-        if (kind === 'raise' || kind === 'lower') {
-          // 画笔纯累加，不做任何高度 clamp——开发者绝对自由
-          this.height[i] += (kind === 'raise' ? 1 : -1) * strength * fall;
-        } else if (kind === 'smooth') {
-          const avg = this._neighborAvg(x, y);
-          this.height[i] += (avg - this.height[i]) * Math.min(1, strength * 6) * fall;
-        } else if (kind === 'paint' || kind === 'clearColor') {
-          // 颜色笔按浓度混合到现有颜色里；去色则混合回按高度生成的地形色。
-          // 颜色是独立通道，不动高度。
-          const target = kind === 'paint' ? color : this._autoColor565(x, y);
-          const alpha = Math.min(1, strength * 10) * fall;
-          this.color[i] = blend565(this.color[i], target, alpha);
+        if (heightKind) {
+          if (kind === 'smooth') {
+            const avg = this._neighborAvg(x, y);
+            this.height[i] += (avg - this.height[i]) * Math.min(1, strength * 6) * fall;
+          } else {
+            // 画笔纯累加，不做任何高度 clamp——开发者绝对自由
+            this.height[i] += (kind === 'raise' ? 1 : -1) * strength * fall;
+          }
+          if (x < ax0) ax0 = x;
+          if (y < ay0) ay0 = y;
+          if (x > ax1) ax1 = x;
+          if (y > ay1) ay1 = y;
+          continue;
         }
+        // 颜色笔按浓度混合到现有颜色里；去色则混合回按高度与坡度生成的地形色。
+        // 颜色是独立通道，不动高度。
+        const target = kind === 'paint' ? color : this._autoColor565(x, y);
+        const alpha = Math.min(1, strength * 10) * fall;
+        this.color[i] = blend565(this.color[i], target, alpha);
       }
     }
+
+    // 高度先全部写完，再统一重着色：否则同一次落笔里，先算的格子会读到
+    // 一半新、一半旧的邻居高度，坡面颜色随扫描方向偏。
+    // 重着色会向外扩一格：边界格自己的高度没变，但邻居变了，坡度也变了。
+    if (heightKind && ax0 <= ax1) this._recolorHeightArea(ax0, ay0, ax1, ay1, color);
     return [x0, y0, x1 - x0 + 1, y1 - y0 + 1];
+  }
+
+  /**
+   * 按当前高度重算一片格子的地表色，只写颜色、不碰高度。
+   * @param {number} x0 受高度影响的格子范围（含端点）
+   * @param {number} color 高度基色（RGB565）
+   */
+  _recolorHeightArea(x0, y0, x1, y1, color) {
+    const rx0 = Math.max(0, x0 - 1);
+    const ry0 = Math.max(0, y0 - 1);
+    const rx1 = Math.min(this.w - 1, x1 + 1);
+    const ry1 = Math.min(this.h - 1, y1 + 1);
+    for (let y = ry0; y <= ry1; y++) {
+      for (let x = rx0; x <= rx1; x++) {
+        const i = this.idx(x, y);
+        // 以平地为基准：平地不改变基色，坡面才在此之上加亮或压暗
+        this.color[i] = heightTint565(color, this.height[i], this._shadeAt(x, y) / FLAT_SHADE);
+      }
+    }
   }
 
   _neighborAvg(x, y) {
@@ -154,7 +192,8 @@ export class TerrainGrid {
 
   /**
    * 按当前高度生成一遍地形颜色，用于真实地球这类「原料只有高度/海陆」的初稿。
-   * 生成后颜色就是普通数据，后续高度编辑不会再自动改色。
+   * 生成后颜色就是普通数据：之后只有形态笔经过的格子会按高度基色和坡度重算，
+   * 颜色笔与 PNG 读取都不会自动改色。
    * @param {Uint8Array|null} [water] 每格 0..255 的水体浓度；省略时按高度正负判海陆
    */
   bakeHeightColors(water = null) {
@@ -171,15 +210,12 @@ export class TerrainGrid {
   // ---------------------------------------------------------------- 颜色生成
 
   /**
-   * 按高度、水陆浓度与邻域坡度生成一格地形色。
-   * 只在生成初稿和「去色」时使用；平时渲染直接读存储的 color。
-   * @param {number} [wet] 0..1；省略时按高度正负判
+   * 西北光的坡度明暗：同一高度的山脊与沟槽靠这一项分开。
+   * 平地约 0.913，向光的坡面更亮（最高约 1.1），背光的更暗（最低约 0.66）。
+   * 梯度按地图宽度归一化，换一档分辨率，同一片地形的明暗看起来一致。
    */
-  _autoColor565(x, y, wet = null) {
+  _shadeAt(x, y) {
     const { w, h, height } = this;
-    const hh = height[this.idx(x, y)];
-    const water = wet == null ? (hh <= 0 ? 1 : 0) : wet;
-    // 梯度→明暗的强度系数：格子越多梯度越小，按宽度归一，让不同分辨率观感一致
     const k = w * 0.5;
     const hxL = height[this.idx(Math.max(0, x - 1), y)];
     const hxR = height[this.idx(Math.min(w - 1, x + 1), y)];
@@ -188,8 +224,19 @@ export class TerrainGrid {
     const gx = (hxR - hxL) * k;
     const gy = (hyD - hyU) * k;
     // 光从西北上方来：法线 (-gx, -gy, 1) 点乘光向（范围收敛，避免过暗）
-    let shade = (0.45 - gx * 0.55 - gy * 0.55) / Math.sqrt(gx * gx + gy * gy + 1);
-    shade = 0.76 + 0.34 * Math.max(-0.3, Math.min(1, shade));
+    const shade = (0.45 - gx * 0.55 - gy * 0.55) / Math.sqrt(gx * gx + gy * gy + 1);
+    return 0.76 + 0.34 * Math.max(-0.3, Math.min(1, shade));
+  }
+
+  /**
+   * 按高度、水陆浓度与邻域坡度生成一格地形色。
+   * 只在生成初稿和「去色」时使用；平时渲染直接读存储的 color。
+   * @param {number} [wet] 0..1；省略时按高度正负判
+   */
+  _autoColor565(x, y, wet = null) {
+    const hh = this.height[this.idx(x, y)];
+    const water = wet == null ? (hh <= 0 ? 1 : 0) : wet;
+    const shade = this._shadeAt(x, y);
 
     const [lr, lg, lb] = landColor(hh);
     const t = Math.min(1, Math.max(0, -hh / 0.55));
@@ -365,6 +412,36 @@ export function unpack565(c) {
   const g6 = (c >>> 5) & 0x3f;
   const b5 = c & 0x1f;
   return [(r5 << 3) | (r5 >>> 2), (g6 << 2) | (g6 >>> 4), (b5 << 3) | (b5 >>> 2)];
+}
+
+/**
+ * 地形着色：基色先按高度调明暗，再乘坡度阴影。
+ * 高度 0 且平地就是基色，越高越亮、越低越暗；|h|/(|h|+0.5) 软饱和，
+ * -4..4 整个设计域都有响应，h=1 与 h=4 不会压成同一种颜色。
+ * shade 约 0.72..1.2，1 = 平地、不改变颜色；同一高度、
+ * 不同坡向因此会有明暗差别，山脊和沟壑才看得出来。
+ *
+ * 拆通道直接算，不调用 unpack565/pack565：软笔一次要算十几万格，
+ * 每格多一个临时数组就是几十万次分配，拖动时会明显掉帧。
+ */
+export function heightTint565(base, h, shade = 1) {
+  const ah = Math.abs(h);
+  const t = Math.sqrt(ah / (ah + 0.5));
+  const k = 0.6 * Math.sign(h) * t;
+  // k > 0 向白色混，k < 0 向黑色混；strength 统一取绝对值
+  const target = k >= 0 ? 255 : 0;
+  const strength = Math.abs(k);
+  const r5 = (base >>> 11) & 0x1f;
+  const g6 = (base >>> 5) & 0x3f;
+  const b5 = base & 0x1f;
+  // 与 unpack565 相同的位重复展开
+  const r8 = (r5 << 3) | (r5 >>> 2);
+  const g8 = (g6 << 2) | (g6 >>> 4);
+  const b8 = (b5 << 3) | (b5 >>> 2);
+  const r = clampI(Math.round((r8 + (target - r8) * strength) * shade), 0, 255);
+  const g = clampI(Math.round((g8 + (target - g8) * strength) * shade), 0, 255);
+  const b = clampI(Math.round((b8 + (target - b8) * strength) * shade), 0, 255);
+  return ((r >>> 3) << 11) | ((g >>> 2) << 5) | (b >>> 3);
 }
 
 /** '#rrggbb' → RGB565；输入不合法时回到海洋色 */

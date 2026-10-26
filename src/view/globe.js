@@ -105,16 +105,19 @@ export class Globe {
   }
 
   /**
-   * 内容图层的深度掩膜：一个「不含地形起伏」的正球，只写深度、不写颜色。
-   * 主循环第二趟单独画它，第三趟画事件/路线/区域时就有了一份光滑球面的深度——
-   * 于是内容不会被鼓起来的山挡住（山在半径 1 之上，掩膜在 1 上），
-   * 但转到球背面仍然会被它正确挡住。
-   * 分段数取得比球体高：轮廓越接近正圆，贴着地平线的标注越不会闪烁。
+   * 内容图层的深度掩膜：一张过球心、正对相机的平面，只写深度、不写颜色。
+   * 主循环第二趟画它，第三趟画事件/路线/区域时：
+   *  - 近半球的内容在平面之前（朝相机），可见，哪怕地形压低到海平面以下；
+   *  - 远半球的内容在平面之后，被正确遮住。
+   * 用球壳当掩膜时，半径小于 1 的内容（贴到凹陷地形上）会整块被裁掉，
+   * 所以这里只需要「过球心」这一刀，不需要跟随地形起伏。
+   * 平面基础半边长 20，每帧再按相机远近与宽高比放大到屏幕四角之外，
+   * 保证任何距离、任何窗口比例下，整屏像素都有一份掩膜深度。
    */
   _buildOverlayMask() {
     this.overlayMask = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 128, 64),
-      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true }),
+      new THREE.PlaneGeometry(40, 40),
+      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, side: THREE.DoubleSide }),
     );
     this.overlayMask.name = 'overlay-depth-mask';
     this.overlayMask.layers.set(LAYER_MASK);
@@ -348,6 +351,14 @@ export class Globe {
   }
 
   update(dt, camera) {
+    if (!camera) return;
+    // 平面过球心，法线始终对准相机；摄像机绕球怎么转，近/远半球的分界都不动
+    this.overlayMask.quaternion.copy(camera.quaternion);
+    // 屏幕四角的视线落在过球心平面上的最远距离 = 相机距离 × tan(半 FOV) × 宽高比。
+    // 留一成余量后按基础半边长 20 缩放，超宽窗口拉到最远也不会漏掉边角
+    const dist = camera.position.length();
+    const reach = dist * Math.tan((camera.fov * Math.PI) / 360) * Math.max(1, camera.aspect) * 1.1;
+    this.overlayMask.scale.setScalar(Math.max(1, reach / 20));
   }
 }
 

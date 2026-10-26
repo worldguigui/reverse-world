@@ -37,6 +37,7 @@ export const createUISlice = (set, get) => ({
   workshopHard: true,      // true=硬笔（无扩散），false=软笔（高斯）
   workshopShape: 'round',  // round | square
   workshopColor: '#2e7aa0', // 上色笔的颜色（#rrggbb）；存成 PNG 时会量化到 RGB565
+  workshopHeightColor: '#6f8f5a', // 高度笔的基色：0 高度的平地用它，越高越亮、越低越暗，坡度另算明暗
   workshopShowOverlay: false, // 是否把已有路线/区域作为只读参考叠在画布上
   workshopZoom: 1,         // 画布缩放倍数（1 = 适应窗口），只给顶栏读数用
   canUndo: false,
@@ -138,6 +139,7 @@ export const createUISlice = (set, get) => ({
     set({
       workshopTool: 'raise', workshopSize: 8, workshopStrength: 0.08,
       workshopHard: true, workshopShape: 'round', workshopColor: '#2e7aa0',
+      workshopHeightColor: '#6f8f5a',
       workshopShowOverlay: false, workshopZoom: 1,
       canUndo: false, canRedo: false,
     });

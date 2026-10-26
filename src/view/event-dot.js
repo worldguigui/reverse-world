@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { latLngToVec3 } from '../utils.js';
 import { LAYER_CONTENT } from './render-layers.js';
 
-/** 光点浮在球面之上的半径：贴着地表，又要离开深度掩膜球一点，否则会与它打架 */
+/** 光点在无地形时浮于球面之上的半径：基数 1 再抬起一点，落在球面外侧 */
 const SURFACE_R = 1.003;
 
 /** 射线在屏幕上的宽与高，都以光点直径为基准。拉远拉近保持同样醒目 */
