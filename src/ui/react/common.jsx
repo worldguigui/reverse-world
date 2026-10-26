@@ -140,7 +140,7 @@ export function CharacterPicker({ ids = [], onChange }) {
   return (
     <div className="char-pick">
       {picked.length === 0 ? (
-        <p className="insp-hint">还没有涉及人物，在下面搜一个名字。</p>
+        <p className="insp-hint">目前还没有人物，手动添加一个吧</p>
       ) : (
         <div className="chips">
           {picked.map((c) => (
@@ -283,7 +283,7 @@ export function GroupPicker({ ids = [], onChange }) {
   return (
     <div className="char-pick">
       {picked.length === 0 ? (
-        <p className="insp-hint">还没有所属章节，在下面搜一章。</p>
+        <p className="insp-hint">目前还没有所属章节，手动添加一个吧</p>
       ) : (
         <div className="chips">
           {picked.map((g) => (

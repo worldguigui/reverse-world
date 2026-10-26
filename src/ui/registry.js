@@ -12,7 +12,8 @@ import { LoadingScreen } from './react/LoadingScreen.jsx';
 
 /**
  * 组装全部面板。
- * @param {{topbar, timeline, inspector, settings, workshop, loading}} containers 静态容器
+ * @param {{topbar, timeline, inspector, settings, workshop, loading, workshopPreview}} containers
+ *   静态容器；workshopPreview 是 main.js 注入的预览挂载/摘除函数
  * @returns {{toolbar, timeline, inspector, settings, workshop, loading}} 各面板句柄
  */
 export function createPanels(containers) {
@@ -23,7 +24,11 @@ export function createPanels(containers) {
     settings: mountPanel(containers.settings, SettingsPanel),
     loading: mountPanel(containers.loading, LoadingScreen),
 
-    // 工坊要拿到容器本身：关掉时只给 #workshop 加 .hidden，不卸载
-    workshop: mountPanel(containers.workshop, Workshop, { container: containers.workshop }),
+    // 工坊要拿到容器本身：关掉时只给 #workshop 加 .hidden，不卸载；
+    // 预览函数交给它，才能在 React 渲染出预览框之后把主画布搬进去
+    workshop: mountPanel(containers.workshop, Workshop, {
+      container: containers.workshop,
+      preview: containers.workshopPreview,
+    }),
   };
 }

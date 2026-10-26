@@ -65,8 +65,8 @@ export class TerrainGrid {
   /**
    * 在格点 (cx, cy) 应用正方形画笔：
    *   raise / lower / smooth → 改高度，再按最终高度与坡度重算颜色
-   *   paint / clearColor     → 只改颜色，不动高度
-   * @param {'raise'|'lower'|'smooth'|'paint'|'clearColor'} kind
+   *   paint                  → 只改颜色，不动高度
+   * @param {'raise'|'lower'|'smooth'|'paint'} kind
    * @param {number} size 边长（格）。恒按奇数处理，偶数向上取到相邻奇数；
    *   1 = 只落指针所在的那一格
    * @param {number} strength 强度：高度笔是归一化高度增量；颜色笔不读取
@@ -76,6 +76,8 @@ export class TerrainGrid {
    * @returns {[x,y,w,h]|null} 受影响矩形（渲染脏区）
    */
   applyBrush(kind, cx, cy, size, strength, hard = false, color = 0, shadow = false) {
+    // 只认四支仍然存在的笔；未知名称直接不落笔，免得误写成自动地形色
+    if (kind !== 'raise' && kind !== 'lower' && kind !== 'smooth' && kind !== 'paint') return null;
     const rounded = Math.max(1, Math.round(size));
     // 只有奇数边长才有中心格；外部传入偶数时向上取到相邻奇数
     const side = rounded % 2 === 1 ? rounded : rounded + 1;
@@ -109,20 +111,19 @@ export class TerrainGrid {
             const avg = this._neighborAvg(x, y);
             this.height[i] += (avg - this.height[i]) * Math.min(1, strength * 6) * fall;
           } else {
-            // 画笔纯累加，不做任何高度 clamp——开发者绝对自由
-            this.height[i] += (kind === 'raise' ? 1 : -1) * strength * fall;
+            // 高度只在可显示、可存档的 [-4, 4] 内增减：到顶/到底后继续点不再累加。
+            // 不夹的话超出部分在预览与存档里都看不到，反方向操作时又要先抵消这段
+            // 不可见的超量，表现成「按了没反应」
+            const next = this.height[i] + (kind === 'raise' ? 1 : -1) * strength * fall;
+            this.height[i] = clampN(next, H_MIN, H_MAX);
           }
           continue;
         }
         // 颜色笔每次直接写目标色，不按浓度混合：同一格点两次和一次结果相同。
-        // 上色可以按坡度加一层明暗，关闭时就是精确的平涂色；去色回到自动地形色。
-        if (kind === 'paint') {
-          this.color[i] = shadow
-            ? shadeColor565(color, this._shadeAt(x, y) / FLAT_SHADE)
-            : color;
-        } else {
-          this.color[i] = this._autoColor565(x, y);
-        }
+        // 上色可以按坡度加一层明暗，关闭时就是精确的平涂色。
+        this.color[i] = shadow
+          ? shadeColor565(color, this._shadeAt(x, y) / FLAT_SHADE)
+          : color;
       }
     }
 
@@ -217,7 +218,7 @@ export class TerrainGrid {
 
   /**
    * 按高度、水陆浓度与邻域坡度生成一格地形色。
-   * 只在生成初稿和「去色」时使用；平时渲染直接读存储的 color。
+   * 只在生成初稿时使用；平时渲染直接读存储的 color。
    * @param {number} [wet] 0..1；省略时按高度正负判
    */
   _autoColor565(x, y, wet = null) {

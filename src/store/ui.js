@@ -31,13 +31,18 @@ export const createUISlice = (set, get) => ({
   drawForm: blankDrawForm(), // 绘制表单的字段值（球面加点、按 Enter 提交时都从这里取）
   workshopOpen: false,
   // 工坊的画笔参数与撤销可用态。网格、撤销栈太大，放在 ui/workshop-session.js 的模块级会话对象里
-  workshopTool: 'raise',   // raise | lower | smooth | paint | clearColor
+  workshopTool: 'raise',   // raise | lower | smooth | paint
   workshopSize: 9,         // 正方形笔刷的边长（格，奇数）
   workshopStrength: 0.08,
   workshopHard: true,      // 形态笔：true=硬笔（全强度），false=软笔（向四边衰减）
   workshopColor: '#2e7aa0', // 上色笔的颜色（#rrggbb）；存成 PNG 时会量化到 RGB565
   workshopPaintShadow: false, // 上色时按坡度给颜色叠明暗；只改亮度，不改色相
   workshopHeightColor: '#6f8f5a', // 高度笔的基色：0 高度的平地用它，越高越亮、越低越暗，坡度另算明暗
+  // 陆地与海洋预设色：与上色颜色、高度基色独立。点击预设行只把该色设为上色颜色并切到上色笔，
+  // 不反过来改预设；重置为陆地/海洋时整图铺的也是这两个颜色。
+  workshopLandColor: '#7c9558',
+  workshopOceanColor: '#2e7aa0',
+  workshopPreviewOn: true, // 画布右下角的三维预览是否显示
   workshopShowOverlay: false, // 是否把已有路线/区域作为只读参考叠在画布上
   workshopZoom: 1,         // 画布缩放倍数（1 = 适应窗口），只给顶栏读数用
   canUndo: false,

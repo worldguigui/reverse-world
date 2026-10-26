@@ -2,8 +2,6 @@ import { useEffect, useRef } from 'react';
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { Labeled, TimeInput, CoordInput, CharacterPicker, GroupPicker, ItemImage } from '../common.jsx';
-import { roundYear } from '../../../core/timeline.js';
-import { yearToTime } from '../../../core/datetime.js';
 
 /**
  * 放置表单：在球面上点一个坐标，再把它变成一条事件。
@@ -15,7 +13,6 @@ import { yearToTime } from '../../../core/datetime.js';
  */
 export function EventForm() {
   const draft = useStore((s) => s.eventDraft);
-  const cursor = useStore((s) => s.cursor);
   const pendingCoords = useStore((s) => s.pendingCoords);
   const saveDraft = useStore((s) => s.saveDraft);
   const commitEvent = useStore((s) => s.commitEvent);
@@ -33,8 +30,8 @@ export function EventForm() {
 
       <p className="insp-hint" id="event-coords">
         {pendingCoords
-          ? `位置：${pendingCoords.lat.toFixed(2)}°, ${pendingCoords.lng.toFixed(2)}°（可直接改下面的经纬度，或继续单击球面重新选点）`
-          : '坐标可选：单击球面给它一个坐标；不点就是纯叙事事件，不上球、只进编年史。'}
+          ? `位置：${pendingCoords.lat.toFixed(2)}°, ${pendingCoords.lng.toFixed(2)}°（经纬度可以直接修改，或继续单击球面重新选点）`
+          : '单击球面选定具体位置'}
       </p>
 
       <Labeled label="标题">
@@ -73,7 +70,7 @@ export function EventForm() {
             type="button"
             onClick={() => setPendingCoords(null)}
           >
-            清除位置（改为纯叙事）
+            经纬度置为空
           </button>
         </>
       )}
@@ -121,19 +118,19 @@ export function EventForm() {
         />
       </Labeled>
 
-      {/* 两端都留空 = 常驻。不填出现于时会认下当前游标所在的年份，只写年份，不补月日 */}
+      {/* 两端都留空 = 常驻；只留空出现于 = 自始就存在 */}
       <Labeled label="出现于">
         <TimeInput
           value={draft.from}
           onChange={(v) => saveDraft({ from: v })}
-          placeholder={`默认 ${yearToTime(roundYear(cursor))}`}
+          placeholder="自始"
         />
       </Labeled>
       <Labeled label="消失于">
         <TimeInput value={draft.to} onChange={(v) => saveDraft({ to: v })} placeholder="至今" />
       </Labeled>
       <p className="insp-hint">
-        时间可只写到年、月、日、时、分、秒；日期与小时之间用 T。空格后的内容作为备注，不参与排序。时间轴仍按年划分。
+        时间格式yyyy-MM-ddThh:mm:ss，时间后可以以空格分隔添加注释
       </p>
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>

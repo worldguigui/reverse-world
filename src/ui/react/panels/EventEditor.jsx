@@ -144,11 +144,11 @@ export function EventEditor({ id }) {
         </span>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           {hasCoords && (
-            <button className="btn btn-mini" onClick={() => flyToItem('event', draft)}>飞到</button>
+            <button className="btn btn-mini" onClick={() => flyToItem('event', draft)}>Go</button>
           )}
           {(draft.lat != null || draft.lng != null) && (
             <button className="btn btn-mini" onClick={() => patch({ lat: null, lng: null })}>
-              清除位置（改为纯叙事）
+              经纬度置为空
             </button>
           )}
         </div>
@@ -161,11 +161,11 @@ export function EventEditor({ id }) {
         <TimeInput value={draft.to} onChange={(v) => patch({ to: v })} placeholder="至今" />
       </Labeled>
       <p className="insp-hint">
-        时间可只写到年、月、日、时、分、秒；日期与小时之间用 T。空格后的内容作为备注，不参与排序。时间轴仍按年划分。
+        时间格式yyyy-MM-ddThh:mm:ss，时间后可以以空格分隔添加注释
       </p>
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-        <button className="btn btn-primary" onClick={save}>保存</button>
+        <button className="btn btn-primary" onClick={save}>✔ 保存</button>
         <button className="btn" onClick={reset} title="放弃未保存的修改">取消</button>
         <button
           className="btn btn-danger"

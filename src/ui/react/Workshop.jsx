@@ -3,33 +3,15 @@ import { useStore } from '../../store/index.js';
 import * as W from '../workshop-session.js';
 
 /**
- * 五支画笔分两组，笔刷统一是正方形：
- * 形态组改高度，并用「高度基色」按新高度与坡度重算被涂格的 RGB565 地表色——
- * 0 高度的平地就是基色，越高越亮、越低越暗，坡度再叠一层西北光明暗，
- * 起伏与沟壑在顶视图里都看得见；颜色组只改地表色，不动高度。
- * 颜色笔按矩形满铺，重复点击结果不变；上色时可以额外开启「加入阴影」，
- * 按地形坡度给所选颜色叠明暗。手动颜色一直保留到下一次形态笔经过该格。
+ * 地形工具箱按用途分成七块：形态、颜色、阴影、实时预览、颜色盘、地图操作、画布交互。
+ * 形态与颜色是笔刷，阴影/预览/颜色盘是设置，地图操作是命令，画布交互只是快捷键说明。
+ * 笔刷统一是正方形，边长恒为奇数：1 格只涂指针所在格，更大的以该格为中心对称展开。
  */
-const TOOL_GROUPS = [
-  ['形态', [
-    ['raise', '⛰ 抬升', '点一下，一个区域变高——山脉就是这么做出来的'],
-    ['lower', '⬇ 压低', '压低地形，挖出海盆地、崖壁与峡谷'],
-    ['smooth', '🪄 抹平', '把崎岖的区域磨平'],
-  ]],
-  ['颜色', [
-    ['paint', '🎨 上色', '用下方颜色涂格子：海洋、湖泊、草地与河流都用它'],
-    ['clearColor', '🧽 去色', '把格子恢复成按当前高度与坡度生成的地形色'],
-  ]],
+const SHAPE_TOOLS = [
+  ['raise', '抬升', '点一下让一个区域变高'],
+  ['lower', '压低', '点一下让一个区域变低'],
+  ['smooth', '抹平', '把陡的区域磨平'],
 ];
-
-/** 当前画笔写哪个通道：颜色笔只改颜色，形态笔改高度并按高度、坡度重算颜色 */
-const TOOL_WRITES = {
-  raise: '写入：高度 + 按高度/坡度重算基色',
-  lower: '写入：高度 + 按高度/坡度重算基色',
-  smooth: '写入：高度 + 按高度/坡度重算基色',
-  paint: '写入：颜色（RGB565，矩形满铺，不动高度）',
-  clearColor: '写入：颜色（RGB565，矩形满铺，不动高度）',
-};
 
 /**
  * 画布本身是网格自带的节点，塞进来后按「一格一 CSS 像素」摆好，缩放交给 transform。
@@ -39,11 +21,110 @@ const CANVAS_STYLE = 'position:absolute;left:0;top:0;transform-origin:0 0;'
   + 'image-rendering:pixelated;cursor:crosshair;background:#000;touch-action:none;display:block;';
 
 /**
+ * 当前颜色行：排版与颜色盘一致，左侧色块、中间名称、右侧箭头。
+ * 它与预设色不同——中间只显示色值，不承担「套用」动作；点色块或箭头才打开取色器。
+ * 整行刻意不包成 <label>：取色器开着时点名称应当关掉它，而标签会再次激活输入框、把弹窗重新拉起来。
+ */
+function ColorField({ label, value, title, onChange }) {
+  const inputRef = useRef(null);
+  return (
+    <div className="wk-preset" title={title}>
+      <label className="wk-preset-swatch" style={{ background: value }}>
+        <input
+          ref={inputRef}
+          type="color"
+          aria-label={`修改${label}`}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </label>
+      <div className="wk-preset-apply is-static">
+        <b>{label}</b>
+        <span>{value.toUpperCase()}</span>
+      </div>
+      <button
+        type="button"
+        className="wk-preset-arrow"
+        aria-label={`修改${label}`}
+        onClick={() => inputRef.current?.click()}
+      >
+        ›
+      </button>
+    </div>
+  );
+}
+
+/** 开关行：整行可点，右侧是滑块样式的开关 */
+function ToggleRow({ label, checked, title, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      className={`wk-toggle-row${checked ? ' on' : ''}`}
+      title={title}
+      onClick={() => onChange(!checked)}
+    >
+      <span>{label}</span>
+      <span className="wk-switch" aria-hidden="true" />
+    </button>
+  );
+}
+
+/**
+ * 预设色：点中间的名字把预设色设为上色颜色并切到上色笔；
+ * 点左侧色块或右侧箭头只改预设色本身，不动当前上色颜色。
+ */
+function PresetRow({ label, value, title, onApply, onChange }) {
+  const inputRef = useRef(null);
+  return (
+    <div className="wk-preset" title={title}>
+      <label className="wk-preset-swatch" style={{ background: value }}>
+        <input
+          ref={inputRef}
+          type="color"
+          aria-label={`修改${label}`}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </label>
+      <button type="button" className="wk-preset-apply" onClick={onApply}>
+        <b>{label}</b>
+        <span>点击套用到上色颜色中</span>
+      </button>
+      <button
+        type="button"
+        className="wk-preset-arrow"
+        aria-label={`修改${label}`}
+        onClick={() => inputRef.current?.click()}
+      >
+        ›
+      </button>
+    </div>
+  );
+}
+
+/** 分区卡片：左侧标题，右侧可带一句小注 */
+function Section({ title, note, children }) {
+  return (
+    <section className="wk-card">
+      <div className="wk-sec-head">
+        <span className="wk-sec-title">{title}</span>
+        {note && <span className="wk-sec-note">{note}</span>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/**
  * 地图工坊：全屏栅格绘制。
  * 面板外壳与控件由 React 渲染，画笔涂抹与撤销仍是命令式（见 ui/workshop-session.js）。
- * @param {{ container: HTMLElement }} props 常驻的 #workshop 容器，用来切 .hidden
+ * @param {{ container: HTMLElement, preview?: { attach: Function, detach: Function } }} props
+ *   container 是常驻的 #workshop 容器，用来切 .hidden；
+ *   preview 由 main.js 注入，负责把主渲染画布搬进画布右下角的预览框（见下方 effect）
  */
-export function Workshop({ container }) {
+export function Workshop({ container, preview }) {
   const open = useStore((s) => s.workshopOpen);
   const tool = useStore((s) => s.workshopTool);
   const storedSize = useStore((s) => s.workshopSize);
@@ -52,19 +133,25 @@ export function Workshop({ container }) {
   const color = useStore((s) => s.workshopColor);
   const paintShadow = useStore((s) => s.workshopPaintShadow);
   const heightColor = useStore((s) => s.workshopHeightColor);
+  const landColor = useStore((s) => s.workshopLandColor);
+  const oceanColor = useStore((s) => s.workshopOceanColor);
+  const previewOn = useStore((s) => s.workshopPreviewOn);
   const canUndo = useStore((s) => s.canUndo);
   const canRedo = useStore((s) => s.canRedo);
   const zoom = useStore((s) => s.workshopZoom);
   const showOverlay = useStore((s) => s.workshopShowOverlay);
   const setWorkshopBrush = useStore((s) => s.setWorkshopBrush);
   const [generating, setGenerating] = useState(false);
+  const [previewBig, setPreviewBig] = useState(false);
   const wrapRef = useRef(null);
+  const previewRef = useRef(null);
 
   // 上限跟着当前栅格的分辨率走（见 brushSizeMax）。store 里的值可能是上一张网格留下的，
   // 读数与滑块都夹到当前上限，免得显示一个落不到的数；滑块只停奇数，显示值也取奇数
   const sizeMax = W.brushSizeMax();
   const clampedSize = Math.min(storedSize, sizeMax);
   const size = clampedSize % 2 === 1 ? clampedSize : clampedSize + 1;
+  const isHeightTool = tool !== 'paint';
 
   // 容器常驻 DOM，只切 .hidden——不卸载，E2E 与样式都按这个来。
   // 这一步必须排在下面挂画布之前：容器还 display:none 时量不出尺寸，算不出适应窗口的比例。
@@ -83,6 +170,20 @@ export function Workshop({ container }) {
       if (canvas.parentNode === wrap) wrap.removeChild(canvas);
     };
   }, [open]);
+
+  // 主画布平时铺满窗口，被工坊全屏层盖住；打开工坊时把它搬进右下角的预览框，
+  // 渲染尺寸缩到框内后，同一个球体就会跟着每一笔实时变化。
+  // 关掉预览或工坊时由 detach 搬回 body 并恢复整窗尺寸，主场景不会沿用预览框的宽高比。
+  useEffect(() => {
+    if (!open || !previewOn || !preview) return undefined;
+    const el = previewRef.current;
+    if (!el) return undefined;
+    preview.attach(el);
+    return () => preview.detach();
+  }, [open, previewOn, preview]);
+
+  // 每次重新打开都从小窗开始，放大状态不跨会话保留
+  useEffect(() => { if (!open) setPreviewBig(false); }, [open]);
 
   // 路线/区域参考层由 attachCanvas 建好：开关只切显隐，打开时补画一次
   useEffect(() => { if (open) W.syncOverlayView(); }, [showOverlay, open]);
@@ -103,7 +204,6 @@ export function Workshop({ container }) {
 
   if (!open) return null;
   const grid = W.workshop.grid;
-  const colorTool = tool === 'paint' || tool === 'clearColor';
 
   const loadRealEarth = async () => {
     setGenerating(true);
@@ -116,42 +216,37 @@ export function Workshop({ container }) {
     }
   };
 
+  const applyPreset = (hex) => setWorkshopBrush({ workshopTool: 'paint', workshopColor: hex });
+
   return (
     <div className="workshop">
       <div className="wk-top glass">
-        <span className="wk-title">🖌 地图工坊</span>
-        <span className="wk-dim">{`${grid.w}×${grid.h} 栅格 · 画完切到主视图看球体效果`}</span>
+        <span className="wk-title">地图工坊</span>
+        <span className="wk-dim">{`尺寸 ${grid.w}×${grid.h}`}</span>
         <span className="wk-dim">{`缩放 ${Math.round(zoom * 100)}%`}</span>
-        <button className="btn btn-mini" title="恢复「整张地图铺满窗口」" onClick={() => W.fitView()}>
+        <button className="btn btn-mini" onClick={() => W.fitView()}>
           ⤢ 适应窗口
         </button>
         <span style={{ flex: 1 }} />
-        <button
-          className={showOverlay ? 'btn active' : 'btn'}
-          title="把已有的路线与区域半透明叠在画布上，方便照着它们勾地形；只读，不能点选或编辑"
-          onClick={() => setWorkshopBrush({ workshopShowOverlay: !showOverlay })}
-        >
-          🗺 路线区域
-        </button>
         <button className="btn" disabled={!canUndo || generating} onClick={() => W.undo()}>↶ 撤销</button>
         <button className="btn" disabled={!canRedo || generating} onClick={() => W.redo()}>↷ 重做</button>
-        <button className="btn" disabled={generating} onClick={() => W.resetOcean()}>重置为海洋</button>
-        <button className="btn" disabled={generating} onClick={loadRealEarth}>
-          {generating ? '生成中…' : '🌐 真实地球'}
-        </button>
         <button className="btn btn-primary" disabled={generating} onClick={() => W.commitWorkshop()}>✔ 完成</button>
         <button className="btn" disabled={generating} onClick={() => W.cancelWorkshop()}>取消</button>
       </div>
 
       <div className="wk-body">
-        <div className="wk-side glass">
-          {TOOL_GROUPS.map(([group, items]) => (
-            <div key={group} className="wk-group">
-              <div className="wk-group-label">{group}</div>
-              {items.map(([id, label, tip]) => (
+        <aside className="wk-side">
+          <div className="wk-card wk-side-head">
+            <span className="wk-side-title">地形工具箱</span>
+          </div>
+
+          <Section title="形态" note="笔刷工具">
+            <div className="wk-toolgrid">
+              {SHAPE_TOOLS.map(([id, label, tip]) => (
                 <button
                   key={id}
                   className={`wk-tool${tool === id ? ' active' : ''}`}
+                  aria-pressed={tool === id}
                   title={tip}
                   onClick={() => setWorkshopBrush({ workshopTool: id })}
                 >
@@ -159,96 +254,209 @@ export function Workshop({ container }) {
                 </button>
               ))}
             </div>
-          ))}
-          <div className="wk-dim">{TOOL_WRITES[tool]}</div>
+          </Section>
 
-          <div className="wk-slider">
-            <span className="field-label">上色颜色</span>
-            <input
-              type="color"
-              aria-label="上色颜色"
-              value={color}
-              onChange={(e) => setWorkshopBrush({ workshopColor: e.target.value })}
-            />
-          </div>
-
-          <div className="wk-slider">
-            <span className="field-label" title="0 高度的平地就是这支颜色；抬高渐亮、压低渐暗，坡度另叠一层西北光明暗">
-              高度基色
-            </span>
-            <input
-              type="color"
-              aria-label="高度基色"
-              value={heightColor}
-              onChange={(e) => setWorkshopBrush({ workshopHeightColor: e.target.value })}
-            />
-          </div>
-
-          {tool === 'paint' && (
+          <Section title="颜色" note="绘制与参数">
             <button
-              className={`btn wk-tool${paintShadow ? ' active' : ''}`}
-              aria-pressed={paintShadow}
-              title={'开启后，上色会按当前地形坡度给所选颜色叠明暗：只改亮度，不改色相。关闭则平涂精确颜色'}
-              onClick={() => setWorkshopBrush({ workshopPaintShadow: !paintShadow })}
+              className={`wk-tool wk-tool-wide${tool === 'paint' ? ' active' : ''}`}
+              aria-pressed={tool === 'paint'}
+              title="改变某一像素格子的颜色，开启阴影后，就可以按坡度叠明暗"
+              onClick={() => setWorkshopBrush({ workshopTool: 'paint' })}
             >
-              {paintShadow ? '🌗 已加入阴影' : '🌑 加入阴影'}
+              <b>上色</b>
+              <span>在地图上绘制颜色</span>
             </button>
-          )}
 
-          <div className="wk-slider">
-            <span className="field-label">笔刷边长 </span><b>{size} 格</b>
-            <input
-              type="range"
-              min={1}
-              max={sizeMax}
-              step={2}
-              value={size}
-              onChange={(e) => setWorkshopBrush({ workshopSize: +e.target.value })}
+            <ColorField
+              label="上色颜色"
+              value={color}
+              title="上色笔写入的颜色"
+              onChange={(value) => setWorkshopBrush({ workshopColor: value })}
             />
-          </div>
+            <ColorField
+              label="高度基色"
+              value={heightColor}
+              title="抬高压低时用到的底色，抬高渐亮、压低渐暗"
+              onChange={(value) => setWorkshopBrush({ workshopHeightColor: value })}
+            />
 
-          {!colorTool && (
-            <>
-              <div className="wk-slider">
-                <span className="field-label">厚度 </span>
-                <b>{Math.round(strength * 100)}%</b>
-                <input
-                  type="range"
-                  min={1}
-                  max={500}
-                  value={Math.round(strength * 100)}
-                  onChange={(e) => setWorkshopBrush({ workshopStrength: +e.target.value / 100 })}
-                />
-              </div>
+            <label className="wk-slider">
+              <span className="wk-slider-head">
+                <span className="wk-field-label">笔刷边长</span>
+                <b>{size} 格</b>
+              </span>
+              <input
+                type="range"
+                min={1}
+                max={sizeMax}
+                step={2}
+                value={size}
+                title="正方形笔刷的边长"
+                onChange={(e) => setWorkshopBrush({ workshopSize: +e.target.value })}
+              />
+            </label>
 
+            {isHeightTool && (
+              <>
+                <label className="wk-slider">
+                  <span className="wk-slider-head">
+                    <span className="wk-field-label">厚度</span>
+                    <b>{Math.round(strength * 100)}%</b>
+                  </span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={500}
+                    value={Math.round(strength * 100)}
+                    title="高度笔每落一笔改变的高度"
+                    onChange={(e) => setWorkshopBrush({ workshopStrength: +e.target.value / 100 })}
+                  />
+                </label>
+
+                <button
+                  className={`wk-tool${hard ? ' active' : ''}`}
+                  onClick={() => setWorkshopBrush({ workshopHard: !hard })}
+                >
+                  {hard ? '硬笔（无扩散）' : '软笔（高斯）'}
+                </button>
+              </>
+            )}
+          </Section>
+
+          <Section title="阴影">
+            <ToggleRow
+              label="启用地形阴影"
+              checked={paintShadow}
+              title="开启后，上色时会按当前地形给所选颜色叠明暗"
+              onChange={(checked) => setWorkshopBrush({ workshopPaintShadow: checked })}
+            />
+          </Section>
+
+          <Section title="实时预览">
+            <ToggleRow
+              label="显示三维预览"
+              checked={previewOn}
+              title="在画布右下角显示当前地形对应的三维地球；拖动旋转、滚轮缩放"
+              onChange={(checked) => setWorkshopBrush({ workshopPreviewOn: checked })}
+            />
+          </Section>
+
+          <Section title="颜色盘">
+            <PresetRow
+              label="陆地初始颜色"
+              value={landColor}
+              title="点名字把陆地预设色设为上色颜色；点色块或箭头修改预设色"
+              onApply={() => applyPreset(landColor)}
+              onChange={(value) => setWorkshopBrush({ workshopLandColor: value })}
+            />
+            <PresetRow
+              label="海洋初始颜色"
+              value={oceanColor}
+              title="点名字把海洋预设色设为上色颜色；点色块或箭头修改预设色"
+              onApply={() => applyPreset(oceanColor)}
+              onChange={(value) => setWorkshopBrush({ workshopOceanColor: value })}
+            />
+          </Section>
+
+          <Section title="地图操作">
+            <div className="wk-ops">
               <button
-                className={`btn wk-tool${hard ? ' active' : ''}`}
-                title={'开：矩形内全强度，无扩散——画垂直悬崖 / 高塔 / 笔直边界\n关：从四边向中心衰减的软笔，自然平滑山脉'}
-                onClick={() => setWorkshopBrush({ workshopHard: !hard })}
+                className="wk-op"
+                disabled={generating}
+                title="用真实地球的高程与河网覆盖整张地图"
+                onClick={loadRealEarth}
               >
-                {hard ? '■ 硬笔（无扩散）' : '● 软笔（高斯）'}
+                <span className="wk-op-text">
+                  <b>{generating ? '载入中…' : '载入真实地球'}</b>
+                  <span>导入真实地形数据</span>
+                </span>
               </button>
-            </>
-          )}
+              <button
+                className={`wk-op${showOverlay ? ' on' : ''}`}
+                aria-pressed={showOverlay}
+                title="把已有的路线与区域半透明叠在画布上，只读，不能点选或编辑"
+                onClick={() => setWorkshopBrush({ workshopShowOverlay: !showOverlay })}
+              >
+                <span className="wk-op-text">
+                  <b>路线区域</b>
+                  <span>叠加已有路线与区域</span>
+                </span>
+              </button>
+              <button
+                className="wk-op"
+                disabled={generating}
+                title="整张地图铺成海洋预设色，并压到海平面以下"
+                onClick={() => W.resetOcean()}
+              >
+                <span className="wk-op-text">
+                  <b>重置为海洋</b>
+                  <span>使用海洋预设色</span>
+                </span>
+              </button>
+              <button
+                className="wk-op"
+                disabled={generating}
+                title="整张地图铺成陆地预设色，并抬到海平面以上"
+                onClick={() => W.resetLand()}
+              >
+                <span className="wk-op-text">
+                  <b>重置为陆地</b>
+                  <span>使用陆地预设色</span>
+                </span>
+              </button>
+            </div>
+          </Section>
 
-          <p className="insp-hint">
-            形态笔改高低，并按「高度基色」重算被涂格的地表色：越高越亮、越低越暗，
-            坡度再叠一层西北光明暗，山脊与沟壑会重新显出来；压回原高度颜色也会恢复。
-            颜色笔按矩形满铺、不动高度，重复点击同一格结果不变；形态笔再经过时，
-            这些格子会以基色为准重新着色。「加入阴影」让上色按当前坡度叠明暗，
-            只改亮度、不改色相，平地上仍是精确的所选色。
-            <br />
-            笔刷是正方形，边长恒为奇数：1 格只涂指针所在格，更大的以该格为中心
-            向四周对称展开。硬笔=矩形内全强度，软笔=从四边向中心衰减。
-            <br />
-            <b>滚轮</b>缩放（以光标为中心），<b>Shift+左键 / 中键 / 右键拖动</b>平移。
-            笔刷最小 1 格，放大到看得清落点再抠细节。
-          </p>
-        </div>
+          <Section title="画布交互">
+            <div className="wk-interact">
+              <div className="wk-interact-row">
+                <b>移动画布</b>
+                <span><kbd className="wk-kbd">Shift</kbd> + 鼠标左键拖动</span>
+              </div>
+              <div
+                className="wk-interact-row"
+                title="把三维预览的镜头转到点击的位置；二维画布本身不动"
+              >
+                <b>定位预览</b>
+                <span><kbd className="wk-kbd">Ctrl</kbd> + 鼠标左键点击</span>
+              </div>
+            </div>
+          </Section>
+        </aside>
 
-        {/* 画布绝对定位在 .wk-stage 里，靠 transform 缩放；外层只管边框与裁切 */}
         <div className="wk-canvas-wrap">
+          {/* 画布绝对定位在 .wk-stage 里，靠 transform 缩放；外层只管边框与裁切 */}
           <div className="wk-stage" ref={wrapRef} />
+
+          {/* 主渲染画布在打开预览时会被搬进这里；尺寸由 main.js 量取后同步给渲染器 */}
+          {previewOn && (
+            <div className={`wk-preview${previewBig ? ' big' : ''}`}>
+              <div
+                className="wk-preview-stage"
+                ref={previewRef}
+                role="img"
+                aria-label="地形实时预览"
+              />
+              <div className="wk-preview-tools">
+                <button
+                  type="button"
+                  className="wk-preview-btn"
+                  title={previewBig ? '缩小预览' : '放大预览'}
+                  onClick={() => setPreviewBig((v) => !v)}
+                >
+                  {previewBig ? '⤡' : '⤢'}
+                </button>
+                <button
+                  type="button"
+                  className="wk-preview-btn"
+                  title="收起预览；可在这里重新打开"
+                  onClick={() => setWorkshopBrush({ workshopPreviewOn: false })}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

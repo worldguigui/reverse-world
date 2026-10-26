@@ -81,7 +81,7 @@ export function OverviewPanel() {
       </div>
 
       <p className="insp-hint" style={{ marginTop: '10px' }}>
-        单击球面上的路线与区域查看详情；拖动底部游标，查看事件。
+        单击球面上的路线与区域查看详情；拖动底部游标，查看事件
       </p>
     </div>
   );

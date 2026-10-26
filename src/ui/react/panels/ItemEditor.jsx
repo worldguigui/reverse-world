@@ -112,14 +112,14 @@ export function ItemEditor({ kind, id }) {
               使用默认配色
             </button>
           ) : (
-            <span className="insp-hint" style={{ margin: 0 }}>未设置，跟随默认配色</span>
+            <span className="insp-hint" style={{ margin: 0 }}>默认配色</span>
           )}
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
         <button className="btn" onClick={() => flyToItem(kind, item)}>定位</button>
-        <button className="btn btn-primary" onClick={save}>保存</button>
+        <button className="btn btn-primary" onClick={save}>✔ 保存</button>
         <button className="btn" onClick={() => select(null)} title="放弃未保存的修改">取消</button>
         <button
           className="btn btn-danger"

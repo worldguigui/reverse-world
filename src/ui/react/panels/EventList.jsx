@@ -77,7 +77,7 @@ export function EventList() {
                     disabled={ev.from == null}
                     onClick={() => look(ev)}
                   >
-                    看
+                    Go
                   </button>
                 </div>
               ))}

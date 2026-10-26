@@ -94,7 +94,7 @@ export function ChapterList() {
                           setChronicleOpen(true);
                         }}
                       >
-                        看
+                        Go
                       </button>
                       <button
                         className="btn btn-mini btn-danger"

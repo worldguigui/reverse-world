@@ -157,7 +157,7 @@ export function Chronicle() {
             className="inp"
             type="text"
             value={query}
-            placeholder={characters.length ? '按姓名搜人物' : '还没有人物'}
+            placeholder={characters.length ? '搜索人物（名字或别名）' : '还没有人物'}
             disabled={!characters.length}
             title="选中后把此人当前涉及的事件建成一个新章节，清单不随数据更新"
             onChange={(e) => { setQuery(e.target.value); setHit(0); }}

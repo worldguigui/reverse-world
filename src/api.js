@@ -72,7 +72,7 @@ export function installAPI({ ctx, project, cursor }) {
     sampleTerrain: (lat, lng) => ctx.sampleTerrain(lat, lng),
     /**
      * 在指定经纬度涂画笔：
-     * { tool: 'raise'|'lower'|'smooth'|'paint'|'clearColor',
+     * { tool: 'raise'|'lower'|'smooth'|'paint',
      *   size（正方形边长，格，按奇数处理）, strength, passes, hard,
      *   shadow（仅 paint：按坡度给颜色叠明暗，只改亮度）,
      *   color: '#rrggbb'（仅 paint）,

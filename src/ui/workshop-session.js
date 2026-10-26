@@ -6,7 +6,7 @@
  * store 里只留三个廉价的布尔量（canUndo/canRedo）供按钮显示可用态。
  */
 import { useStore } from '../store/index.js';
-import { OCEAN_COLOR, hexTo565 } from '../core/raster.js';
+import { hexTo565 } from '../core/raster.js';
 import { slerpLatLng, vec3ToLatLng } from '../utils.js';
 import { OVERLAY_BASE, OVERLAY_BORDER } from '../view/overlay-palette.js';
 
@@ -24,6 +24,9 @@ export const workshop = {
   wrap: null,        // 画布容器，缩放/平移都相对它算
   overlayCanvas: null, // 已有路线/区域的只读参考层（屏幕坐标重绘）
   overlayCtx: null,
+  brushEl: null,     // 跟着指针走的笔刷范围框（屏幕坐标）
+  pointer: null,     // 最近一次指针在画布上的位置（clientX/clientY）
+  brushVisible: false, // 指针是否在画布上；平移、离开画布时框要收起来
   overlayRev: -1,      // 路径缓存对应的项目版本；项目一改就重建
   overlayRegions: [],  // [{ path: Path2D, color: string|null }]，坐标是栅格像素
   overlayRoutes: [],
@@ -77,6 +80,8 @@ export function beginWorkshop({ grid, binding = null, hooks }) {
   workshop.overlayRoutes = [];
   fitted = false;
   syncFlags();
+  // 打开时先把当前网格交给球面：新地图还没落第一笔，预览里也该是那片汪洋
+  hooks.onChange?.(grid);
 }
 
 export function endWorkshop() {
@@ -88,6 +93,9 @@ export function endWorkshop() {
   workshop.painting = false;
   workshop.overlayCanvas = null;
   workshop.overlayCtx = null;
+  workshop.brushEl = null;
+  workshop.pointer = null;
+  workshop.brushVisible = false;
   workshop.overlayRev = -1;
   workshop.overlayRegions = [];
   workshop.overlayRoutes = [];
@@ -121,6 +129,8 @@ function applyView() {
   canvas.style.imageRendering = rendering;
   // 路线/区域参考层按屏幕坐标重画，不吃这个 transform：平移缩放后要重新算一遍落点
   drawRouteOverlay();
+  // 笔刷框也按屏幕坐标摆放；缩放、平移后要跟着重新量
+  updateBrush();
 }
 
 /** 缩放倍数同步给顶栏读数。平移不动缩放，所以只有缩放路径调它 */
@@ -237,7 +247,15 @@ export function redo() {
 
 export function resetOcean() {
   pushUndo();
-  workshop.grid.fill(-0.45, OCEAN_COLOR);
+  workshop.grid.fill(-0.45, hexTo565(useStore.getState().workshopOceanColor));
+  workshop.dirty = true;
+  workshop.hooks.onChange(workshop.grid);
+}
+
+/** 整图填成海平面以上的平地，颜色用陆地预设色；与重置为海洋共用同一套填充与撤销 */
+export function resetLand() {
+  pushUndo();
+  workshop.grid.fill(0.2, hexTo565(useStore.getState().workshopLandColor));
   workshop.dirty = true;
   workshop.hooks.onChange(workshop.grid);
 }
@@ -404,6 +422,69 @@ function toGrid(canvas, e) {
   ];
 }
 
+/**
+ * 笔刷框：按当前指针与笔刷边长，把实际会受影响的格子矩形量到屏幕上。
+ * 与 applyBrush 用同一套奇数化与中心格规则；贴到画布边缘时按网格边界裁掉，
+ * 所以框永远表示真正会被写到的范围，而不是一个悬在画布外的理论尺寸。
+ */
+function updateBrush() {
+  const { brushEl, pointer, brushVisible, canvas, wrap, grid } = workshop;
+  if (!brushEl) return;
+  if (!brushVisible || !pointer || !canvas || !wrap || !grid) {
+    brushEl.style.display = 'none';
+    return;
+  }
+  const st = useStore.getState();
+  const rounded = Math.max(1, Math.round(Math.min(st.workshopSize, brushSizeMax())));
+  const side = rounded % 2 === 1 ? rounded : rounded + 1;
+  const [gx, gy] = toGrid(canvas, pointer);
+  const anchorX = Math.floor(gx);
+  const anchorY = Math.floor(gy);
+  const before = (side - 1) / 2;
+  const x0 = Math.max(0, anchorX - before);
+  const y0 = Math.max(0, anchorY - before);
+  const x1 = Math.min(grid.w - 1, anchorX + before);
+  const y1 = Math.min(grid.h - 1, anchorY + before);
+  if (x1 < x0 || y1 < y0) {
+    brushEl.style.display = 'none';
+    return;
+  }
+  const r = canvas.getBoundingClientRect();
+  const wr = wrap.getBoundingClientRect();
+  const cellW = r.width / grid.w;
+  const cellH = r.height / grid.h;
+  brushEl.style.display = 'block';
+  brushEl.style.transform = `translate(${r.left - wr.left + x0 * cellW}px, ${r.top - wr.top + y0 * cellH}px)`;
+  brushEl.style.width = `${(x1 - x0 + 1) * cellW}px`;
+  brushEl.style.height = `${(y1 - y0 + 1) * cellH}px`;
+}
+
+/** 指针是否还落在画布上。指针捕获时会收到画布外的坐标，抬起后要靠它决定框收不收 */
+function overCanvas(canvas, e) {
+  const r = canvas.getBoundingClientRect();
+  return e.clientX >= r.left && e.clientX <= r.right &&
+    e.clientY >= r.top && e.clientY <= r.bottom;
+}
+
+/**
+ * Ctrl+点击 = 定位预览：把点击位置换算成经纬度，交给三维预览的镜头转过去。
+ * 二维画布本身不移动——定位看的是球面上的结果，不是把这一格拖到屏幕中央。
+ * 预览收起时没有可看的视角，钩子不接这次定位。
+ */
+function locatePreviewAt(canvas, e) {
+  const { grid, hooks } = workshop;
+  const locate = hooks?.locatePreview;
+  if (!grid || !locate) return;
+  // 栅格是等经纬投影：x 从左到右 -180°→180°，y 从上到下 90°→-90°。
+  // 取格中心而不是左上角，镜头对准的才是这一格中间
+  const [gx, gy] = toGrid(canvas, e);
+  const col = Math.min(grid.w - 1, Math.max(0, Math.floor(gx)));
+  const row = Math.min(grid.h - 1, Math.max(0, Math.floor(gy)));
+  const lng = ((col + 0.5) / grid.w) * 360 - 180;
+  const lat = 90 - ((row + 0.5) / grid.h) * 180;
+  locate(lat, lng);
+}
+
 /** 画一笔。画笔参数每次现取 store 里的值，免得闭包留住旧参数 */
 function paint(canvas, e) {
   const st = useStore.getState();
@@ -447,18 +528,35 @@ export function attachCanvas(canvas, wrap) {
   wrap.appendChild(overlay);
   workshop.overlayCanvas = overlay;
   workshop.overlayCtx = overlay.getContext('2d');
+  // 笔刷框单独用一个不吃指针事件的 DOM 节点：跟着指针量一个矩形，比每帧重画画布便宜
+  const brush = document.createElement('div');
+  brush.className = 'wk-brush';
+  wrap.appendChild(brush);
+  workshop.brushEl = brush;
+  workshop.pointer = null;
+  workshop.brushVisible = false;
   fitView();
   syncOverlayView();
 
   let panning = null; // 正在平移时记上一个指针位置
 
   const onDown = (e) => {
-    // 中键 / 右键 / Shift+左键 = 平移；左键 = 涂抹
+    // Shift+左键 / 中键 / 右键 = 平移；Ctrl+左键 = 定位三维预览；左键 = 涂抹。
+    // 画布交互先于画笔判断，组合键不会落笔。
     if (e.button === 1 || e.button === 2 || (e.button === 0 && e.shiftKey)) {
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
       panning = { x: e.clientX, y: e.clientY };
       canvas.style.cursor = 'grabbing';
+      workshop.brushVisible = false;
+      updateBrush();
+      return;
+    }
+    if (e.button === 0 && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      workshop.pointer = { clientX: e.clientX, clientY: e.clientY };
+      workshop.brushVisible = true;
+      locatePreviewAt(canvas, e);
       return;
     }
     if (e.button !== 0) return;
@@ -466,27 +564,51 @@ export function attachCanvas(canvas, wrap) {
     canvas.setPointerCapture(e.pointerId);
     pushUndo(); // 一笔一档：撤销回到这一笔之前
     workshop.painting = true;
+    workshop.pointer = { clientX: e.clientX, clientY: e.clientY };
+    workshop.brushVisible = true;
     paint(canvas, e);
+    updateBrush();
   };
 
   const onMove = (e) => {
+    workshop.pointer = { clientX: e.clientX, clientY: e.clientY };
     if (panning) {
+      // 平移期间不显示笔刷框：此时指针不在「准备落笔」的位置上
+      workshop.brushVisible = false;
       panBy(e.clientX - panning.x, e.clientY - panning.y);
       panning.x = e.clientX;
       panning.y = e.clientY;
       return;
     }
+    workshop.brushVisible = true;
+    updateBrush();
     if (workshop.painting) paint(canvas, e);
   };
 
-  const onUp = () => {
+  const onEnter = (e) => {
+    workshop.pointer = { clientX: e.clientX, clientY: e.clientY };
+    workshop.brushVisible = true;
+    updateBrush();
+  };
+
+  const onLeave = () => {
+    workshop.brushVisible = false;
+    updateBrush();
+  };
+
+  const onUp = (e) => {
     workshop.painting = false;
     panning = null;
     canvas.style.cursor = '';
+    if (e && e.clientX != null) workshop.pointer = { clientX: e.clientX, clientY: e.clientY };
+    workshop.brushVisible = !!e && overCanvas(canvas, e);
+    updateBrush();
   };
 
   const onWheel = (e) => {
     e.preventDefault(); // 不然页面（或底下的相机）也跟着滚
+    workshop.pointer = { clientX: e.clientX, clientY: e.clientY };
+    workshop.brushVisible = true;
     // deltaMode=1 是按「行」滚的浏览器，换算成像素再看齐
     const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
     zoomAt(e.clientX, e.clientY, Math.exp(-dy * WHEEL_K));
@@ -494,12 +616,24 @@ export function attachCanvas(canvas, wrap) {
 
   const onContext = (e) => e.preventDefault(); // 右键要用来平移，不出菜单
 
+  // 窗口失焦时收不到 pointerup；不结束绘制标志的话，回到画布移动鼠标会继续涂
+  const onBlur = () => {
+    workshop.painting = false;
+    panning = null;
+    workshop.brushVisible = false;
+    canvas.style.cursor = '';
+    updateBrush();
+  };
+
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerenter', onEnter);
+  canvas.addEventListener('pointerleave', onLeave);
   canvas.addEventListener('pointerup', onUp);
   canvas.addEventListener('pointercancel', onUp);
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('contextmenu', onContext);
+  addEventListener('blur', onBlur);
 
   // 拖窗口时容器会变宽变高，「适应窗口」的比例跟着变，否则图会飘到视野外
   const ro = new ResizeObserver(() => reflow());
@@ -509,15 +643,22 @@ export function attachCanvas(canvas, wrap) {
     ro.disconnect();
     canvas.removeEventListener('pointerdown', onDown);
     canvas.removeEventListener('pointermove', onMove);
+    canvas.removeEventListener('pointerenter', onEnter);
+    canvas.removeEventListener('pointerleave', onLeave);
     canvas.removeEventListener('pointerup', onUp);
     canvas.removeEventListener('pointercancel', onUp);
     canvas.removeEventListener('wheel', onWheel);
     canvas.removeEventListener('contextmenu', onContext);
+    removeEventListener('blur', onBlur);
     overlay.remove();
+    brush.remove();
     workshop.canvas = null;
     workshop.wrap = null;
     workshop.overlayCanvas = null;
     workshop.overlayCtx = null;
+    workshop.brushEl = null;
+    workshop.pointer = null;
+    workshop.brushVisible = false;
   };
 }
 

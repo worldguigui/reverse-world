@@ -18,10 +18,10 @@ export function DrawForm({ kind }) {
 
   return (
     <div className="insp-block">
-      <div className="insp-title">{isRoute ? '🛤 绘制路线' : '🏳 勾画势力区域'}</div>
+      <div className="insp-title">{isRoute ? '绘制路线' : '勾画区域'}</div>
       <p className="insp-hint">
         {isRoute
-          ? '在球面上依次单击途经点；完成后点「完成」。'
+          ? '在球面上依次单击途经点，设置路线'
           : '在球面上依次单击顶点勾出边界（至少 3 点），点「完成」自动闭合。'}
       </p>
       <span className="insp-hint">{`已放置 ${drawCount} 个点`}</span>

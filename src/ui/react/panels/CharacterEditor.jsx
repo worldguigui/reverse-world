@@ -186,7 +186,7 @@ export function CharacterEditor({ id }) {
         <TimeInput value={draft.died} onChange={(v) => patch({ died: v })} placeholder="不详" />
       </Labeled>
       <p className="insp-hint">
-        时间可只写到年、月、日、时、分、秒；空格后的内容作为备注，例如「1919-11-11 待定时间」。
+        时间格式yyyy-MM-ddThh:mm:ss，时间后可以以空格分隔添加注释
       </p>
 
       <Labeled label="小传">
@@ -215,7 +215,7 @@ export function CharacterEditor({ id }) {
               使用默认配色
             </button>
           ) : (
-            <span className="insp-hint" style={{ margin: 0 }}>未设置，跟随默认配色</span>
+            <span className="insp-hint" style={{ margin: 0 }}>默认配色</span>
           )}
         </div>
       </div>
@@ -241,7 +241,7 @@ export function CharacterEditor({ id }) {
       </Labeled>
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-        <button className="btn btn-primary" onClick={save}>保存</button>
+        <button className="btn btn-primary" onClick={save}>✔ 保存</button>
         <button className="btn" onClick={reset} title="放弃未保存的修改">取消</button>
         <button
           className="btn btn-danger"

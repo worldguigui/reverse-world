@@ -6,7 +6,7 @@ import { EventDotLayer } from './view/event-dot.js';
 import { RouteLayer } from './view/routes.js';
 import { RegionLayer } from './view/regions.js';
 import * as P from './core/project.js';
-import { TerrainGrid, OCEAN_COLOR } from './core/raster.js';
+import { TerrainGrid, hexTo565 } from './core/raster.js';
 import { buildRealEarthGrid, EARTH_RES } from './core/realearth.js';
 import { loadStoredProject, createAutoSaver } from './core/storage.js';
 import { createPanels } from './ui/registry.js';
@@ -69,6 +69,59 @@ async function main() {
   routes.terrainRadius = terrainRadius;
   regions.terrainRadius = terrainRadius;
 
+  // ---------------------------------------------------------- 工坊实时预览
+  // 工坊是盖满窗口的不透明层，主画布本来被它挡在背后。打开工坊时把主画布搬进
+  // 画布右下角的预览框、把渲染尺寸缩到框内：同一个渲染器和同一份地形纹理就能把
+  // 每一笔直接画在球面上，不需要第二个 WebGL 上下文。
+  let previewEl = null;
+  let previewObserver = null;
+  let previewW = 0;
+  let previewH = 0;
+
+  function applyPreviewSize() {
+    if (!previewEl) return;
+    const w = Math.max(1, Math.round(previewEl.clientWidth));
+    const h = Math.max(1, Math.round(previewEl.clientHeight));
+    // 预览框还没布局出尺寸时不要改渲染器：0 宽高比会把相机投影弄坏
+    if (w < 2 || h < 2 || (w === previewW && h === previewH)) return;
+    previewW = w;
+    previewH = h;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    routes.setSize(w, h);
+    eventDot.setViewport(w, h);
+  }
+
+  function attachWorkshopPreview(el) {
+    if (!el || previewEl) return;
+    previewEl = el;
+    // 预览沿用同一套镜头控制：拖动旋转、滚轮缩放。
+    // 主画布自己的拾取与悬停会在预览打开时跳过（见 pointer 事件与 processHover），
+    // 所以拖预览只会转球，不会选中球面上的内容。
+    el.appendChild(renderer.domElement);
+    applyPreviewSize();
+    // 窗口或面板布局变化时预览框会跟着变，渲染缓冲与相机宽高比要同步
+    previewObserver = new ResizeObserver(applyPreviewSize);
+    previewObserver.observe(el);
+  }
+
+  function detachWorkshopPreview() {
+    if (!previewEl) return;
+    previewObserver?.disconnect();
+    previewObserver = null;
+    previewEl = null;
+    previewW = 0;
+    previewH = 0;
+    document.body.appendChild(renderer.domElement);
+    // 关掉工坊就回到整窗视图：尺寸与投影必须复原，否则主场景会沿用预览框的宽高比
+    renderer.setSize(innerWidth, innerHeight);
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    routes.setSize(innerWidth, innerHeight);
+    eventDot.setViewport(innerWidth, innerHeight);
+  }
+
   // ---------------------------------------------------------- 地图工坊面板
   // 解码地图是异步的：连点两次入口会让两次打开交错，第二次换掉网格时画布已经绑在第一次上
   let workshopOpening = false;
@@ -93,7 +146,8 @@ async function main() {
       } else {
         // 白纸起步的画布与真实地球同分辨率：画到一半按「真实地球」不会突然换一档精度
         grid = new TerrainGrid(EARTH_RES, EARTH_RES / 2);
-        grid.fill(-0.45, OCEAN_COLOR); // 一片汪洋：高度压到海平面以下，整张表刷上海洋色
+        // 一片汪洋：高度压到海平面以下，整张表刷上海洋预设色
+        grid.fill(-0.45, hexTo565(s.workshopOceanColor));
         s.toast('一片汪洋：拿画笔造出你的大陆吧');
       }
 
@@ -112,6 +166,12 @@ async function main() {
             relayoutLayers();
           },
           loadRealEarth: () => buildRealEarthGrid(grid.w),
+          // Ctrl+点击定位：把预览框里的球转到点击的经纬度。
+          // 预览收起时没有可看的视角，这次定位直接忽略，不去动被工坊盖住的主镜头
+          locatePreview(lat, lng) {
+            if (!previewEl) return;
+            rig.flyToLatLng(lat, lng, { duration: 700 });
+          },
           onCommit(g) {
             const st = store.getState();
             const png = g.encodePNG();
@@ -156,6 +216,7 @@ async function main() {
     settings: $('settings'),
     workshop: $('workshop'),
     loading: $('loading'),
+    workshopPreview: { attach: attachWorkshopPreview, detach: detachWorkshopPreview },
   });
 
   setViewHooks({ openWorkshop: openWorkshopPanel });
@@ -202,18 +263,20 @@ async function main() {
   }
 
   canvas.addEventListener('pointermove', (e) => {
+    if (previewEl) return;
     pointerClient.x = e.clientX;
     pointerClient.y = e.clientY;
     toNdc(e);
     pointerDirty = true;
   });
   canvas.addEventListener('pointerdown', (e) => {
+    if (previewEl) return;
     downInfo = { x: e.clientX, y: e.clientY, t: performance.now() };
   });
 
   // 单击（区分拖拽）按模式分发
   canvas.addEventListener('pointerup', (e) => {
-    if (!downInfo) return;
+    if (previewEl || !downInfo) return;
     const dx = e.clientX - downInfo.x;
     const dy = e.clientY - downInfo.y;
     const isClick = dx * dx + dy * dy < 36 && performance.now() - downInfo.t < 500;
@@ -257,7 +320,7 @@ async function main() {
   // 双击：定位到球面上的点并拉近
   canvas.addEventListener('dblclick', (e) => {
     const s = store.getState();
-    if (s.mode !== 'browse') return;
+    if (previewEl || s.mode !== 'browse') return;
     toNdc(e);
     const ll = pickSphere(ndc);
     if (!ll) return;
@@ -268,7 +331,8 @@ async function main() {
   const tooltipEl = $('tooltip');
   function processHover() {
     const s = store.getState();
-    if (!pointerDirty || s.mode !== 'browse' || !s.project) return;
+    // 画布搬进工坊预览框后不再接管球面悬停；预览框本身也挡住了指针事件
+    if (previewEl || !pointerDirty || s.mode !== 'browse' || !s.project) return;
     pointerDirty = false;
     const hit = pickAt(ndc);
     regions.setHover(hit?.kind === 'region' ? hit.id : null);
@@ -312,6 +376,8 @@ async function main() {
 
   // ---------------------------------------------------------- 尺寸与退出
   addEventListener('resize', () => {
+    // 工坊打开时画布在预览框里，尺寸由 ResizeObserver 跟着框走，不能拉回整窗大小
+    if (previewEl) { applyPreviewSize(); return; }
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);

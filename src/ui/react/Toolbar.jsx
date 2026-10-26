@@ -7,7 +7,7 @@ import { CloudDialog } from './CloudDialog.jsx';
 /** 各编辑模式下显示在右上角的一句提示 */
 const MODE_HINTS = {
   browse: '',
-  'add-event': '单击球面给它一个坐标（也可以不点），Esc 退出',
+  'add-event': '单击球面选定具体位置（也可以不点），Esc 退出',
   'draw-route': '单击依次添加途经点，Enter 完成',
   'draw-region': '单击勾画边界，靠近起点点击或 Enter 自动闭合',
 };
@@ -16,7 +16,7 @@ const MODES = [
   { id: 'browse', label: '浏览', title: '浏览模式：悬停查看、单击选中、双击定位' },
   { id: 'add-event', label: '事件', title: '在球面上单击给它一个坐标；不点则是没有坐标的纯叙事事件' },
   { id: 'draw-route', label: '路线', title: '依次单击途经点绘制路线' },
-  { id: 'draw-region', label: '区域', title: '逐点勾画势力区域' },
+  { id: 'draw-region', label: '区域', title: '逐点勾画区域' },
 ];
 
 /**
