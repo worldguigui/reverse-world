@@ -3,7 +3,7 @@ import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { useProjectRevision } from '../hooks.js';
 import {
-  Labeled, BackToOverview, TimeInput, CoordInput, CharacterPicker, GroupPicker, ItemImage,
+  Labeled, AutoTextarea, BackToOverview, TimeInput, CoordInput, CharacterPicker, GroupPicker, ItemImage,
 } from '../common.jsx';
 
 /**
@@ -93,8 +93,7 @@ export function EventEditor({ id }) {
       </Labeled>
 
       <Labeled label="描述">
-        <textarea
-          className="inp"
+        <AutoTextarea
           rows={4}
           placeholder="补充这个内容的设定…"
           value={draft.description}

@@ -83,8 +83,40 @@ async function loadRelief(url, w, h) {
     const u16 = (data[o] << 8) | data[o + 1];
     native[i] = (u16 / 65535) * H_SPAN + H_MIN;
   }
+  flattenPolarStretchRows(native, nw, nh);
   if (nw === w && nh === h) return native;
   return resampleBox(native, nw, nh, w, h);
+}
+
+/**
+ * 源高程图南北极附近的若干行，是「把最上/最下一行向极点重复」补出来的：
+ * 这一行被拉过整个极区，横向仍保留整圈各不相同的高度。贴到球上时，
+ * 这一圈本来收缩成一个点，于是从极点放射出一圈楔形条纹，
+ * 看起来像球顶没封严、能看进球里。
+ *
+ * 这里只处理「与边缘行逐元素完全相同的连续段」，把它压成该行均值：
+ * 极区变成同一高度，楔形条纹消失；正常极区地形（南极冰盖这类有真实起伏的行）
+ * 一个像素都不碰。
+ */
+function flattenPolarStretchRows(data, w, h) {
+  const sameRow = (y0, y1) => {
+    for (let x = 0; x < w; x++) if (data[y0 * w + x] !== data[y1 * w + x]) return false;
+    return true;
+  };
+  const flatten = (yStart, yEnd) => {
+    let sum = 0;
+    for (let x = 0; x < w; x++) sum += data[yStart * w + x];
+    const avg = sum / w;
+    for (let y = yStart; y <= yEnd; y++) data.fill(avg, y * w, y * w + w);
+  };
+
+  let northEnd = 0;
+  while (northEnd + 1 < h && sameRow(0, northEnd + 1)) northEnd++;
+  if (northEnd > 0) flatten(0, northEnd);
+
+  let southStart = h - 1;
+  while (southStart - 1 > northEnd && sameRow(h - 1, southStart - 1)) southStart--;
+  if (southStart < h - 1) flatten(southStart, h - 1);
 }
 
 /** 盒式重采样（主要给缩小用；放大时退化成最近邻） */

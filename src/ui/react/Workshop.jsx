@@ -318,7 +318,7 @@ export function Workshop({ container, preview }) {
                   <input
                     type="range"
                     min={1}
-                    max={500}
+                    max={400}
                     value={Math.round(strength * 100)}
                     title="高度笔每落一笔改变的高度"
                     onChange={(e) => setWorkshopBrush({ workshopStrength: +e.target.value / 100 })}

@@ -3,7 +3,9 @@ import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { formatTime } from '../../../core/datetime.js';
 import { useProjectRevision } from '../hooks.js';
-import { Labeled, BackToOverview, TimeInput, ItemImage, searchCharacters } from '../common.jsx';
+import {
+  Labeled, AutoTextarea, BackToOverview, TimeInput, ItemImage, searchCharacters,
+} from '../common.jsx';
 
 /**
  * 人物的两张面板：清单与卡片。
@@ -190,8 +192,7 @@ export function CharacterEditor({ id }) {
       </p>
 
       <Labeled label="小传">
-        <textarea
-          className="inp"
+        <AutoTextarea
           rows={4}
           placeholder="这个人是谁…"
           value={draft.description}

@@ -75,6 +75,13 @@ export class Globe {
           '  float u16 = dot(floor(rg * 255.0 + 0.5), vec2(256.0, 1.0));',
           '  return (u16 / 65535.0) * 8.0 - 4.0;',
           '}',
+          '// 极点处经度没有定义：极点那一圈顶点全都落在同一点上，却各自采样到',
+          '// 不同经线的高度，位移量一不同，球顶就裂成一圈扇形缝隙。这里让极点',
+          '// 统一取中央经线的高度，整圈位移到同一位置，再和下面一圈顶点缝合。',
+          'vec2 heightUv(vec2 baseUv) {',
+          '  float pole = max(smoothstep(0.999, 1.0, baseUv.y), smoothstep(0.999, 1.0, 1.0 - baseUv.y));',
+          '  return vec2(mix(baseUv.x, 0.5, pole), baseUv.y);',
+          '}',
         ].join('\n'))
         .replace('#include <beginnormal_vertex>', [
           '#include <beginnormal_vertex>',
@@ -85,9 +92,10 @@ export class Globe {
           '  if (eastLen > 1e-4) {',
           '    eastDir /= eastLen;',
           '    vec3 northDir = cross(nUnit, eastDir);',
-          '    float hC = unpackHeight(texture2D(uHeightTex, uv).rg);',
-          '    float hE = unpackHeight(texture2D(uHeightTex, uv + vec2(uHeightTexel.x, 0.0)).rg);',
-          '    float hN = unpackHeight(texture2D(uHeightTex, uv + vec2(0.0, uHeightTexel.y)).rg);',
+          '    vec2 huv = heightUv(uv);',
+          '    float hC = unpackHeight(texture2D(uHeightTex, huv).rg);',
+          '    float hE = unpackHeight(texture2D(uHeightTex, huv + vec2(uHeightTexel.x, 0.0)).rg);',
+          '    float hN = unpackHeight(texture2D(uHeightTex, huv + vec2(0.0, uHeightTexel.y)).rg);',
           '    float k = uExaggeration * 8.0;',
           '    objectNormal = normalize(objectNormal + (eastDir * (hC - hE) + northDir * (hN - hC)) * k);',
           '  }',
@@ -96,7 +104,7 @@ export class Globe {
         .replace('#include <begin_vertex>', [
           '#include <begin_vertex>',
           '// 沿径向按高度位移：h=0 海平面，h>0 山隆起，h<0 海床内凹',
-          'transformed += normalize(position) * unpackHeight(texture2D(uHeightTex, uv).rg) * uExaggeration;',
+          'transformed += normalize(position) * unpackHeight(texture2D(uHeightTex, heightUv(uv)).rg) * uExaggeration;',
         ].join('\n'));
     };
     this.sphere = new THREE.Mesh(this._makeGeometry(256), this.sphereMat);
@@ -183,6 +191,12 @@ export class Globe {
     this._heightTex.colorSpace = THREE.LinearSRGBColorSpace;
     this._heightTex.magFilter = THREE.LinearFilter;
     this._heightTex.minFilter = THREE.LinearFilter;
+    // 横向环绕：地图首尾两列在球上是同一条经线（经度 ±180°），
+    // 球面网格在那条线上的顶点是重复的。夹边采样会让 u=0 和 u=1 各读一侧边缘，
+    // 高度不同、位移量就不同，接缝处裂开一条能看进球内的竖缝；颜色上也会留下一条深线。
+    // 环绕采样让两侧读到同一组边缘混合值，接缝与别处一样连续。纵向仍是夹边——纬度没有环绕。
+    this._colorTex.wrapS = THREE.RepeatWrapping;
+    this._heightTex.wrapS = THREE.RepeatWrapping;
     // 不生成 mipmap，缩小过滤就只能配 Linear：给了带 mipmap 的过滤器又不生成，
     // WebGL 采到的是一张不完整的贴图，整颗球会变成黑的
     this._heightTex.generateMipmaps = false;

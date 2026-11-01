@@ -277,7 +277,9 @@
     .inp:disabled {
       color: var(--text-disabled); cursor: not-allowed;
     }
-    textarea.inp { resize: vertical; }
+    /* 描述框随内容长高（见 AutoTextarea），不再给拖拽手柄和内部滚动条 */
+    textarea.inp { resize: none; overflow-y: hidden; }
+    textarea.inp.auto-grow { display: block; }
     select.inp option { background: var(--surface-input); color: var(--text); }
     /* 表单里的取色器与输入框保持同一套边框和高度 */
     input[type="color"] {

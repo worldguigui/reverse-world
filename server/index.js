@@ -18,8 +18,8 @@ const PORT = Number(process.env.PORT || 8787);
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const FILE = path.join(DATA_DIR, 'project.json');
 const TOKEN = process.env.WORLD_TOKEN || '';
-// 前端项目可能内嵌 2048×1024 的地图 PNG 与多张人物图，25 MiB 足够，又不至于让畸形请求吃光内存
-const MAX_BODY = 25 * 1024 * 1024;
+// 前端项目可能内嵌 2048×1024 的地图 PNG 与多张人物图，200 MiB 足够，又不至于让畸形请求吃光内存
+const MAX_BODY = 200 * 1024 * 1024;
 
 if (!TOKEN) {
   console.error('[api] 缺少 WORLD_TOKEN 环境变量，拒绝启动');
@@ -131,14 +131,14 @@ async function handlePut(req, res) {
 
   // Content-Length 已经超限就不必再收：nginx 那边也会挡一道，这里只是尽早结束
   if (Number(req.headers['content-length'] || 0) > MAX_BODY) {
-    send(res, 413, { error: '项目文件过大，服务器上限为 25 MB' });
+    send(res, 413, { error: '项目文件过大，服务器上限为 200 MB' });
     req.resume();
     return;
   }
 
   const body = await readBody(req);
   if (body === null) {
-    send(res, 413, { error: '项目文件过大，服务器上限为 25 MB' });
+    send(res, 413, { error: '项目文件过大，服务器上限为 200 MB' });
     return;
   }
 

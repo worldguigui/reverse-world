@@ -1,5 +1,5 @@
 import { useStore } from '../../../store/index.js';
-import { Labeled, YearInput } from '../common.jsx';
+import { Labeled, AutoTextarea, YearInput } from '../common.jsx';
 
 /**
  * 绘制路线 / 区域时的表单。
@@ -35,8 +35,7 @@ export function DrawForm({ kind }) {
       </Labeled>
 
       <Labeled label="描述">
-        <textarea
-          className="inp"
+        <AutoTextarea
           rows={3}
           defaultValue={form.description}
           onChange={(e) => saveDrawForm({ description: e.target.value })}

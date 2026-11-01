@@ -31,7 +31,7 @@ function fallbackMessage(status) {
   switch (status) {
     case 401: return '访问令牌不正确';
     case 404: return '云端还没有存档';
-    case 413: return '项目文件过大，服务器上限为 25 MB';
+    case 413: return '项目文件过大，被服务器拒收（HTTP 413）';
     case 502:
     case 503:
     case 504: return '云端服务暂时不可用';
@@ -55,15 +55,30 @@ async function request(method, token, body) {
       body,
     });
 
-    let data = null;
+    let raw = '';
     try {
-      data = await res.json();
+      raw = await res.text();
     } catch (err) {
-      // 超时中断也可能发生在读响应体时，交给外层统一翻译；其余非 JSON 响应交给状态码
+      // 超时中断也可能发生在读响应体时，交给外层统一翻译；其余读失败按空响应处理
       if (err.name === 'AbortError') throw err;
     }
 
-    if (!res.ok) throw new Error(data?.error || fallbackMessage(res.status));
+    let data = null;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      // 非 JSON 响应：多半是 nginx 之类的代理错误页，下面按状态码兜底
+    }
+
+    if (!res.ok) {
+      // API 自己的拒绝都带 JSON 说明，里面是真实的体积上限
+      if (data?.error) throw new Error(data.error);
+      // 没有 JSON 的 413 来自反向代理：请求还没到 API，不能把 API 的上限当成原因
+      if (res.status === 413) {
+        throw new Error('上传在到达存档接口之前被拒绝（HTTP 413）：请检查反向代理的请求体上限');
+      }
+      throw new Error(fallbackMessage(res.status));
+    }
     if (!data) throw new Error(`云端返回了无法解析的响应（HTTP ${res.status}）`);
     return data;
   } catch (err) {

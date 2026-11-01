@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
-import { Labeled, TimeInput, CoordInput, CharacterPicker, GroupPicker, ItemImage } from '../common.jsx';
+import {
+  Labeled, AutoTextarea, TimeInput, CoordInput, CharacterPicker, GroupPicker, ItemImage,
+} from '../common.jsx';
 
 /**
  * 放置表单：在球面上点一个坐标，再把它变成一条事件。
@@ -76,8 +78,7 @@ export function EventForm() {
       )}
 
       <Labeled label="描述">
-        <textarea
-          className="inp"
+        <AutoTextarea
           rows={3}
           defaultValue={draft.description || ''}
           onChange={(e) => saveDraft({ description: e.target.value })}

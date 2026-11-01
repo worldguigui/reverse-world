@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from '../../store/index.js';
 import { normalizeTime } from '../../core/datetime.js';
 
@@ -9,6 +9,52 @@ export function Labeled({ label, children }) {
       <span className="field-label">{label}</span>
       {children}
     </label>
+  );
+}
+
+/**
+ * 描述类输入框：高度跟着内容长，全文一次摊开，不在框里出现滚动条。
+ * rows 只是空内容时的最小行数；一旦写满，框就继续往下长（检查器整体滚动）。
+ *
+ * 输入时先量再回调：回调可能触发重渲染，等下一帧再量会闪一下。
+ * 高度用 border-box 口径（项目全局 box-sizing），所以要把上下边框补进去，
+ * 否则 scrollHeight 正好差这两像素，刚好多出一条滚动条。
+ */
+export function AutoTextarea({
+  value, defaultValue, onChange, rows = 3, className = 'inp', ...rest
+}) {
+  const ref = useRef(null);
+
+  const fit = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const border = el.offsetHeight - el.clientHeight;
+    el.style.height = `${el.scrollHeight + border}px`;
+  }, []);
+
+  // 切换对象、载入存档等外部变化后重新量一次
+  useLayoutEffect(fit, [fit, value, defaultValue]);
+
+  // 窗口变窄时同一段文字会折成更多行，高度要跟着重算
+  useEffect(() => {
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [fit]);
+
+  return (
+    <textarea
+      {...rest}
+      ref={ref}
+      className={`${className} auto-grow`}
+      rows={rows}
+      value={value}
+      defaultValue={defaultValue}
+      onChange={(e) => {
+        fit();
+        onChange?.(e);
+      }}
+    />
   );
 }
 

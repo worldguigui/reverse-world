@@ -1,6 +1,6 @@
 import { useStore } from '../../../store/index.js';
 import { useProjectRevision } from '../hooks.js';
-import { Labeled } from '../common.jsx';
+import { Labeled, AutoTextarea } from '../common.jsx';
 
 // 数列得出来的东西：事件在长卷与刻度上、路线与区域在球上、人物在顶栏，每一格背后都有地方看。
 // 地点曾经也占一格，可它三处都没有入口——报一个数却无处可看，于是连同这一等实体一起拿掉。
@@ -51,8 +51,7 @@ export function OverviewPanel() {
       </Labeled>
 
       <Labeled label="简介">
-        <textarea
-          className="inp"
+        <AutoTextarea
           rows={3}
           placeholder="这个世界的简要设定…"
           defaultValue={project.description || ''}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../../../store/index.js';
-import { Labeled, BackToOverview, YearInput } from '../common.jsx';
+import { Labeled, AutoTextarea, BackToOverview, YearInput } from '../common.jsx';
 
 const TITLES = { route: '路线', region: '势力区域' };
 
@@ -68,8 +68,7 @@ export function ItemEditor({ kind, id }) {
       </Labeled>
 
       <Labeled label="描述">
-        <textarea
-          className="inp"
+        <AutoTextarea
           rows={4}
           placeholder="补充这个内容的设定…"
           value={draft.description}
