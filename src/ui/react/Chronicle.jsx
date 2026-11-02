@@ -140,6 +140,36 @@ export function Chronicle() {
     activeRef.current?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
   }, [currentId, open]);
 
+  // 长卷横向溢出时提供左右翻页按钮：壁纸环境不转发滚轮事件，
+  // 只看得到露在外面的那几张卡片。按钮在 web 里也照样可用。
+  const stripRef = useRef(null);
+  const [nav, setNav] = useState({ left: false, right: false });
+  useEffect(() => {
+    if (!open) return undefined;
+    const sync = () => {
+      const el = stripRef.current;
+      if (!el) return;
+      const max = el.scrollWidth - el.clientWidth;
+      setNav({ left: el.scrollLeft > 1, right: el.scrollLeft < max - 1 });
+    };
+    sync();
+    const el = stripRef.current;
+    el?.addEventListener('scroll', sync, { passive: true });
+    // 窗口尺寸或卡片数量变化都会改变可滚范围，一起重算
+    const ro = new ResizeObserver(sync);
+    if (el) ro.observe(el);
+    return () => {
+      el?.removeEventListener('scroll', sync);
+      ro.disconnect();
+    };
+  }, [open, ticks.length]);
+
+  const scrollStrip = (dir) => {
+    const el = stripRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(160, el.clientWidth * 0.8), behavior: 'smooth' });
+  };
+
   if (!open || !project) return null;
 
   return (
@@ -151,6 +181,24 @@ export function Chronicle() {
             ? `${ticks.length} 条事件${filtering ? '（已筛选）' : ''}`
             : filtering ? '0 条事件（已筛选）' : '还没有事件'}
         </span>
+        <div className="chr-nav">
+          <button
+            className="icon-btn"
+            disabled={!nav.left}
+            title="向前翻"
+            onClick={() => scrollStrip(-1)}
+          >
+            ‹
+          </button>
+          <button
+            className="icon-btn"
+            disabled={!nav.right}
+            title="向后翻"
+            onClick={() => scrollStrip(1)}
+          >
+            ›
+          </button>
+        </div>
         <div className="chr-search">
           <input
             id="chr-char-search"
@@ -231,7 +279,7 @@ export function Chronicle() {
         )}
       </div>
 
-      <div className="chr-strip">
+      <div className="chr-strip" ref={stripRef}>
         {ticks.length === 0 && (
           <div className="chr-empty">
             <p className="insp-hint">{emptyText}</p>

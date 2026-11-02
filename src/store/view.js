@@ -19,11 +19,20 @@ export const createViewSlice = (set, get) => ({
     get().applyView();
   },
 
+  /**
+   * 把底部留白写进 CSS 变量。时间轴、编年史、提示条都读 --bottom-inset，
+   * 壁纸环境里靠它整体避开系统任务栏。不传就用当前设置里的值。
+   */
+  applyBottomInset(px = get().viewConfig.layout.bottomInset) {
+    document.documentElement.style.setProperty('--bottom-inset', `${px}px`);
+  },
+
   /** 把当前设置推给相机与球体，重建图层（尺寸类设置影响几何），并落盘 */
   applyView() {
     const config = get().viewConfig;
     session.rig?.setConfig({ ...config.camera, ...config.rotation });
     session.globe?.setConfig(config);
+    get().applyBottomInset(config.layout.bottomInset);
     saveViewConfig(config);
     get().touchLayers();
   },

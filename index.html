@@ -214,6 +214,33 @@
       border-color: var(--accent-border);
     }
     .mode-hint { font-size: 12px; color: var(--text-muted); margin-right: 6px; }
+    /* 展示模式标记：这份页面只负责显示，不读写本机存档 */
+    .view-chip {
+      font-size: 11px; letter-spacing: 0.4px; color: var(--text-muted);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 1px 6px; white-space: nowrap;
+    }
+
+    /* 启动提示：恢复存档失败这类必须让用户看见、但不能停住启动的事故。
+       用页内浮层而不是 alert()，启动流程照常往下走。 */
+    #notice {
+      position: fixed; top: 72px; left: 50%; transform: translateX(-50%);
+      z-index: 60; width: min(580px, calc(100vw - 32px));
+    }
+    .notice { padding: 14px 16px; display: grid; gap: 6px; }
+    .notice-title { font-size: 14px; font-weight: 600; color: var(--warning); }
+    .notice-text {
+      margin: 0; font-size: 12.5px; color: var(--text-muted-raised);
+      line-height: 1.7; user-select: text;
+    }
+    .notice-key {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px; color: var(--text-strong); background: var(--surface-input);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 0 5px; margin: 0 2px; user-select: all; word-break: break-all;
+    }
+    .notice-path { margin: 0; font-size: 11.5px; color: var(--text-muted); }
+    .notice-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
 
     /* 项目下拉菜单 */
     .menu {
@@ -433,7 +460,10 @@
 
     /* ---------------- 底部时间轴 ---------------- */
     #timeline {
-      position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: var(--z-timeline);
+      /* --bottom-inset 给壁纸环境用：桌面任务栏会盖住贴着底边的控件，
+         用 ?inset=<像素> 把整条时间轴（连同它上面的长卷）一起抬高 */
+      position: fixed; bottom: calc(14px + var(--bottom-inset, 0px));
+      left: 50%; transform: translateX(-50%); z-index: var(--z-timeline);
       /* 必须给死宽度：fixed 元素默认收缩包裹，而 .tl-track 的子元素全是绝对定位、
          撑不出内在宽度，轨道会被压成 0 宽——刻度全叠在一点，游标走不动 */
       width: min(86vw, 900px);
@@ -535,6 +565,10 @@
       color: var(--text-strong);
     }
     .chr-count { flex: 1; font-size: 11.5px; color: var(--text-muted); }
+    /* 长卷左右翻页：滚轮在壁纸里不生效，点按钮照样能看完后面的卡片 */
+    .chr-nav { display: flex; gap: 2px; }
+    .chr-nav .icon-btn { font-size: 18px; line-height: 1; padding: 2px 8px; }
+    .chr-nav .icon-btn:disabled { color: var(--text-disabled); cursor: default; background: none; }
     /* 按姓名找人物：候选向上展开，避开下面的长卷与时间轴 */
     .chr-search { position: relative; flex: 0 1 170px; min-width: 108px; }
     .chr-search .inp { padding: 4px 8px; font-size: 11.5px; }
@@ -877,6 +911,7 @@
     .wk-op-text { display: grid; gap: 1px; min-width: 0; }
     .wk-op-text b { font-size: 13px; font-weight: 600; color: var(--text-strong); }
     .wk-op-text span { font-size: 11px; color: var(--text-muted); }
+    .wk-error { margin: 2px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--danger-text); }
     .wk-op.on .wk-op-text b { color: var(--accent-text); }
 
     .wk-interact { display: flex; flex-direction: column; gap: 8px; }
@@ -983,6 +1018,7 @@
 </head>
 <body>
   <div id="topbar" class="glass"></div>
+  <div id="notice"></div>
   <div id="inspector" class="glass"></div>
   <div id="timeline" class="glass"></div>
   <div id="settings" class="glass"></div>

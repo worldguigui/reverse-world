@@ -52,6 +52,12 @@ export const createUISlice = (set, get) => ({
   // 全屏加载页：{ title, detail, progress }。progress 为 0..1；null = 不确定进度
   loading: null,
   toasts: [],            // [{ id, text }]
+  // 启动时没能恢复本机存档的说明；null = 没有。
+  // { reason: string, backupKey: string|null }。用页内提示而不是 alert()：
+  // 原生对话框会同步卡住启动，在壁纸这类不可交互的展示环境里还可能永远关不掉
+  startupNotice: null,
+  // 展示模式（壁纸/嵌入页）：不恢复上次存档，也不自动保存
+  viewMode: false,
 
   // —— 变更信号 ——
   // 手写 DOM 面板不会自己重绘，得有人告诉它「数据变了、该重画了」。这里把这件事记成
@@ -171,4 +177,10 @@ export const createUISlice = (set, get) => ({
   dismissToast(id) {
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
   },
+
+  // ---------------------------------------------------------------- 启动提示 / 展示模式
+
+  showStartupNotice(notice) { set({ startupNotice: notice }); },
+  dismissStartupNotice() { set({ startupNotice: null }); },
+  setViewMode(viewMode) { set({ viewMode }); },
 });

@@ -157,7 +157,8 @@ export const createActionsSlice = (set, get) => ({
       await waitForStage();
       await nextPaint();
       get().setLoading(null);
-      get().toast('示例世界已载入：拖动底部游标，看事件依次登场');
+      // 展示模式是给壁纸看的：载入成功不必提示，提示条反而会盖住底部控件
+      if (!get().viewMode) get().toast('示例世界已载入：拖动底部游标，看事件依次登场');
     } catch (err) {
       get().setLoading(null);
       get().toast(`示例世界载入失败：${err.message}`);
@@ -185,6 +186,35 @@ export const createActionsSlice = (set, get) => ({
     } catch (err) {
       get().setLoading(null);
       get().toast(`导入失败：${err.message}`);
+    }
+  },
+
+  /**
+   * 从同源地址读取 .world.json 并载入（展示模式用）。
+   * 只接受与页面同源的 http(s) 地址：世界文件跟着 index 一起分发，
+   * 不需要允许从任意站点拉内容；跨源请求在展示环境里也会因 CORS 直接失败。
+   */
+  async loadProjectFromUrl(url) {
+    if (get().loading) return;
+    const target = new URL(url, location.href);
+    if (!/^https?:$/.test(target.protocol) || target.origin !== location.origin) {
+      throw new Error('只支持与页面同源的世界文件');
+    }
+    const res = await fetch(target, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`读取世界文件失败（HTTP ${res.status}）`);
+    const project = P.normalizeProject(await res.json());
+    const title = `正在打开「${project.name}」`;
+    const show = async (detail, progress) => {
+      get().setLoading({ title, detail, progress });
+      await nextPaint();
+    };
+    try {
+      await show('准备地图…', null);
+      get().loadProjectInto(project);
+      await waitForStage();
+      await nextPaint();
+    } finally {
+      get().setLoading(null);
     }
   },
 

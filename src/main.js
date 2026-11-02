@@ -24,6 +24,23 @@ async function main() {
   const store = useStore;
   const config = store.getState().viewConfig;
 
+  // 展示模式：壁纸、嵌入式页面用 ?view 打开；?world=<相对地址> 指定要展示的世界文件。
+  // 这个模式不恢复上次会话，也不自动保存——展示页每次启动都该从同一份文件开始，
+  // 而「恢复上次的存档」在壁纸里只会把旧档的校验错误变成启动事故。
+  const params = new URLSearchParams(location.search);
+  const viewMode = params.has('view') || params.has('world');
+  const viewWorldUrl = params.get('world');
+  store.getState().setViewMode(viewMode);
+  // 壁纸是铺在桌面上的，系统任务栏会盖住贴着底边的控件。底部留白平时由
+  // 画面设置里的滑块决定（存在本机），?inset=<像素> 给嵌在固定页面里的场景
+  // 从 URL 指定一个初值，写进同一个设置项，之后仍可在面板里微调。
+  const inset = Number(params.get('inset'));
+  if (Number.isFinite(inset) && inset > 0) {
+    store.getState().setViewConfig({ layout: { bottomInset: Math.min(inset, 400) } });
+  } else {
+    store.getState().applyBottomInset();
+  }
+
   // ---------------------------------------------------------- 渲染基础
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.autoClear = false; // 一帧要分三趟画，清屏由 render() 自己掌握
@@ -54,7 +71,8 @@ async function main() {
 
   Object.assign(session, {
     renderer, scene, camera, globe, eventDot, routes, regions, rig, tweens,
-    autosaver: createAutoSaver(500),
+    // 展示模式不建自动保存器：所有写入点都走 autosaver?.save，null 即「只看不存」
+    autosaver: viewMode ? null : createAutoSaver(500),
   });
 
   // 光点/路线/区域始终贴着实际地形走，包括海平面以下的凹陷。
@@ -227,6 +245,7 @@ async function main() {
   // ---------------------------------------------------------- UI 组装
   createPanels({
     topbar: $('topbar'),
+    notice: $('notice'),
     timeline: $('timeline'),
     inspector: $('inspector'),
     settings: $('settings'),
@@ -400,23 +419,20 @@ async function main() {
     routes.setSize(innerWidth, innerHeight);
     eventDot.setViewport(innerWidth, innerHeight);
   });
-  addEventListener('beforeunload', () => session.autosaver.flush());
+  addEventListener('beforeunload', () => session.autosaver?.flush());
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) session.autosaver.flush();
+    if (document.hidden) session.autosaver?.flush();
   });
 
   // ---------------------------------------------------------- 启动
-  const restored = await loadStoredProject();
+  const restored = viewMode
+    ? { status: 'empty', project: null }
+    : await loadStoredProject();
   if (restored.status === 'corrupt') {
-    // 坏档已被隔离；必须让用户看见，否则「世界没了」会被当成数据丢失事故
+    // 坏档已被隔离；必须让用户看见，否则「世界没了」会被当成数据丢失事故。
+    // 但用页内提示而不是 alert()：原生对话框会停住启动，壁纸里还可能根本点不到
     const reason = restored.error?.message ?? String(restored.error);
-    alert(restored.backupKey
-      ? `上次的世界读取失败：${reason}\n\n原数据已原样备份到 IndexedDB 键「${restored.backupKey}」，`
-        + '可从开发者工具（Application → IndexedDB → worldbuilding-tool → kv）复制后重新导入。\n'
-        + '本次从空白世界开始。'
-      : `上次的世界读取失败：${reason}\n\n备份失败，原记录仍留在 IndexedDB 键「current-project」。`
-        + '本次会话已停止自动保存，新建或导入都不会覆盖它。\n'
-        + '请先用开发者工具（Application → IndexedDB → worldbuilding-tool → kv）复制这条记录，再刷新页面。');
+    store.getState().showStartupNotice({ reason, backupKey: restored.backupKey ?? null });
   } else if (restored.status === 'unavailable') {
     store.getState().toast('本机存储不可用：本次不会自动保存，请记得导出');
   }
@@ -438,6 +454,16 @@ async function main() {
     project: () => store.getState().project,
     cursor: () => store.getState().cursor,
   });
+  // 展示模式的内容在 API 就绪后再载入：外部脚本一进来就能看到这里在做什么
+  if (viewMode) {
+    try {
+      if (viewWorldUrl) await store.getState().loadProjectFromUrl(viewWorldUrl);
+      else await store.getState().loadSample();
+    } catch (err) {
+      console.error('[view] 展示世界载入失败：', err);
+      store.getState().toast(`展示世界载入失败：${err.message}`);
+    }
+  }
   console.info(
     '%c window.world ',
     'background:#c56b3e;color:#11100f;padding:2px 6px;border-radius:4px;font-weight:bold',

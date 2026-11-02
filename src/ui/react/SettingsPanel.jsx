@@ -167,6 +167,12 @@ export function SettingsPanel() {
         <button className="icon-btn" title="收起" onClick={() => setSettingsOpen(false)}>✕</button>
       </div>
 
+      {/* 底部留白。± 一步 16px。 */}
+      <Group title="布局">
+        <Slider label="底部留白" value={config.layout.bottomInset} min={0} max={200} step={1} nudgeStep={16}
+          onChange={(v) => set({ layout: { bottomInset: v } })} />
+      </Group>
+
       <Group title="大气与星空">
         <Check label="大气层" checked={config.atmosphere.enabled}
           onChange={(v) => set({ atmosphere: { enabled: v } })} />
@@ -225,6 +231,7 @@ export function SettingsPanel() {
         <Slider label="旋转速度 °/s" value={config.rotation.speed} min={0} max={5} step={0.05}
           onChange={(v) => set({ rotation: { speed: v } })} />
       </Group>
+
     </div>
   );
 }

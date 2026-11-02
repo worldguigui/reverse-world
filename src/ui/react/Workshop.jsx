@@ -142,6 +142,9 @@ export function Workshop({ container, preview }) {
   const showOverlay = useStore((s) => s.workshopShowOverlay);
   const setWorkshopBrush = useStore((s) => s.setWorkshopBrush);
   const [generating, setGenerating] = useState(false);
+  // 载入真实地球失败的原因。显示在按钮下方而不是弹窗：工坊是全屏层，
+  // 原生弹窗既会卡住操作，也可能在壁纸这类环境里点不到
+  const [realEarthError, setRealEarthError] = useState(null);
   const [previewBig, setPreviewBig] = useState(false);
   const wrapRef = useRef(null);
   const previewRef = useRef(null);
@@ -219,10 +222,11 @@ export function Workshop({ container, preview }) {
 
   const loadRealEarth = async () => {
     setGenerating(true);
+    setRealEarthError(null);
     try {
       await W.copyFromRealEarth();
     } catch (err) {
-      alert('真实地球数据加载失败：' + err.message);
+      setRealEarthError('真实地球数据加载失败：' + err.message);
     } finally {
       setGenerating(false);
     }
@@ -416,6 +420,7 @@ export function Workshop({ container, preview }) {
                   <span>使用陆地预设色</span>
                 </span>
               </button>
+              {realEarthError && <p className="wk-error">{realEarthError}</p>}
             </div>
           </Section>
 

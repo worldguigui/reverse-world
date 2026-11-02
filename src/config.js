@@ -27,6 +27,11 @@ export const IMAGE_UPLOAD = {
 };
 
 export const DEFAULT_CONFIG = {
+  // 贴底控件（时间轴、编年史、提示条）离窗口底边的额外距离（像素）。
+  // 壁纸铺满桌面时会被系统任务栏盖住，这时调大；网页里通常留 0。
+  layout: {
+    bottomInset: 0,
+  },
   camera: {
     // 出厂镜头的视场角。设置面板不再改它：现在滑块和滚轮共用「档位」，
     // 档位 1 就落在这个视场角上，往后再由推近相机与收窄镜头接着放大。
@@ -94,6 +99,9 @@ export function loadViewConfig() {
   if (!TERRAIN_MESH_SEGMENTS.includes(config.terrain.meshSegments)) {
     config.terrain.meshSegments = DEFAULT_CONFIG.terrain.meshSegments;
   }
+  // 底部留白夹在合理区间：负数会把控件推到屏幕外，过大的值会让时间轴顶到画面中间
+  const inset = Math.round(Number(config.layout.bottomInset));
+  config.layout.bottomInset = Number.isFinite(inset) ? Math.min(400, Math.max(0, inset)) : 0;
   return config;
 }
 

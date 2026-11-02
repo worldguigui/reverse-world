@@ -174,8 +174,9 @@ function renderToast() {
     el = document.createElement('div');
     el.id = 'toast';
     el.className = 'glass';
-    el.style.cssText = 'position:fixed;bottom:76px;left:50%;transform:translateX(-50%);'
-      + 'padding:8px 16px;font-size:12px;z-index:60;pointer-events:none;transition:opacity .3s;opacity:0';
+    el.style.cssText = 'position:fixed;bottom:calc(76px + var(--bottom-inset, 0px));left:50%;'
+      + 'transform:translateX(-50%);padding:8px 16px;font-size:12px;z-index:60;'
+      + 'pointer-events:none;transition:opacity .3s;opacity:0';
     document.body.appendChild(el);
   }
   const { toasts } = useStore.getState();

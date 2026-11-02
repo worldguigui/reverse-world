@@ -24,6 +24,7 @@ const MODES = [
  */
 export function Toolbar() {
   const project = useStore((s) => s.project);
+  const viewMode = useStore((s) => s.viewMode);
   const mode = useStore((s) => s.mode);
   const setMode = useStore((s) => s.setMode);
   const select = useStore((s) => s.select);
@@ -77,6 +78,11 @@ export function Toolbar() {
         <button className="brand" title="查看世界概览" onClick={() => showPage(null)}>
           {project ? project.name : '世界观工具'}
         </button>
+        {viewMode && (
+          <span className="view-chip" title="展示模式：不读取也不写入本机存档">
+            展示模式
+          </span>
+        )}
       </div>
 
       <div className="bar-center">

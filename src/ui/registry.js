@@ -9,16 +9,18 @@ import { Inspector } from './react/Inspector.jsx';
 import { SettingsPanel } from './react/SettingsPanel.jsx';
 import { Workshop } from './react/Workshop.jsx';
 import { LoadingScreen } from './react/LoadingScreen.jsx';
+import { StartupNotice } from './react/StartupNotice.jsx';
 
 /**
  * 组装全部面板。
- * @param {{topbar, timeline, inspector, settings, workshop, loading, workshopPreview}} containers
+ * @param {{topbar, notice, timeline, inspector, settings, workshop, loading, workshopPreview}} containers
  *   静态容器；workshopPreview 是 main.js 注入的预览挂载/摘除函数
- * @returns {{toolbar, timeline, inspector, settings, workshop, loading}} 各面板句柄
+ * @returns {{toolbar, notice, timeline, inspector, settings, workshop, loading}} 各面板句柄
  */
 export function createPanels(containers) {
   return {
     toolbar: mountPanel(containers.topbar, Toolbar),
+    notice: mountPanel(containers.notice, StartupNotice),
     timeline: mountPanel(containers.timeline, Timeline),
     inspector: mountPanel(containers.inspector, Inspector),
     settings: mountPanel(containers.settings, SettingsPanel),
