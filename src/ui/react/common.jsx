@@ -2,13 +2,21 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useStore } from '../../store/index.js';
 import { normalizeTime } from '../../core/datetime.js';
 
-/** 检查器里统一的「小标题 + 控件」排版 */
-export function Labeled({ label, children }) {
+/**
+ * 检查器里统一的「小标题 + 控件」排版。
+ *
+ * 默认渲染成 <label>，点文字就能聚焦里面的输入框。但内容里只要有一排 button
+ * （人物/章节 tag、事件行），就必须传 as="div"：<label> 的默认行为会把落在
+ * 非交互区域上的点击转发给内部第一个可标记控件，而 button 也是可标记元素——
+ * 于是 tag 行的空白处一点，中招的是第一个 tag 的 onClick，第一位人物/章节
+ * 就被误删了。纯输入控件（input/textarea）才吃得到 label 的好处。
+ */
+export function Labeled({ label, children, as: Tag = 'label' }) {
   return (
-    <label style={{ display: 'grid', gap: '4px' }}>
+    <Tag style={{ display: 'grid', gap: '4px' }}>
       <span className="field-label">{label}</span>
       {children}
-    </label>
+    </Tag>
   );
 }
 

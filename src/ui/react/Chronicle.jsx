@@ -2,16 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../store/index.js';
 import { useProjectRevision } from './hooks.js';
 import { searchCharacters } from './common.jsx';
-import { timeTicks, formatYear } from '../../core/timeline.js';
+import { timeTicks } from '../../core/timeline.js';
 import { formatTime, timeYear } from '../../core/datetime.js';
 import { isViewFiltered } from '../../core/project.js';
-
-/** 章节标签上的时间范围：只有一年就只写那一年，算不出来就不写 */
-function spanText(span) {
-  if (!span) return '';
-  const from = formatYear(span.min);
-  return span.min === span.max ? from : `${from}–${formatYear(span.max)}`;
-}
 
 /**
  * 编年史长卷：按时间排好的事件，浮在时间轴上方。
@@ -42,7 +35,6 @@ export function Chronicle() {
   const setChronicleOpen = useStore((s) => s.setChronicleOpen);
   const viewFilter = useStore((s) => s.viewFilter);
   const setViewFilter = useStore((s) => s.setViewFilter);
-  const groupSpan = useStore((s) => s.groupSpan);
   const chapterFromCharacter = useStore((s) => s.chapterFromCharacter);
   const { groupIds } = viewFilter;
 
@@ -251,7 +243,6 @@ export function Chronicle() {
           全部
         </button>
         {groups.map((g) => {
-          const span = spanText(groupSpan(g.id));
           const on = groupIds.includes(g.id);
           return (
             <button
@@ -260,7 +251,7 @@ export function Chronicle() {
               title={on ? '取消选中这一章' : '选中这一章，与其他标签取交集'}
               onClick={() => toggleGroup(g.id)}
             >
-              {span ? `${g.name} · ${span}` : g.name}
+              {g.name}
             </button>
           );
         })}

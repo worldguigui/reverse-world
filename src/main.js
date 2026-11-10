@@ -40,6 +40,7 @@ async function main() {
   } else {
     store.getState().applyBottomInset();
   }
+  store.getState().applyChronicleAlpha();
 
   // ---------------------------------------------------------- 渲染基础
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });

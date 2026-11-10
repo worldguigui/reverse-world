@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { useProjectRevision } from '../hooks.js';
@@ -12,6 +13,11 @@ import {
  * 所有字段先写进本地草稿，按「保存」才回写到项目：事件的标题、时间、坐标一变，
  * 时间轴、编年史与球面都会跟着重排，边打字边提交会让这些地方每敲一个字抖一次。
  * 「取消」把草稿恢复成项目里的样子，什么都没动过。
+ *
+ * 描述写得长的详情页，右栏要滚很久才看得到人物与时间。所以「涉及人物」往后的
+ * 尾部字段同时投到左侧固定栏（#inspector-left）：左右是同一份草稿的两处入口，
+ * 内容允许重合，在哪边改都同步。草稿是本组件的 state，两栏必须同属一棵 React
+ * 树才能共享它，因此用 portal 投过去，而不是给左边单独挂一个面板根。
  */
 
 /** 从项目里的那条事件取一份草稿；章节归属不在事件上，得反查各章的 eventIds */
@@ -29,6 +35,92 @@ function makeDraft(project, item) {
     from: item.from,
     to: item.to,
   };
+}
+
+/**
+ * 涉及人物 + 所属章节。右栏与左侧固定栏各渲染一份，绑的是同一份草稿。
+ * 必须留在模块层：定义进 EventEditor 的话每次输入都会换新函数类型，
+ * CharacterPicker 里的搜索词会被连着重置。
+ */
+function RelationFields({ draft, patch }) {
+  return (
+    <>
+      {/* 关联只写在这一侧：人物的反向清单由它现算，人物卡上不存副本。
+          picker 里有一排 tag button，不能包在 <label> 里（见 Labeled 注释） */}
+      <Labeled as="div" label="涉及人物">
+        <CharacterPicker
+          ids={draft.characters}
+          onChange={(ids) => patch({ characters: ids })}
+        />
+      </Labeled>
+
+      <Labeled as="div" label="所属章节">
+        <GroupPicker
+          ids={draft.groupIds}
+          onChange={(ids) => patch({ groupIds: ids })}
+        />
+      </Labeled>
+    </>
+  );
+}
+
+/**
+ * 坐标 + 存续区间：与 RelationFields 同样在两栏各渲染一份。
+ * latId/lngId 是留给外部脚本的输入框钩子，只有右栏传——两个栏各渲染一份时
+ * 不能带出重复的 DOM id。
+ */
+function SpaceTimeFields({ draft, patch, flyToItem, latId, lngId }) {
+  const hasCoords = draft.lat != null && draft.lng != null;
+  return (
+    <>
+      <div style={{ display: 'grid', gap: '4px' }}>
+        <span className="field-label">坐标</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          <CoordInput
+            id={latId}
+            value={draft.lat}
+            min={-90}
+            max={90}
+            placeholder="纬度"
+            onChange={(lat) => patch({ lat })}
+          />
+          <CoordInput
+            id={lngId}
+            value={draft.lng}
+            min={-180}
+            max={180}
+            placeholder="经度"
+            onChange={(lng) => patch({ lng })}
+          />
+        </div>
+        <span className="insp-hint">
+          {hasCoords
+            ? '可直接改上面的经纬度。'
+            : '两项都填才会落在球上；都留空就是纯叙事事件。'}
+        </span>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {hasCoords && (
+            <button className="btn btn-mini" onClick={() => flyToItem('event', draft)}>Go</button>
+          )}
+          {(draft.lat != null || draft.lng != null) && (
+            <button className="btn btn-mini" onClick={() => patch({ lat: null, lng: null })}>
+              经纬度置为空
+            </button>
+          )}
+        </div>
+      </div>
+
+      <Labeled label="出现于">
+        <TimeInput value={draft.from} onChange={(v) => patch({ from: v })} />
+      </Labeled>
+      <Labeled label="消失于">
+        <TimeInput value={draft.to} onChange={(v) => patch({ to: v })} placeholder="至今" />
+      </Labeled>
+      <p className="insp-hint">
+        时间格式yyyy-MM-ddThh:mm:ss，时间后可以以空格分隔添加注释
+      </p>
+    </>
+  );
 }
 
 export function EventEditor({ id }) {
@@ -58,10 +150,14 @@ export function EventEditor({ id }) {
   };
 
   const reset = () => select({ kind: 'events' });
-  const hasCoords = draft.lat != null && draft.lng != null;
+
+  // 左侧固定栏的容器是 index.html 里的常驻空壳；portal 卸载后它空了，CSS 的
+  // :empty 规则会把整块隐掉。文件加载后容器就在，查不到只可能是改了页面结构。
+  const leftEl = document.getElementById('inspector-left');
 
   return (
-    <div className="insp-block">
+    <>
+      <div className="insp-block">
       <div className="insp-title">事件</div>
 
       <div className="field-label">配图（长宽比建议1:1）</div>
@@ -101,67 +197,10 @@ export function EventEditor({ id }) {
         />
       </Labeled>
 
-      {/* 关联只写在这一侧：人物的反向清单由它现算，人物卡上不存副本 */}
-      <Labeled label="涉及人物">
-        <CharacterPicker
-          ids={draft.characters}
-          onChange={(ids) => patch({ characters: ids })}
-        />
-      </Labeled>
+      {/* 关联与时空两段同时出现在左栏（见文件头注释），字段组抽成组件复用 */}
+      <RelationFields draft={draft} patch={patch} />
 
-      <Labeled label="所属章节">
-        <GroupPicker
-          ids={draft.groupIds}
-          onChange={(ids) => patch({ groupIds: ids })}
-        />
-      </Labeled>
-
-      <div style={{ display: 'grid', gap: '4px' }}>
-        <span className="field-label">坐标</span>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          <CoordInput
-            id="event-lat"
-            value={draft.lat}
-            min={-90}
-            max={90}
-            placeholder="纬度"
-            onChange={(lat) => patch({ lat })}
-          />
-          <CoordInput
-            id="event-lng"
-            value={draft.lng}
-            min={-180}
-            max={180}
-            placeholder="经度"
-            onChange={(lng) => patch({ lng })}
-          />
-        </div>
-        <span className="insp-hint">
-          {hasCoords
-            ? '可直接改上面的经纬度。'
-            : '两项都填才会落在球上；都留空就是纯叙事事件。'}
-        </span>
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          {hasCoords && (
-            <button className="btn btn-mini" onClick={() => flyToItem('event', draft)}>Go</button>
-          )}
-          {(draft.lat != null || draft.lng != null) && (
-            <button className="btn btn-mini" onClick={() => patch({ lat: null, lng: null })}>
-              经纬度置为空
-            </button>
-          )}
-        </div>
-      </div>
-
-      <Labeled label="出现于">
-        <TimeInput value={draft.from} onChange={(v) => patch({ from: v })} />
-      </Labeled>
-      <Labeled label="消失于">
-        <TimeInput value={draft.to} onChange={(v) => patch({ to: v })} placeholder="至今" />
-      </Labeled>
-      <p className="insp-hint">
-        时间格式yyyy-MM-ddThh:mm:ss，时间后可以以空格分隔添加注释
-      </p>
+      <SpaceTimeFields draft={draft} patch={patch} flyToItem={flyToItem} latId="event-lat" lngId="event-lng" />
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
         <button className="btn btn-primary" onClick={save}>✔ 保存</button>
@@ -176,5 +215,17 @@ export function EventEditor({ id }) {
 
       <BackToOverview />
     </div>
+
+    {/* 左侧固定栏：固定展示尾部字段（人物/章节/坐标/时间），不做任何动态判断——
+        事件详情开着它就在。与右栏允许重合，改哪边都写进同一份草稿 */}
+    {leftEl && createPortal(
+      <div className="insp-block">
+        <div className="insp-title">内容关联</div>
+        <RelationFields draft={draft} patch={patch} />
+        <SpaceTimeFields draft={draft} patch={patch} flyToItem={flyToItem} />
+      </div>,
+      leftEl,
+    )}
+    </>
   );
 }

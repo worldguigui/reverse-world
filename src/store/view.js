@@ -27,12 +27,18 @@ export const createViewSlice = (set, get) => ({
     document.documentElement.style.setProperty('--bottom-inset', `${px}px`);
   },
 
+  /** 编年史长卷的整体不透明度，同走 CSS 变量（.chronicle 读 --chronicle-alpha） */
+  applyChronicleAlpha(alpha = get().viewConfig.layout.chronicleAlpha) {
+    document.documentElement.style.setProperty('--chronicle-alpha', String(alpha));
+  },
+
   /** 把当前设置推给相机与球体，重建图层（尺寸类设置影响几何），并落盘 */
   applyView() {
     const config = get().viewConfig;
     session.rig?.setConfig({ ...config.camera, ...config.rotation });
     session.globe?.setConfig(config);
     get().applyBottomInset(config.layout.bottomInset);
+    get().applyChronicleAlpha(config.layout.chronicleAlpha);
     saveViewConfig(config);
     get().touchLayers();
   },

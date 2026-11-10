@@ -131,7 +131,7 @@
     ::selection { background: var(--accent-soft); color: var(--text-strong); }
 
     /* 细滚动条与整体细线语言一致 */
-    html, body, .glass, .char-menu, .chr-strip {
+    html, body, .glass, .char-menu, .chr-strip, .chr-tabs {
       scrollbar-width: thin;
       scrollbar-color: var(--border) transparent;
     }
@@ -257,15 +257,34 @@
     .menu-item:hover { background: var(--surface-hover); color: var(--text-strong); }
     .menu-sep { height: 1px; margin: 5px 8px; background: var(--border); }
 
-    /* ---------------- 右侧检查器 ---------------- */
+    /* ---------------- 左右检查器 ---------------- */
+    /* 三栏按百分比划分：左右栏各 20vw（15% 在常见窗口下挤到表单难受，
+       20% ≈ 1530px 窗口里的 306px，与定宽时代的 300px 手感一致），
+       中间剩余宽度全归时间轴与长卷。沟槽统一 12px，总账刚好铺满：
+       12 + 20vw + 12 + (60vw - 48) + 12 + 20vw + 12 = 100vw。
+       中栏在所有窗口宽度下都够不到两栏正下方，两栏放心通高：顶到顶栏下沿，
+       落到近页底。内容多少不改面板高度，空档留在玻璃内部 */
     #inspector {
       position: fixed; top: 72px; right: 12px; z-index: var(--z-inspector);
-      width: 300px; max-height: calc(100vh - 168px);
+      width: 20vw;
+      bottom: calc(12px + var(--bottom-inset, 0px));
       /* 纵向 flex：清单页可以只让名单滚动，底部动作留在原地 */
       display: flex; flex-direction: column;
       overflow-y: auto; padding: 16px;
     }
     #inspector:empty { display: none; }
+    /* 事件详情尾部字段（人物/章节/坐标/时间）的固定展示位：右栏照旧完整滚动，
+       这里是同一份草稿的另一处入口，内容允许重合。内容由 EventEditor 用 portal
+       填进来，卸载后容器为空，:empty 把整块隐掉 */
+    #inspector-left {
+      position: fixed; top: 72px; left: 12px; z-index: var(--z-inspector);
+      width: 20vw;
+      /* 与 #inspector 同一套通高规则（见其注释），两栏底沿齐平 */
+      bottom: calc(12px + var(--bottom-inset, 0px));
+      display: flex; flex-direction: column;
+      overflow-y: auto; padding: 16px;
+    }
+    #inspector-left:empty { display: none; }
     .insp-block { display: grid; gap: 12px; }
     /* 人物/章节清单：标题与搜索固定在上，新建与返回固定在下，只有名单本身滚动 */
     .insp-list-page {
@@ -465,8 +484,11 @@
       position: fixed; bottom: calc(14px + var(--bottom-inset, 0px));
       left: 50%; transform: translateX(-50%); z-index: var(--z-timeline);
       /* 必须给死宽度：fixed 元素默认收缩包裹，而 .tl-track 的子元素全是绝对定位、
-         撑不出内在宽度，轨道会被压成 0 宽——刻度全叠在一点，游标走不动 */
-      width: min(86vw, 900px);
+         撑不出内在宽度，轨道会被压成 0 宽——刻度全叠在一点，游标走不动。
+         中栏宽 = 60vw - 48：给左右两栏（各 20vw）和四条 12px 沟槽让完位后
+         剩下的全部（见 #inspector 的三栏总账）；大屏封顶 900px，再宽轨道
+         拉得太开反而难读——封顶后中栏居中，多出的宽度变成两侧空档 */
+      width: min(calc(60vw - 48px), 900px);
     }
     #timeline:empty { display: none; } /* 没有内容带时间时整根轴不出现，容器也别留个空壳 */
     .tl-inner {
@@ -549,10 +571,18 @@
     .tl-arrow:hover { background: var(--surface-hover); color: var(--text-strong); }
 
     /* ---------------- 编年史长卷 ---------------- */
-    /* 浮在时间轴正上方，与它同轴对齐；不摊开时整块不存在 */
+    /* 浮在时间轴正上方，与它同轴对齐；不摊开时整块不存在。
+       整体不透明度由画面设置里的「编年史透明度」滑块控制（--chronicle-alpha） */
     .chronicle {
-      position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%); z-index: var(--z-chronicle);
-      max-width: min(86vw, 900px); min-width: min(60vw, 520px);
+      /* 长卷是 #timeline 的 DOM 子节点，而时间轴的 transform 会把自身变成
+         fixed 后代的包含块——所以这里的 bottom/left/width 百分比都相对时间轴
+         盒子算，不是相对视口。正好加以利用：bottom = 100% + 4px 即「贴着
+         时间轴顶、缝 4px」，时间轴被 --bottom-inset 抬高时长卷自动跟着走；
+         width: 100% 即与时间轴始终同宽同轴（收缩包裹在嵌套滚动容器下算不准，
+         不能交给内容自己撑） */
+      position: fixed; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); z-index: var(--z-chronicle);
+      width: 100%;
+      opacity: var(--chronicle-alpha, 1);
       /* 不裁切：按姓名搜人的候选浮层要越出面板上沿 */
       display: flex; flex-direction: column; overflow: visible;
     }
@@ -574,13 +604,16 @@
     .chr-search .inp { padding: 4px 8px; font-size: 11.5px; }
     .chr-search .inp:disabled { opacity: 0.5; cursor: default; }
     .chr-search .char-menu { top: auto; bottom: calc(100% + 4px); }
-    /* 顶上的视图入口：全部 | 各章节。标签不分来源，样式一律相同 */
+    /* 顶上的视图入口：全部 | 各章节。标签不分来源，样式一律相同。
+       一行放不下就横向滚动：章节一多换行会把长卷顶高一截，
+       限成单行高度才稳定，超出的用滚动条（或 Shift+滚轮）看 */
     .chr-tabs {
-      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
       padding: 10px 16px 0;
+      overflow-x: auto; overflow-y: hidden;
     }
     .chr-tab {
-      display: inline-flex; align-items: center; gap: 4px;
+      display: inline-flex; align-items: center; gap: 4px; flex: none;
       padding: 4px 10px; border-radius: var(--radius); cursor: pointer; font-family: inherit;
       font-size: 12px; color: var(--text-muted-raised);
       background: var(--surface-input); border: 1px solid transparent;
@@ -595,7 +628,7 @@
       color: inherit; font-size: 11px; line-height: 1;
     }
     .chr-x:hover { color: var(--danger-text); }
-    .chr-strip { display: flex; gap: 8px; padding: 12px 16px 14px; overflow-x: auto; }
+    .chr-strip { display: flex; gap: 8px; padding: 10px 16px 8px; overflow-x: auto; }
     .chr-strip .insp-hint { padding: 2px 0; }
     .chr-empty { display: grid; gap: 8px; padding: 2px 0; }
     .chr-empty-actions { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -624,7 +657,9 @@
     /* ---------------- 画面设置 ---------------- */
     #settings {
       position: fixed; top: 72px; right: 12px; z-index: var(--z-settings);
-      width: 300px; max-height: calc(100vh - 168px);
+      width: 300px;
+      /* 临时浮层，不占三栏的位：内容自适应高，底沿停在时间轴上沿之上 */
+      max-height: calc(100vh - 152px - var(--bottom-inset, 0px));
       overflow-y: auto; padding: 16px;
     }
     #settings:empty { display: none; } /* 关掉后组件渲染空，只留容器 */
@@ -976,10 +1011,14 @@
     .wk-preview-btn:hover { background: rgba(56, 49, 42, 0.92); color: var(--text-strong); }
 
     /* ---------------- 响应式 ---------------- */
-    /* 窄屏：先收提示文字，再让两侧面板贴边收窄，避免顶栏与画布互相遮挡 */
+    /* 宽窄只差中栏绝对宽度：三栏比例在所有 ≥900px 的窗口下都成立
+       （15vw 栏 + 70vw 中栏永远互不侵入），无需宽屏断点 */
+    /* 窄屏：比例栏会挤得过窄，退回固定宽度的浮层式布局 */
     @media (max-width: 900px) {
       .mode-hint { display: none; }
       #inspector, #settings { width: 264px; }
+      /* 窄屏没有第二栏的空间；右栏本来就完整，左栏只是重合的固定副本，隐掉不丢功能 */
+      #inspector-left { display: none; }
       #timeline { width: 94vw; }
       .chronicle { max-width: 94vw; min-width: 0; }
       .wk-side { width: 228px; }
@@ -1020,6 +1059,7 @@
   <div id="topbar" class="glass"></div>
   <div id="notice"></div>
   <div id="inspector" class="glass"></div>
+  <div id="inspector-left" class="glass"></div>
   <div id="timeline" class="glass"></div>
   <div id="settings" class="glass"></div>
   <div id="tooltip" class="glass" hidden></div>

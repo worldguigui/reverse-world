@@ -171,6 +171,10 @@ export function SettingsPanel() {
       <Group title="布局">
         <Slider label="底部留白" value={config.layout.bottomInset} min={0} max={200} step={1} nudgeStep={16}
           onChange={(v) => set({ layout: { bottomInset: v } })} />
+        {/* 编年史长卷的整体不透明度，纯手动调节：拖到多少就是多少，不拖不变 */}
+        <Slider label="编年史透明度" value={config.layout.chronicleAlpha} min={0.1} max={1} step={0.05}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onChange={(v) => set({ layout: { chronicleAlpha: v } })} />
       </Group>
 
       <Group title="大气与星空">

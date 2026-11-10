@@ -221,7 +221,8 @@ export function CharacterEditor({ id }) {
         </div>
       </div>
 
-      <Labeled label="涉及的事件">
+      {/* 事件行是 button，不能包在 <label> 里：点留白会误开第一条事件（见 Labeled 注释） */}
+      <Labeled as="div" label="涉及的事件">
         {events.length === 0 ? (
           <span className="insp-hint">还没有事件提到他。在事件详情里勾一下「涉及人物」。</span>
         ) : (

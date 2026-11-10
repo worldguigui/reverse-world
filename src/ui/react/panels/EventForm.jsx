@@ -104,15 +104,16 @@ export function EventForm() {
         </div>
       )}
 
-      {/* 编一条事件时本来就在写「谁参与了」，顺手勾上 */}
-      <Labeled label="涉及人物">
+      {/* 编一条事件时本来就在写「谁参与了」，顺手勾上。
+          picker 里有一排 tag button，不能包在 <label> 里（见 Labeled 注释） */}
+      <Labeled as="div" label="涉及人物">
         <CharacterPicker
           ids={draft.characters ?? []}
           onChange={(ids) => saveDraft({ characters: ids })}
         />
       </Labeled>
 
-      <Labeled label="所属章节">
+      <Labeled as="div" label="所属章节">
         <GroupPicker
           ids={draft.groupIds ?? []}
           onChange={(ids) => saveDraft({ groupIds: ids })}

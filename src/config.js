@@ -31,6 +31,7 @@ export const DEFAULT_CONFIG = {
   // 壁纸铺满桌面时会被系统任务栏盖住，这时调大；网页里通常留 0。
   layout: {
     bottomInset: 0,
+    chronicleAlpha: 1, // 编年史长卷整体不透明度（画面设置里手动调），1 = 实心
   },
   camera: {
     // 出厂镜头的视场角。设置面板不再改它：现在滑块和滚轮共用「档位」，
@@ -102,6 +103,9 @@ export function loadViewConfig() {
   // 底部留白夹在合理区间：负数会把控件推到屏幕外，过大的值会让时间轴顶到画面中间
   const inset = Math.round(Number(config.layout.bottomInset));
   config.layout.bottomInset = Number.isFinite(inset) ? Math.min(400, Math.max(0, inset)) : 0;
+  // 编年史透明度：太透就真的看不见了，兜底到 0.1
+  const alpha = Number(config.layout.chronicleAlpha);
+  config.layout.chronicleAlpha = Number.isFinite(alpha) ? Math.min(1, Math.max(0.1, alpha)) : 1;
   return config;
 }
 
