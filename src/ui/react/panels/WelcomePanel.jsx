@@ -7,7 +7,7 @@ export function WelcomePanel() {
 
   return (
     <div className="insp-block">
-      <div className="insp-title">🌍 世界观时间轴工具</div>
+      <div className="insp-title">世界图志工具</div>
       <p className="insp-hint">
         画一张平面地图（等距圆柱投影）铺在球体上，用一根游标串起世界的演变，在球面上放置事件、路线与势力区域。
       </p>
