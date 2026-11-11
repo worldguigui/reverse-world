@@ -294,6 +294,10 @@
     .insp-list-page .char-list,
     .insp-list-page .chap-list {
       flex: 1 1 auto; min-height: 0; overflow-y: auto;
+      /* 名单吸顶排列：容器靠 flex:1 吃掉面板剩余高度（底部动作钉底、名单可滚动），
+         但格子里的行要按内容排——grid 默认的 align-content: stretch 会把容器的
+         富余高度平均摊给每一行，条目少时一行就被撑成一大块 */
+      align-content: start;
       padding-right: 2px; overscroll-behavior: contain;
     }
     .insp-list-page > .btn { flex: 0 0 auto; }
@@ -486,9 +490,9 @@
       /* 必须给死宽度：fixed 元素默认收缩包裹，而 .tl-track 的子元素全是绝对定位、
          撑不出内在宽度，轨道会被压成 0 宽——刻度全叠在一点，游标走不动。
          中栏宽 = 60vw - 48：给左右两栏（各 20vw）和四条 12px 沟槽让完位后
-         剩下的全部（见 #inspector 的三栏总账）；大屏封顶 900px，再宽轨道
-         拉得太开反而难读——封顶后中栏居中，多出的宽度变成两侧空档 */
-      width: min(calc(60vw - 48px), 900px);
+         剩下的全部（见 #inspector 的三栏总账）。不设上限：刻度按年聚合，
+         轴上的点数只随年份个数增长，轴再宽也只是空隙变大，跟着比例铺即可 */
+      width: calc(60vw - 48px);
     }
     #timeline:empty { display: none; } /* 没有内容带时间时整根轴不出现，容器也别留个空壳 */
     .tl-inner {
@@ -1073,7 +1077,7 @@
 
     /* ---------------- 响应式 ---------------- */
     /* 宽窄只差中栏绝对宽度：三栏比例在所有 ≥900px 的窗口下都成立
-       （15vw 栏 + 70vw 中栏永远互不侵入），无需宽屏断点 */
+       （20vw 栏 + 60vw 中栏永远互不侵入），无需宽屏断点 */
     /* 窄屏：比例栏会挤得过窄，退回固定宽度的浮层式布局 */
     @media (max-width: 900px) {
       .mode-hint { display: none; }
