@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../../store/index.js';
 import { useProjectRevision } from './hooks.js';
 import { ProjectMenu } from './ProjectMenu.jsx';
-import { CloudDialog } from './CloudDialog.jsx';
+import { WorkshopDialog } from './WorkshopDialog.jsx';
 
 /** 各编辑模式下显示在右上角的一句提示 */
 const MODE_HINTS = {
@@ -33,7 +33,7 @@ export function Toolbar() {
   useProjectRevision(); // 世界改名后标题要跟着变
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [cloudOpen, setCloudOpen] = useState(false);
+  const [workshopOpen, setWorkshopOpen] = useState(false);
 
   // 点菜单以外的任何地方都收起菜单。菜单按钮与菜单本身各自 stopPropagation，
   // 否则这一次点击会先把菜单关掉、再被按钮的 onClick 重新打开。
@@ -132,10 +132,10 @@ export function Toolbar() {
       {menuOpen && (
         <ProjectMenu
           onClose={() => setMenuOpen(false)}
-          onCloud={() => setCloudOpen(true)}
+          onWorkshop={() => setWorkshopOpen(true)}
         />
       )}
-      {cloudOpen && <CloudDialog onClose={() => setCloudOpen(false)} />}
+      {workshopOpen && <WorkshopDialog onClose={() => setWorkshopOpen(false)} />}
     </div>
   );
 }

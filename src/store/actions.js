@@ -7,8 +7,8 @@ import { buildRealEarthGrid, EARTH_RES } from '../core/realearth.js';
 import { hexTo565 } from '../core/raster.js';
 import { importProjectFile } from '../core/storage.js';
 import {
-  saveProjectToCloud, loadProjectFromCloud, rememberCloudToken, formatCloudTime,
-} from '../core/cloud.js';
+  fetchWorkshopPreviews, fetchWorkshopSave, uploadWorkshopSave, rememberWorkshopUser,
+} from '../core/workshop.js';
 import { buildSampleProject } from '../core/sample.js';
 import { session } from '../session.js';
 import { timeYear } from '../core/datetime.js';
@@ -218,44 +218,61 @@ export const createActionsSlice = (set, get) => ({
     }
   },
 
-  /**
-   * 显式上传当前项目。成功后记住令牌，下次打开对话框不必再输入。
-   * 云端不参与自动保存：本机的键入仍只落 IndexedDB，只有点这个按钮才会上传。
-   */
-  async saveToCloud(token) {
-    const p = get().project;
-    if (!p) throw new Error('当前没有可保存的项目');
-    const info = await saveProjectToCloud(p, token);
-    rememberCloudToken(token);
-    get().toast(`已保存到云端（${formatCloudTime(info.savedAt)}）`);
-    return info;
+  // ---------------------------------------------------------------- 创意工坊
+
+  /** 拉取全量预览清单（新→旧）。错误抛给对话框：那里有专门的错误位与重试按钮 */
+  async fetchWorkshopPreviews() {
+    return fetchWorkshopPreviews();
   },
 
   /**
-   * 下载云端项目。先下载并校验，再问是否替换——坏档不会在确认之前污染当前世界。
-   * 确认后走 loadProjectInto，因此本机自动保存、三维重建与镜头对准都和导入文件一致。
+   * 上传当前项目到创意工坊。includeRaster 为 false 时发一份剥离底图的项目：
+   * normalizeProject 会顺带清掉悬空的 baseRasterId，服务器与本地导入接受同一套格式。
+   * 上传走全屏加载页（与载入示例世界同一套）；成功后记住用户名称，失败时错误
+   * 抛给对话框显示，停在表单上让人改完再试。
    */
-  async loadFromCloud(token) {
-    const info = await loadProjectFromCloud(token);
-    rememberCloudToken(token);
-
-    const current = get().project;
-    if (P.hasContent(current) && !confirm(
-      `载入「${info.project.name}」（云端保存于 ${formatCloudTime(info.savedAt)}）`
-      + `会替换当前世界「${current.name}」，本机自动保存也会随之更新。确定？`,
-    )) return null;
-
-    get().setLoading({ title: `正在打开「${info.project.name}」`, detail: '准备地图…', progress: null });
+  async uploadToWorkshop({ name, user, preview, includeRaster }) {
+    const p = get().project;
+    if (!p) throw new Error('当前没有可上传的项目');
+    if (get().loading) return null;
+    const payload = includeRaster ? p : { ...p, rasterMaps: [] };
+    get().setLoading({ title: `正在上传「${name}」`, detail: '打包存档…', progress: null });
     await nextPaint();
     try {
+      const info = await uploadWorkshopSave({ name, user, preview, project: payload });
+      rememberWorkshopUser(user);
+      get().setLoading(null);
+      get().toast(`「${name}」已上传到创意工坊`);
+      return info;
+    } catch (err) {
+      get().setLoading(null);
+      throw err;
+    }
+  },
+
+  /**
+   * 下载工坊存档并替换当前世界。是否替换由对话框在点击卡片时两步确认，
+   * 不弹阻塞式 confirm——wallpaper 场景里全局弹窗会卡住交互。坏档在碰到
+   * 当前世界之前就会失败：先下载并校验，再走 loadProjectInto 重建三维。
+   */
+  async downloadFromWorkshop(id, name) {
+    if (get().loading) return null;
+    get().setLoading({ title: `正在下载「${name}」`, detail: '读取存档…', progress: null });
+    await nextPaint();
+    try {
+      const info = await fetchWorkshopSave(id);
+      get().setLoading({ title: `正在打开「${info.project.name}」`, detail: '准备地图…', progress: null });
+      await nextPaint();
       get().loadProjectInto(info.project);
       await waitForStage();
       await nextPaint();
-    } finally {
       get().setLoading(null);
+      get().toast(`已从创意工坊载入「${info.project.name}」`);
+      return info;
+    } catch (err) {
+      get().setLoading(null);
+      throw err;
     }
-    get().toast(`已从云端载入「${info.project.name}」`);
-    return info;
   },
 
   // ---------------------------------------------------------------- 相机

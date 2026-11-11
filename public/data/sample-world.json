@@ -5354,7 +5354,7 @@
         {
             "id": "rg_china",
             "name": "中国",
-            "description": "中国大陆的轮廓。一战期间先守中立，1917 年对德奥宣战。",
+            "description": "中国大陆的轮廓，对于一个英伦风游戏来说，几乎没有故事在这里发生。",
             "from": null,
             "to": null,
             "color": null,
@@ -5964,7 +5964,7 @@
         {
             "id": "rg_usa",
             "name": "美国",
-            "description": "美国本土的轮廓。1917 年对德宣战后，兵力与贷款进入欧洲战场。",
+            "description": "美国本土的轮廓，不包括一些小型的群岛和领土。",
             "from": null,
             "to": null,
             "color": null,
@@ -6486,7 +6486,7 @@
         {
             "id": "rg_uk",
             "name": "英国",
-            "description": "大不列颠岛与北爱尔兰的轮廓。一战期间本土未遭入侵，海上的封锁与源源不断的兵员却从这里出发。",
+            "description": "大不列颠岛与北爱尔兰的轮廓。",
             "from": null,
             "to": null,
             "color": null,

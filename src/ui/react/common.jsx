@@ -188,7 +188,7 @@ export function CharacterPicker({ ids = [], onChange }) {
   };
 
   if (!characters.length) {
-    return <p className="insp-hint">还没有人物。用顶栏的「🧝 人物」先录几位进来。</p>;
+    return <p className="insp-hint">还没有人物，在顶栏的「人物」先新建一个吧。</p>;
   }
 
   return (
@@ -331,7 +331,7 @@ export function GroupPicker({ ids = [], onChange }) {
   };
 
   if (!groups.length) {
-    return <p className="insp-hint">还没有章节。顶栏「章节」里建一个，再来归类。</p>;
+    return <p className="insp-hint">还没有章节。在顶栏的「章节」先新建一个吧。</p>;
   }
 
   return (

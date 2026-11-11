@@ -729,7 +729,7 @@
     #error h2 { margin: 0 0 10px; font-size: 16px; color: var(--danger-text); }
     #error p { margin: 6px 0; font-size: 13px; color: var(--text-muted); line-height: 1.7; word-break: break-all; }
 
-    /* ---------------- 云端存档 ---------------- */
+    /* ---------------- 对话框与创意工坊 ---------------- */
     .cloud-backdrop {
       position: fixed; inset: 0; z-index: var(--z-modal);
       display: flex; align-items: center; justify-content: center;
@@ -761,6 +761,67 @@
       display: flex; align-items: center; justify-content: flex-end;
       gap: 8px; flex-wrap: wrap;
     }
+
+    /* 创意工坊在 cloud-dialog 骨架上换成更宽的纵向布局，页签固定、内容区滚动 */
+    .ws-dialog {
+      width: min(720px, 100%); padding: 18px 20px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .ws-tabs { display: flex; gap: 6px; }
+    .ws-tab {
+      padding: 6px 18px; font-size: 13px; font-family: inherit; cursor: pointer;
+      color: var(--text-muted); background: transparent;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+    }
+    .ws-tab.active {
+      color: var(--accent-text); border-color: var(--accent);
+      background: rgba(110, 168, 255, 0.08);
+    }
+    .ws-tab:disabled { opacity: 0.5; cursor: default; }
+    .ws-body {
+      overflow-y: auto; overscroll-behavior: contain; min-height: 120px;
+      display: grid; gap: 12px; align-content: start;
+    }
+    .ws-status {
+      margin: 0; padding: 30px 0; display: grid; gap: 12px; justify-items: center;
+      font-size: 13px; color: var(--text-muted); text-align: center;
+    }
+    .ws-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+      gap: 8px;
+    }
+    .ws-card {
+      overflow: hidden; display: flex; flex-direction: column;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface-input);
+    }
+    .ws-card.confirming { background: var(--surface-raised); }
+    /* 缩略图占固定高度：有没有预览图，卡片轮廓都一致 */
+    .ws-thumb {
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; height: 96px; padding: 0; cursor: pointer;
+      border: 0; background: var(--surface-raised);
+    }
+    .ws-thumb:disabled { cursor: default; }
+    .ws-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .ws-thumb-empty { font-size: 12px; color: var(--text-muted); }
+    .ws-meta { display: grid; gap: 2px; padding: 6px 8px 7px; }
+    .ws-name {
+      font-size: 12px; font-weight: 600; color: var(--text-strong);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ws-sub { font-size: 11px; color: var(--text-muted); }
+    .ws-confirm { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 10px; }
+    .ws-confirm p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--text-muted); word-break: break-word; }
+    /* 小卡片放不下横排双按钮，竖排占满卡宽 */
+    .ws-confirm-actions { display: flex; flex-direction: column; gap: 6px; }
+    .ws-preview-row { display: flex; align-items: center; gap: 10px; }
+    .ws-preview-img {
+      width: 96px; height: 72px; object-fit: cover; display: block;
+      border: 1px solid var(--border); border-radius: var(--radius);
+    }
+    .ws-raster-check span { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
 
     /* ---------------- 载入页 ---------------- */
     .loading-screen {
