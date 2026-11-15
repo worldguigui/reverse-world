@@ -1,0 +1,12 @@
+{
+  "name": "世界图志工具",
+  "short_name": "世界图志",
+  "icons": [
+    { "src": "./favicon_192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./favicon_512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ],
+  "theme_color": "#11100f",
+  "background_color": "#ffffff",
+  "display": "browser",
+  "start_url": "./"
+}
