@@ -278,7 +278,7 @@ export function WorkshopDialog({ onClose }) {
             {(project?.rasterMaps?.length ?? 0) > 0 && (
               <label className="set-check ws-raster-check">
                 <span>
-                  包含底图（约 {fmtSize(rasterBytes)}
+                  包含底图（约{fmtSize(rasterBytes)}）
                 </span>
                 <input
                   type="checkbox"

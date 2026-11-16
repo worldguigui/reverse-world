@@ -4,7 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>世界图志工具</title>
-  <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+  <!-- 图标用相对路径：发布构建是 base './'，站点放在子目录时也不会 404 -->
+  <link rel="icon" type="image/svg+xml" href="./favicon_32x32.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="./favicon_32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="./favicon_16x16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./favicon_180x180.png" />
+  <link rel="manifest" href="./site.webmanifest" />
+  <link rel="icon" href="./favicon.ico" type="image/x-icon" />
   <style>
     /* 本地字体：不依赖网络加载，发布构建时随 public/fonts 一起复制。
        Inter 管英文与数字，Noto Sans SC 管中文，Cormorant 只用于少量装饰性西文。 */
