@@ -25,6 +25,7 @@ export function createProject({ name = '未命名世界', description = '' } = {
     description,
     // 舞台：球自己的那张脸，与时间无关，最多一张
     baseRasterId: null, // 地图 id（工坊可编辑的那种），空 = 深色空球
+    shape: { type: 'sphere' }, // 世界形状：sphere（球）| slab（平板）。舞台属性，与时间无关
     rasterMaps: [], // { id, name, w, h, dataUrl } 地图（R+G=高度、B+A=RGB565 颜色）
     events: [],     // { id, title, description, image, lat, lng, from, to } 事件
                     //   from / to 是 Y…YMDHMS 时间串或 null；空格后是备注
@@ -87,6 +88,16 @@ function needTime(v, what) {
   return normalized;
 }
 
+/** 世界形状字段：缺省 = 球体；在场时 type 必须是已知形状 */
+function normalizeShape(raw) {
+  if (raw == null) return { type: 'sphere' };
+  needObject(raw, 'shape');
+  if (raw.type !== 'sphere' && raw.type !== 'slab') {
+    formatError('shape.type 必须是 sphere 或 slab');
+  }
+  return { type: raw.type };
+}
+
 /**
  * 读入项目：逐项按当前结构检查并组装。
  *
@@ -103,6 +114,9 @@ export function normalizeProject(raw) {
     formatError('baseRasterId 必须是地图 id 或 null');
   }
   p.baseRasterId = raw.baseRasterId;
+  // 世界形状是后加的字段：旧文件里没有，宽容兜底为球体（免迁移即可加载），
+  // 与 characters/groups 缺键兜底同一先例；字段在时仍严格校验
+  p.shape = normalizeShape(raw.shape);
   const maps = needArray(raw.rasterMaps, 'rasterMaps').map((m, i) => {
     const what = `rasterMaps[${i}]`;
     needObject(m, what);

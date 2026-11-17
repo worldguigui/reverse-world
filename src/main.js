@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { latLngToVec3, vec3ToLatLng, TweenManager } from './utils.js';
+import { TweenManager } from './utils.js';
 import { CameraRig } from './view/camera.js';
 import { Globe } from './view/globe.js';
 import { EventDotLayer } from './view/event-dot.js';
@@ -55,18 +55,30 @@ async function main() {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(config.camera.fov, innerWidth / innerHeight, 0.01, 300);
-  camera.position.copy(latLngToVec3(config.camera.lat, config.camera.lon, config.camera.distance));
 
   const tweens = new TweenManager();
-  const rig = new CameraRig(camera, renderer.domElement, { ...config.camera, ...config.rotation }, tweens);
-
   const globe = new Globe(scene, config, renderer.capabilities.getMaxAnisotropy());
+  // 形状要在 rig 创建前就位：rig 构造时会算初始档位，第一笔就要读 referenceScale
+  session.shape = globe.shape;
+  // 出厂视角落在形状给的位姿上：球=径向方向×距离、看向原点；
+  // 平板=悬在初始点上方净距 2、正俯视（屏幕上边朝北）。
+  // 出厂距离 = 出厂净距（config.distance−1）+ 各形状的参考面——与相机档位梯子同一出处
+  const factoryDist = config.camera.distance - 1 + globe.shape.referenceScale;
+  const initPose = globe.shape.getHomePose(config.camera, factoryDist);
+  camera.position.copy(initPose.position);
+  camera.up.set(0, 1, 0);
+  camera.lookAt(initPose.target);
+  const rig = new CameraRig(camera, renderer.domElement, { ...config.camera, ...config.rotation }, tweens, () => session.shape);
+  // 视线目标点与位姿一致：球=原点（与旧行为相同），平板=初始点（正俯视的支点）
+  rig.controls.target.copy(initPose.target);
+
   // 画面设置随时可能被改，图层每次都现取当前值，不缓存对象引用
   const viewConfig = () => store.getState().viewConfig;
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
-  const eventDot = new EventDotLayer(globe.group, viewConfig, maxAniso);
-  const routes = new RouteLayer(globe.group, viewConfig);
-  const regions = new RegionLayer(globe.group, viewConfig);
+  const getShape = () => session.shape;
+  const eventDot = new EventDotLayer(globe.group, viewConfig, maxAniso, getShape);
+  const routes = new RouteLayer(globe.group, viewConfig, getShape);
+  const regions = new RegionLayer(globe.group, viewConfig, getShape);
   routes.setSize(innerWidth, innerHeight);
   eventDot.setViewport(innerWidth, innerHeight);
 
@@ -77,12 +89,14 @@ async function main() {
   });
 
   // 光点/路线/区域始终贴着实际地形走，包括海平面以下的凹陷。
-  // 高度要先按球面的实际渲染口径夹到 [-4, 4] 再插值：球面顶点读的是
+  // 高度要先按形状的实际渲染口径夹到 [-4, 4] 再插值：表面顶点读的是
   // 逐格 clamp 后的纹理，直接用原始采样值会把内容抬到实际地形上方。
+  // 位移量 = 高度 × exaggeration × shape.heightScale（球=1，平板=0.5），
+  // 与形状 shader 里的位移公式严格同源，内容才贴得住
   const terrainRadius = (lat, lng) => {
     const grid = session.currentGrid;
     if (!grid) return 0;
-    return grid.sampleClamped(lat, lng) * viewConfig().terrain.exaggeration;
+    return grid.sampleClamped(lat, lng) * viewConfig().terrain.exaggeration * session.shape.heightScale;
   };
   eventDot.terrainRadius = terrainRadius;
   routes.terrainRadius = terrainRadius;
@@ -265,6 +279,17 @@ async function main() {
   // 用户自己动了镜头：打断进行中的 flyTo，让用户立即接管镜头
   rig.onUserInterrupt = () => {}; // 回调保留，便于将来扩展镜头相关行为
 
+  // 检视模式的浮动退出芯片（plain DOM，与 toast 同一套办法）：
+  // 固定视角的用户不一定想得起 Esc，芯片常驻提醒怎么回去
+  const inspectChip = document.createElement('button');
+  inspectChip.className = 'btn';
+  inspectChip.hidden = true;
+  inspectChip.textContent = '◉ 自由检视中，Esc 返回';
+  inspectChip.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:40';
+  inspectChip.addEventListener('click', () => store.getState().setInspectMode(false));
+  document.body.appendChild(inspectChip);
+  useStore.subscribe((s) => s.inspectMode, (v) => { inspectChip.hidden = !v; });
+
   // ---------------------------------------------------------- 鼠标交互
   const raycaster = new THREE.Raycaster();
   raycaster.layers.enable(LAYER_CONTENT); // 内容在单独一层，拾取要显式打开
@@ -292,10 +317,11 @@ async function main() {
     return null;
   }
 
-  function pickSphere(ndcVec) {
+  /** 逻辑体拾取已收口到形状：球打逻辑球，平板打理想顶面（main.js 不关心是哪种） */
+  function pickSurface(ndcVec) {
     raycaster.setFromCamera(ndcVec, camera);
-    const hit = raycaster.intersectObject(globe.sphere, false)[0];
-    return hit ? vec3ToLatLng(hit.point) : null;
+    const hit = globe.shape.raycastSurface(raycaster, globe.body);
+    return hit ? { lat: hit.lat, lng: hit.lng } : null;
   }
 
   canvas.addEventListener('pointermove', (e) => {
@@ -326,10 +352,10 @@ async function main() {
     if (s.mode === 'browse') {
       s.select(pickAt(ndc));
     } else if (s.mode === 'add-event') {
-      const ll = pickSphere(ndc);
+      const ll = pickSurface(ndc);
       if (ll) s.setPendingCoords({ lat: ll.lat, lng: ll.lng });
     } else if (s.mode === 'draw-route' || s.mode === 'draw-region') {
-      const ll = pickSphere(ndc);
+      const ll = pickSurface(ndc);
       if (!ll) return;
       // 勾画区域时点在起点附近 → 闭合
       if (s.mode === 'draw-region' && s.drawCoords.length >= 3 && nearFirstVertex(e)) {
@@ -344,7 +370,7 @@ async function main() {
     const coords = store.getState().drawCoords;
     if (!coords.length) return false;
     const [lng, lat] = coords[0];
-    const p = worldToScreen(latLngToVec3(lat, lng, 1));
+    const p = worldToScreen(globe.shape.surfacePoint(lat, lng, 0));
     return Math.hypot(p.x - e.clientX, p.y - e.clientY) < 16;
   }
 
@@ -358,7 +384,7 @@ async function main() {
     const s = store.getState();
     if (previewEl || s.mode !== 'browse') return;
     toNdc(e);
-    const ll = pickSphere(ndc);
+    const ll = pickSurface(ndc);
     if (!ll) return;
     s.flyTo(ll.lat, ll.lng, { distance: Math.max(viewConfig().camera.minDistance + 0.05, camera.position.length() * 0.55) });
   });
@@ -390,6 +416,8 @@ async function main() {
     const s = store.getState();
     // 加载页、地图工坊与编年史都是全屏浮层：键盘先归它们，别在背后改动编辑状态
     if (s.loading || s.workshopOpen || s.chronicleOpen) return;
+    // 检视模式的退出优先于一切快捷键；其他按键照常（检视不影响时间轴浏览）
+    if (s.inspectMode && e.key === 'Escape') { s.setInspectMode(false); return; }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
     // 输入框里的 Esc / Enter 属于控件本身（收起候选、提交输入），中文组字时同理
     if (typing || e.isComposing || e.defaultPrevented) return;
@@ -501,6 +529,14 @@ async function main() {
     rig.update(dt); // 自转按真实秒数走，帧率高低都转一样快
     // 掩膜平面要按这一帧最终的相机朝向摆放，所以排在 rig.update 之后
     globe.update?.(dt, camera);
+    // 内容层显隐双机制的一半：形状给出「此刻内容该不该整体可见」
+    // （球恒可见；平板：相机潜到顶面以下即藏起全部内容——一张水平平面
+    // 挡不住相机两侧的内容，这条规则只能由显隐开关直接保证），
+    // 与 bridge 管的「有没有项目」（hasContent）相乘，两边互不覆盖
+    const contentOk = globe.shape.contentVisible(camera);
+    session.eventDot.group.visible = contentOk && session.eventDot.hasContent;
+    session.routes.group.visible = contentOk && session.routes.hasContent;
+    session.regions.group.visible = contentOk && session.regions.hasContent;
     // 光点的大小只跟相机有关，所以每帧现算，不走 store 的信号
     eventDot.update(camera);
     processHover();

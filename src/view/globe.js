@@ -1,13 +1,16 @@
 import * as THREE from 'three';
 import { DEFAULT_CONFIG, TERRAIN_MESH_SEGMENTS } from '../config.js';
-import { LAYER_MASK } from './render-layers.js';
+import { SphereShape } from './shapes/sphere-shape.js';
 
 /**
- * 世界之球：一张地图 + 大气辉光 + 星空 + 固定光照。
+ * 世界主体：一张地图 + 光照 + 星空，外加形状自带的大气与深度掩膜。
+ * 「世界长成什么形状」由 WorldShape（view/shapes/）回答：球体是默认形状，
+ * 平板等形状各自实现坐标映射、位移 shader、掩膜与相机语义，本类只管
+ * 贴图生命周期（setRaster/setBlank）、光照与星空这些与形状无关的机制。
  * 地图有两种状态：
- *  - 无地图 setBlank()：深色空球，高度全是海平面，没有任何起伏
+ *  - 无地图 setBlank()：深色空体，高度全是海平面，没有任何起伏
  *  - 有地图 setRaster(grid)：颜色纹理 + 高度纹理，顶点着色器做真实位移，
- *    「画一笔山，球面上当场鼓起来」
+ *    「画一笔山，表面上当场鼓起来」
  * 高度纹理用线性色空间 + 双线性采样：
  *  - 色空间必须是线性的，高度值才不会被 sRGB 曲线拉歪；
  *  - 采样要插值：最近点采样把每一格铺成一整块平地、格与格之间高度直接跳变，
@@ -20,19 +23,22 @@ export class Globe {
    * @param {THREE.Scene} scene
    * @param {object} config 画面设置（保持引用）
    * @param {number} maxAnisotropy
+   * @param {import('./shapes/world-shape.js').WorldShape} [shape] 世界形状，默认球体
    */
-  constructor(scene, config, maxAnisotropy = 8) {
+  constructor(scene, config, maxAnisotropy = 8, shape = new SphereShape()) {
     this.scene = scene;
     this.config = config;
     this.maxAnisotropy = maxAnisotropy;
+    this.shape = shape;
     this.group = new THREE.Group();
     scene.add(this.group);
-    // 空球与无位移共用的两张 1×1 贴图：始终有 map 和 uHeightTex，
+    // 空体与无位移共用的两张 1×1 贴图：始终有 map 和 uHeightTex，
     // 着色器从构造起就走同一条分支，换地图时不会触发重编译
     this._blankTex = makeBlankTexture();
     this._flatHeightTex = makeBlackTexture();
 
-    // 位移/法线着色器共享的 uniform（onBeforeCompile 里挂进程序）
+    // 位移/法线着色器共享的 uniform（形状的 patchBodyMaterial 挂进程序）。
+    // 形状只借引用，不自建副本——换地图改 value，各形状同时生效
     this._uHeightTex = { value: this._flatHeightTex };
     this._uExaggeration = { value: config.terrain.exaggeration };
     // 一格的高度纹理步长，供着色器取邻域差分算法线；这里先按占位贴图（1×1）配一套，
@@ -46,90 +52,52 @@ export class Globe {
     // 自转时相机转了多少，星场也转多少；重建星场后要沿用这个累积量，否则星空会跳一下
     this._starsSpin = new THREE.Quaternion();
 
-    this._buildSphere();
-    this._buildOverlayMask();
-    this._buildAtmosphere();
+    this._buildBody();
+    this._buildMask();
+    if (this.shape.hasAtmosphere) this._buildAtmosphere();
     this._buildLights();
     this._buildStars();
     this.setConfig(config);
   }
 
-  _buildSphere() {
-    this.sphereMat = new THREE.MeshPhongMaterial({
+  /**
+   * 主体：材质由本类持有（贴图生命周期与形状无关），形状往里注入位移 shader。
+   */
+  _buildBody() {
+    this.bodyMat = new THREE.MeshPhongMaterial({
       map: this._blankTex,
       shininess: 6,
       specular: new THREE.Color(0x111111),
     });
-    this.sphereMat.onBeforeCompile = (shader) => {
-      shader.uniforms.uHeightTex = this._uHeightTex;
-      shader.uniforms.uExaggeration = this._uExaggeration;
-      shader.uniforms.uHeightTexel = this._uHeightTexel;
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', [
-          '#include <common>',
-          'uniform sampler2D uHeightTex;',
-          'uniform float uExaggeration;',
-          'uniform vec2 uHeightTexel;',
-          '// R+G 打包 16-bit 无符号 → 浮点 [-4, 4]',
-          'float unpackHeight(vec2 rg) {',
-          '  float u16 = dot(floor(rg * 255.0 + 0.5), vec2(256.0, 1.0));',
-          '  return (u16 / 65535.0) * 8.0 - 4.0;',
-          '}',
-          '// 极点处经度没有定义：极点那一圈顶点全都落在同一点上，却各自采样到',
-          '// 不同经线的高度，位移量一不同，球顶就裂成一圈扇形缝隙。这里让极点',
-          '// 统一取中央经线的高度，整圈位移到同一位置，再和下面一圈顶点缝合。',
-          'vec2 heightUv(vec2 baseUv) {',
-          '  float pole = max(smoothstep(0.999, 1.0, baseUv.y), smoothstep(0.999, 1.0, 1.0 - baseUv.y));',
-          '  return vec2(mix(baseUv.x, 0.5, pole), baseUv.y);',
-          '}',
-        ].join('\n'))
-        .replace('#include <beginnormal_vertex>', [
-          '#include <beginnormal_vertex>',
-          '{ // 用高度场邻域差分扰动法线，让山地光照随起伏变化',
-          '  vec3 nUnit = normalize(position);',
-          '  vec3 eastDir = cross(vec3(0.0, 1.0, 0.0), nUnit);',
-          '  float eastLen = length(eastDir);',
-          '  if (eastLen > 1e-4) {',
-          '    eastDir /= eastLen;',
-          '    vec3 northDir = cross(nUnit, eastDir);',
-          '    vec2 huv = heightUv(uv);',
-          '    float hC = unpackHeight(texture2D(uHeightTex, huv).rg);',
-          '    float hE = unpackHeight(texture2D(uHeightTex, huv + vec2(uHeightTexel.x, 0.0)).rg);',
-          '    float hN = unpackHeight(texture2D(uHeightTex, huv + vec2(0.0, uHeightTexel.y)).rg);',
-          '    float k = uExaggeration * 8.0;',
-          '    objectNormal = normalize(objectNormal + (eastDir * (hC - hE) + northDir * (hN - hC)) * k);',
-          '  }',
-          '}',
-        ].join('\n'))
-        .replace('#include <begin_vertex>', [
-          '#include <begin_vertex>',
-          '// 沿径向按高度位移：h=0 海平面，h>0 山隆起，h<0 海床内凹',
-          'transformed += normalize(position) * unpackHeight(texture2D(uHeightTex, heightUv(uv)).rg) * uExaggeration;',
-        ].join('\n'));
-    };
-    this.sphere = new THREE.Mesh(this._makeGeometry(256), this.sphereMat);
-    this.sphere.name = 'world-sphere';
-    this.group.add(this.sphere);
+    this.shape.patchBodyMaterial(this.bodyMat, {
+      uniforms: {
+        uHeightTex: this._uHeightTex,
+        uExaggeration: this._uExaggeration,
+        uHeightTexel: this._uHeightTexel,
+      },
+    });
+    this.body = new THREE.Mesh(this._makeGeometry(256), this.bodyMat);
+    this.body.name = 'world-body';
+    this.group.add(this.body);
+    this._buildStatic();
   }
 
-  /**
-   * 内容图层的深度掩膜：一张过球心、正对相机的平面，只写深度、不写颜色。
-   * 主循环第二趟画它，第三趟画事件/路线/区域时：
-   *  - 近半球的内容在平面之前（朝相机），可见，哪怕地形压低到海平面以下；
-   *  - 远半球的内容在平面之后，被正确遮住。
-   * 用球壳当掩膜时，半径小于 1 的内容（贴到凹陷地形上）会整块被裁掉，
-   * 所以这里只需要「过球心」这一刀，不需要跟随地形起伏。
-   * 平面基础半边长 20，每帧再按相机远近与宽高比放大到屏幕四角之外，
-   * 保证任何距离、任何窗口比例下，整屏像素都有一份掩膜深度。
-   */
-  _buildOverlayMask() {
-    this.overlayMask = new THREE.Mesh(
-      new THREE.PlaneGeometry(40, 40),
-      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, side: THREE.DoubleSide }),
-    );
-    this.overlayMask.name = 'overlay-depth-mask';
-    this.overlayMask.layers.set(LAYER_MASK);
-    this.group.add(this.overlayMask);
+  /** 形状的静态附属网格（平板的侧壁/底面岩层）；球体没有 */
+  _buildStatic() {
+    this._staticMeshes = this.shape.buildStaticMeshes?.(this.config) ?? [];
+    for (const m of this._staticMeshes) this.group.add(m);
+  }
+
+  _disposeStatic() {
+    for (const m of this._staticMeshes ?? []) {
+      m.traverse((o) => {
+        o.geometry?.dispose();
+        const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+        for (const mat of mats) mat.dispose();
+      });
+      this.group.remove(m);
+    }
+    this._staticMeshes = [];
   }
 
   /**
@@ -146,35 +114,73 @@ export class Globe {
   _makeGeometry(segW) {
     segW = Math.min(this._meshCap(), Math.max(192, segW));
     this._segments = segW;
-    return new THREE.SphereGeometry(1, segW, segW / 2);
+    return this.shape.buildBodyGeometry(segW);
   }
 
-  /** 按当前地图与设置重建球面网格；段数没变就什么都不做 */
+  /** 按当前地图与设置重建主体网格；段数没变就什么都不做 */
   _applyMesh(gridW) {
     const segW = Math.min(this._meshCap(), Math.max(192, gridW));
     if (this._segments === segW) return;
-    this.sphere.geometry.dispose();
-    this.sphere.geometry = this._makeGeometry(segW);
+    this.body.geometry.dispose();
+    this.body.geometry = this._makeGeometry(segW);
+  }
+
+  _buildMask() {
+    this.overlayMask = this.shape.buildMaskMesh();
+    this.group.add(this.overlayMask);
   }
 
   /**
-   * 换地图时刻意不碰 sphereMat.needsUpdate。
+   * 换世界形状（球 ↔ 平板）：几何、掩膜、大气随形状重建，材质与贴图复用。
+   * 着色器分支变了（径向位移 ↔ 法向位移），必须置 needsUpdate 让程序重编译——
+   * 这与「换地图不重编译」不矛盾：换地图只换 uniform 的 value，分支从没变过；
+   * 换形状换的是 onBeforeCompile 本身，一次性的重编译落在切换那一刻，是应得的。
+   * 调用方随后要重新贴一次 raster（applyStage 本来就会做）。
+   * @returns {boolean} 形状是否真的变了（调用方据此重摆相机）
+   */
+  setShape(shape) {
+    if (shape.id === this.shape.id) return false; // 同形状幂等：换地图时几何与 shader 一概不动
+    this.shape.disposeAtmosphere?.(this.group);
+    this.overlayMask.geometry.dispose();
+    this.overlayMask.material.dispose();
+    this.group.remove(this.overlayMask);
+    this._disposeStatic();
+    this.shape = shape;
+    this.body.geometry.dispose();
+    this.body.geometry = this._makeGeometry(256);
+    this.shape.patchBodyMaterial(this.bodyMat, {
+      uniforms: {
+        uHeightTex: this._uHeightTex,
+        uExaggeration: this._uExaggeration,
+        uHeightTexel: this._uHeightTexel,
+      },
+    });
+    this.bodyMat.needsUpdate = true;
+    this._buildMask();
+    this._buildStatic();
+    if (this.shape.hasAtmosphere) this._buildAtmosphere();
+    this.setConfig(this.config);
+    return true;
+  }
+
+  /**
+   * 换地图时刻意不碰 bodyMat.needsUpdate。
    * three 里 needsUpdate 会让材质 version++，下一帧整个地形着色器要重新编译并链接——
    * 实测一次 100ms 以上，正好落在换地图那一帧上，就是「换一次地图卡一下」的来源。
    * 这里换的只是 map 与几个 uniform，着色器分支（有没有贴图）从构造起就没变过，
-   * 根本不需要重编译；真要改分支，改的是 onBeforeCompile 本身，那时才该 needsUpdate。
+   * 根本不需要重编译；真要改分支（换形状），改的是 onBeforeCompile 本身，那时才该 needsUpdate。
    */
 
-  /** 没有地图：深色空球，高度回到海平面 */
+  /** 没有地图：深色空体，高度回到海平面 */
   setBlank() {
     this._grid = null;
     this._disposeRasterTextures();
-    this.sphereMat.map = this._blankTex;
+    this.bodyMat.map = this._blankTex;
     this._uHeightTex.value = this._flatHeightTex;
   }
 
   /**
-   * 有地图：颜色画布 + 高度画布同时上球。
+   * 有地图：颜色画布 + 高度画布同时上体。
    * 工坊绘制过程中反复调用 updateRasterTextures() 即可实时看到山体变形。
    */
   setRaster(grid) {
@@ -191,18 +197,16 @@ export class Globe {
     this._heightTex.colorSpace = THREE.LinearSRGBColorSpace;
     this._heightTex.magFilter = THREE.LinearFilter;
     this._heightTex.minFilter = THREE.LinearFilter;
-    // 横向环绕：地图首尾两列在球上是同一条经线（经度 ±180°），
-    // 球面网格在那条线上的顶点是重复的。夹边采样会让 u=0 和 u=1 各读一侧边缘，
-    // 高度不同、位移量就不同，接缝处裂开一条能看进球内的竖缝；颜色上也会留下一条深线。
-    // 环绕采样让两侧读到同一组边缘混合值，接缝与别处一样连续。纵向仍是夹边——纬度没有环绕。
-    this._colorTex.wrapS = THREE.RepeatWrapping;
-    this._heightTex.wrapS = THREE.RepeatWrapping;
+    // 环绕语义随形状走：球体横向 Repeat（首尾经线是同一条），平板 Clamp（边缘即断面）。
     // 不生成 mipmap，缩小过滤就只能配 Linear：给了带 mipmap 的过滤器又不生成，
     // WebGL 采到的是一张不完整的贴图，整颗球会变成黑的
     this._heightTex.generateMipmaps = false;
+    this.shape.applyTextureWrapping(this._colorTex, this._heightTex);
     this._uHeightTex.value = this._heightTex;
     this._uHeightTexel.value.set(1 / grid.w, 1 / grid.h);
-    this.sphereMat.map = this._colorTex;
+    this.bodyMat.map = this._colorTex;
+    // 附属网格里引用顶面纹理的（平板侧壁断面共享顶面纹理），换栅格时重绑一次
+    this.shape.updateFrame?.(grid, this._colorTex);
   }
 
   /** 栅格画布内容变化后刷新纹理（不重建） */
@@ -219,67 +223,7 @@ export class Globe {
   }
 
   _buildAtmosphere() {
-    // 外圈辉光：放大球 + BackSide + 加法混合，只在地平线边缘露出光环
-    this.atmoMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uColor: { value: new THREE.Color(this.config.atmosphere.color) },
-        uStrength: { value: this.config.atmosphere.strength },
-        uPower: { value: 3.5 },
-      },
-      vertexShader: /* glsl */ `
-        varying vec3 vNormal;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }`,
-      fragmentShader: /* glsl */ `
-        uniform vec3 uColor;
-        uniform float uStrength;
-        uniform float uPower;
-        varying vec3 vNormal;
-        void main() {
-          float d = clamp(dot(normalize(vNormal), vec3(0.0, 0.0, -1.0)), 0.0, 1.0);
-          float rim = pow(d * 1.9, uPower);
-          gl_FragColor = vec4(uColor * rim * uStrength, 1.0);
-        }`,
-      side: THREE.BackSide,
-      blending: THREE.AdditiveBlending,
-      transparent: true,
-      depthWrite: false,
-    });
-    this.atmoMesh = new THREE.Mesh(new THREE.SphereGeometry(1.18, 96, 96), this.atmoMat);
-    this.group.add(this.atmoMesh);
-
-    // 地表薄雾：FrontSide 菲涅尔
-    this.hazeMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uColor: { value: new THREE.Color(this.config.atmosphere.color) },
-        uStrength: { value: this.config.atmosphere.strength * 0.3 },
-      },
-      vertexShader: /* glsl */ `
-        varying vec3 vNormal;
-        varying vec3 vViewDir;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          vViewDir = normalize(-mv.xyz);
-          gl_Position = projectionMatrix * mv;
-        }`,
-      fragmentShader: /* glsl */ `
-        uniform vec3 uColor;
-        uniform float uStrength;
-        varying vec3 vNormal;
-        varying vec3 vViewDir;
-        void main() {
-          float fresnel = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewDir)), 0.0, 1.0), 2.6);
-          gl_FragColor = vec4(uColor * fresnel * uStrength, 1.0);
-        }`,
-      blending: THREE.AdditiveBlending,
-      transparent: true,
-      depthWrite: false,
-    });
-    this.hazeMesh = new THREE.Mesh(new THREE.SphereGeometry(1.004, 96, 96), this.hazeMat);
-    this.group.add(this.hazeMesh);
+    this.shape.buildAtmosphere(this.group, this.config);
   }
 
   _buildLights() {
@@ -348,12 +292,7 @@ export class Globe {
     this.keyLight.intensity = config.light.key;
     this.ambient.intensity = config.light.ambient;
     this._uExaggeration.value = config.terrain.exaggeration;
-    this.atmoMat.uniforms.uColor.value.set(config.atmosphere.color);
-    this.atmoMat.uniforms.uStrength.value = config.atmosphere.strength;
-    this.atmoMesh.visible = config.atmosphere.enabled;
-    this.hazeMat.uniforms.uColor.value.set(config.atmosphere.color);
-    this.hazeMat.uniforms.uStrength.value = config.atmosphere.strength * 0.3;
-    this.hazeMesh.visible = config.atmosphere.enabled;
+    this.shape.applyAtmosphereConfig?.(config);
     this.stars.visible = config.stars.enabled;
     if (config.stars.count !== this._lastStarsCount) {
       this._lastStarsCount = config.stars.count;
@@ -366,17 +305,12 @@ export class Globe {
 
   update(dt, camera) {
     if (!camera) return;
-    // 平面过球心，法线始终对准相机；摄像机绕球怎么转，近/远半球的分界都不动
-    this.overlayMask.quaternion.copy(camera.quaternion);
-    // 屏幕四角的视线落在过球心平面上的最远距离 = 相机距离 × tan(半 FOV) × 宽高比。
-    // 留一成余量后按基础半边长 20 缩放，超宽窗口拉到最远也不会漏掉边角
-    const dist = camera.position.length();
-    const reach = dist * Math.tan((camera.fov * Math.PI) / 360) * Math.max(1, camera.aspect) * 1.1;
-    this.overlayMask.scale.setScalar(Math.max(1, reach / 20));
+    // 掩膜的摆法是形状的遮挡语义：球体正对相机，平板锁死水平面
+    this.shape.updateMask?.(this.overlayMask, camera);
   }
 }
 
-/** 1x1 无位移高度纹理：R+G 解包后 ≈ 0（海平面），空球与无地图时使用 */
+/** 1x1 无位移高度纹理：R+G 解包后 ≈ 0（海平面），空体与无地图时使用 */
 function makeBlackTexture() {
   const tex = new THREE.DataTexture(new Uint8Array([127, 255, 0, 255]), 1, 1);
   tex.colorSpace = THREE.LinearSRGBColorSpace;
@@ -387,7 +321,7 @@ function makeBlackTexture() {
   return tex;
 }
 
-/** 1x1 深色空球贴图：没有地图时球体仍然有 map，着色器分支不变 */
+/** 1x1 深色空体贴图：没有地图时主体仍然有 map，着色器分支不变 */
 function makeBlankTexture() {
   const tex = new THREE.DataTexture(new Uint8Array([12, 20, 34, 255]), 1, 1);
   tex.colorSpace = THREE.SRGBColorSpace;
