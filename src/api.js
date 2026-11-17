@@ -84,6 +84,8 @@ export function installAPI({ ctx, project, cursor }) {
     getProject: () => structuredClone(get()),
     exportProject: () => ctx.exportProject(),
     loadSample: () => ctx.loadSample(),
+    /** 切换世界形状：'sphere' | 'slab'（球体 / 平板），走舞台切换，内容一条不动 */
+    setShape: (type) => ctx.setProjectShape(type),
 
     help,
   };
@@ -112,6 +114,7 @@ export function installAPI({ ctx, project, cursor }) {
       + 'world.openWorkshop() / generateRealEarth()       地图工坊 / 真实地球\n'
       + 'world.paintTerrain(lat, lng, { tool, size, strength, passes, hard, shadow, color, reliefColor }) 涂画笔（size = 正方形奇数边长）\n'
       + 'world.sampleTerrain(lat, lng)                    查询地形高度（0=海平面）\n'
+      + "world.setShape('sphere' | 'slab')                切换世界形状（球体 / 平板）\n"
       + 'world.getProject() / exportProject()            项目读写\n'
       + 'world.loadSample()                              载入示例世界',
       'background:#6ea8ff;color:#000;padding:2px 6px;border-radius:4px 0 0 4px;font-weight:bold',

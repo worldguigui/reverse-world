@@ -10,6 +10,7 @@ export const session = {
   scene: null,
   camera: null,
   globe: null,
+  shape: null,          // 当前世界形状（view/shapes/），由 globe.shape 注入；内容层与相机经 () => session.shape 取用
   eventDot: null,       // 事件光点层：整层只有一个点，跟着当前选中的事件走
   routes: null,
   regions: null,

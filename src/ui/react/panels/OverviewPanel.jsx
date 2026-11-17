@@ -18,6 +18,7 @@ export function OverviewPanel() {
   const project = useStore((s) => s.project);
   const counts = useStore((s) => s.derived.counts);
   const updateProject = useStore((s) => s.updateProject);
+  const setProjectShape = useStore((s) => s.setProjectShape);
   const openWorkshop = useStore((s) => s.openWorkshop);
   const generateRealEarth = useStore((s) => s.generateRealEarth);
   const setOverviewOpen = useStore((s) => s.setOverviewOpen);
@@ -25,6 +26,7 @@ export function OverviewPanel() {
 
   const baseRaster = project.rasterMaps.find((m) => m.id === project.baseRasterId) ?? null;
   const face = baseRaster ? `地图 · ${baseRaster.name}` : '空世界';
+  const shapeType = project.shape?.type === 'slab' ? 'slab' : 'sphere';
 
   return (
     <div className="insp-block">
@@ -77,6 +79,26 @@ export function OverviewPanel() {
           {baseRaster ? '编辑地图' : '自己画一个地图'}
         </button>
         <button className="btn" onClick={() => generateRealEarth()}>从真实地球生成地图</button>
+      </div>
+
+      <p className="insp-hint" style={{ marginTop: '10px' }}>
+        {`形状：${shapeType === 'slab' ? '平板世界' : '球体世界'}`}
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+        <button
+          className="btn"
+          disabled={shapeType === 'sphere'}
+          onClick={() => setProjectShape('sphere')}
+        >
+          球体
+        </button>
+        <button
+          className="btn"
+          disabled={shapeType === 'slab'}
+          onClick={() => setProjectShape('slab')}
+        >
+          平板
+        </button>
       </div>
 
       <p className="insp-hint" style={{ marginTop: '10px' }}>

@@ -7,10 +7,13 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "server": "node server/index.js"
+    "server": "node server/index.js",
+    "verify:shapes": "node scripts/verify-shapes.mjs",
+    "verify:zoom": "node scripts/verify-zoom-rig.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.3",
+    "polygon-clipping": "^0.15.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "three": "^0.186.1",

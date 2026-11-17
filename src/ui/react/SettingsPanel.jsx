@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../../store/index.js';
 import {
-  STARS_COUNT_MIN, STARS_COUNT_MAX, TERRAIN_MESH_SEGMENTS,
+  STARS_COUNT_MIN, STARS_COUNT_MAX, TERRAIN_MESH_SEGMENTS, zoomLevelRange,
 } from '../../config.js';
 
 /** 浮点累加会出现 0.30000000000000004，显示前按步长精度收一下 */
@@ -154,6 +154,9 @@ export function SettingsPanel() {
   const resetView = useStore((s) => s.resetView);
   const cameraLevel = useStore((s) => s.cameraLevel);
   const setCameraLevel = useStore((s) => s.setCameraLevel);
+  const shapeType = useStore((s) => s.project?.shape?.type ?? 'sphere');
+  // 缩放档位的全域：滑块的上下限从它派生，不写死数字（出处与滚轮/飞行同一处）
+  const levelRange = zoomLevelRange(config.camera);
   // 收起时整个渲染成空，容器靠 #settings:empty 隐掉（与检查器同一套办法）
   if (!open) return null;
 
@@ -178,12 +181,20 @@ export function SettingsPanel() {
       </Group>
 
       <Group title="大气与星空">
-        <Check label="大气层" checked={config.atmosphere.enabled}
-          onChange={(v) => set({ atmosphere: { enabled: v } })} />
-        <Color label="大气颜色" value={config.atmosphere.color}
-          onChange={(v) => set({ atmosphere: { color: v } })} />
-        <Slider label="大气强度" value={config.atmosphere.strength} min={0} max={3} step={0.05}
-          onChange={(v) => set({ atmosphere: { strength: v } })} />
+        {/* 大气是球状世界的专属效果（外圈辉光 + 菲涅尔薄雾），平板世界没有对应物：
+            形状是平板时整组收起，只留一句说明，开关不装样子。 */}
+        {shapeType === 'slab' ? (
+          <p className="insp-hint">大气辉光是球体世界的专属效果；平板世界可在日后接入边缘辉光。</p>
+        ) : (
+          <>
+            <Check label="大气层" checked={config.atmosphere.enabled}
+              onChange={(v) => set({ atmosphere: { enabled: v } })} />
+            <Color label="大气颜色" value={config.atmosphere.color}
+              onChange={(v) => set({ atmosphere: { color: v } })} />
+            <Slider label="大气强度" value={config.atmosphere.strength} min={0} max={3} step={0.05}
+              onChange={(v) => set({ atmosphere: { strength: v } })} />
+          </>
+        )}
         <Check label="星空" checked={config.stars.enabled}
           onChange={(v) => set({ stars: { enabled: v } })} />
         <Slider label="星星数量" value={config.stars.count} min={STARS_COUNT_MIN} max={STARS_COUNT_MAX} step={1} commit="release"
@@ -220,13 +231,16 @@ export function SettingsPanel() {
 
       <Group title="视角">
         {/* 与滚轮共用「当前档位」：拖动滑块就是缩放，滚轮转了滑块也跟着走。
-            数字与「事件镜头档位」同一套 1–64；滚轮拉远超过出厂（档位 <1）时滑块停在 1。 */}
+            滑块只是诚实地展示档位全域（zoomLevelRange，含拉远超出厂的 <1 段），
+            不自己定界限——滚轮能到哪，滑块就到哪。 */}
         <Slider label="视角镜头档位" value={cameraLevel}
-          min={1} max={64} step={0.01} nudgeStep={1}
-          format={(v) => Math.max(1, Math.round(v))}
+          min={levelRange.min} max={levelRange.max}
+          step={0.01} nudgeStep={0.5}
+          format={(v) => (v >= 10 ? Math.round(v).toString() : v.toFixed(1))}
           onChange={(v) => setCameraLevel(v)} />
-        {/* 点开一条事件时镜头落到哪一档，1 = 出厂视角，64 = 推到底再加满镜头倍率 */}
-        <Slider label="事件镜头档位" value={config.camera.eventLevel} min={1} max={64} step={1}
+        {/* 点开一条事件时镜头落到哪一档：1 = 出厂视角，上限同缩放梯子 */}
+        <Slider label="事件镜头档位" value={config.camera.eventLevel}
+          min={1} max={levelRange.max} step={1}
           onChange={(v) => set({ camera: { eventLevel: v } })} />
         {/* 球可以往任意方向连续翻滚，转晕了就按这个把「上」掰回正北 */}
         <button className="btn" onClick={() => resetView()}>视角复位</button>

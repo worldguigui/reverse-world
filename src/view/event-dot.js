@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { latLngToVec3 } from '../utils.js';
 import { LAYER_CONTENT } from './render-layers.js';
+import { SphereShape } from './shapes/sphere-shape.js';
 
-/** 光点在无地形时浮于球面之上的半径：基数 1 再抬起一点，落在球面外侧 */
-const SURFACE_R = 1.003;
+/** 光点在无地形时浮于名义表面之上的高度（沿表面法线；球=径向，平板=竖直） */
+const SURFACE_LIFT = 0.003;
 
 /** 射线在屏幕上的宽与高，都以光点直径为基准。拉远拉近保持同样醒目 */
 const RAY_WIDTH_RATIO = 0.65;
@@ -24,10 +24,15 @@ export class EventDotLayer {
   /**
    * @param {THREE.Object3D} parent
    * @param {() => object} getConfig 返回画面设置（config.markers.dotPx）
+   * @param {number} maxAnisotropy
+   * @param {() => import('./shapes/world-shape.js').WorldShape} [getShape] 当前世界形状
    */
-  constructor(parent, getConfig, maxAnisotropy = 1) {
+  constructor(parent, getConfig, maxAnisotropy = 1, getShape = null) {
     this.parent = parent;
     this.getConfig = getConfig;
+    this.getShape = getShape ?? (() => new SphereShape());
+    /** 有没有项目（bridge 管理）；每帧与 shape.contentVisible 相乘得 group.visible */
+    this.hasContent = true;
     this.group = new THREE.Group();
     this.group.name = 'event-dot';
     parent.add(this.group);
@@ -87,7 +92,7 @@ export class EventDotLayer {
       return;
     }
     const lift = this.terrainRadius?.(at.lat, at.lng) ?? 0;
-    const p = latLngToVec3(at.lat, at.lng, SURFACE_R + lift);
+    const p = this.getShape().surfacePoint(at.lat, at.lng, SURFACE_LIFT + lift);
     this.sprite.position.copy(p);
     this.ray.position.copy(p);
     this.sprite.visible = true;

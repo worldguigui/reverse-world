@@ -26,6 +26,31 @@ export const IMAGE_UPLOAD = {
   quality: 0.82,
 };
 
+/**
+ * 相机推到最近档之后，镜头还能再收窄多少倍视场角。8 = 再放大八倍。
+ * 与 zoomLevelRange 一起定义缩放梯子的全域，滚轮、滑块、飞行共用。
+ */
+export const OPTICAL_MAX = 8;
+
+/**
+ * 缩放档位的全域（滚轮 / 设置滑块 / 按档位飞行共用同一组上下限）。
+ * 档位是相对出厂视角的放大倍数：出厂 = 1，推到底再收满镜头 = max，
+ * 拉远超出厂（净距超过出厂净距 2）= min ≈ 0.29——这一段是「看得更全」，
+ * 不是越界，滑块不截断它。
+ * 入参不可信时（旧存档/手改的 localStorage 可能带着畸形的 distance/min/max）
+ * 整组回落默认值：梯子是代码常数，不给坏数据留发挥空间。
+ * @param {{ distance:number, minDistance:number, maxDistance:number }} cam config.camera
+ */
+export function zoomLevelRange(cam) {
+  if (!(cam.distance > cam.minDistance && cam.minDistance > 1
+        && cam.maxDistance > cam.minDistance)) {
+    cam = DEFAULT_CONFIG.camera;
+  }
+  const min = (cam.distance - 1) / (cam.maxDistance - 1); // 拉到最远档
+  const max = ((cam.distance - 1) / (cam.minDistance - 1)) * OPTICAL_MAX; // 推到底再收满镜头
+  return { min, max };
+}
+
 export const DEFAULT_CONFIG = {
   // 贴底控件（时间轴、编年史、提示条）离窗口底边的额外距离（像素）。
   // 壁纸铺满桌面时会被系统任务栏盖住，这时调大；网页里通常留 0。
@@ -46,7 +71,8 @@ export const DEFAULT_CONFIG = {
     maxDistance: 8,
     // 点开一条事件时镜头落在哪一档（档位 = 画面相对出厂视角的放大倍数）。
     // 8 就是相机推到最近档、视场角还是出厂那个，赤道上每度约 76 像素、一个地形纹素约 13 像素
-    // ——正好是那张 2048 高度图还清楚的最大一屏。调大画面更近，代价是地形开始糊，上限 64。
+    // ——正好是那张 2048 高度图还清楚的最大一屏。调大画面更近，代价是地形开始糊；
+    // 可取范围就是缩放梯子全域（zoomLevelRange），不在这里写死数字。
     eventLevel: 8,
   },
   rotation: {
@@ -80,8 +106,10 @@ const STORAGE_KEY = 'worldbuilding:view-config';
 /**
  * 这几项由代码决定，设置面板改不了，因此也不进存档。
  * 若存下来再合并，改了代码却不生效，看起来像没改。
+ * distance 是缩放梯子的基准（出厂净距 = distance−1），面板里没有它的滑块，
+ * 旧存档里残留的值会把整个梯子带歪——同样只吃代码。
  */
-const CODE_OWNED_CAMERA = ['fov', 'minDistance', 'maxDistance'];
+const CODE_OWNED_CAMERA = ['fov', 'distance', 'minDistance', 'maxDistance'];
 
 export function loadViewConfig() {
   const config = structuredClone(DEFAULT_CONFIG);

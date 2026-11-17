@@ -140,6 +140,7 @@ export function Workshop({ container, preview }) {
   const canRedo = useStore((s) => s.canRedo);
   const zoom = useStore((s) => s.workshopZoom);
   const showOverlay = useStore((s) => s.workshopShowOverlay);
+  const shapeType = useStore((s) => s.project?.shape?.type ?? 'sphere');
   const setWorkshopBrush = useStore((s) => s.setWorkshopBrush);
   const [generating, setGenerating] = useState(false);
   // 载入真实地球失败的原因。显示在按钮下方而不是弹窗：工坊是全屏层，
@@ -444,6 +445,21 @@ export function Workshop({ container, preview }) {
         <div className="wk-canvas-wrap">
           {/* 画布绝对定位在 .wk-stage 里，靠 transform 缩放；外层只管边框与裁切 */}
           <div className="wk-stage" ref={wrapRef} />
+
+          {/* 平板世界的画布语义：四缘不是「地图边界」而是世界的断面。
+              贴边画的大陆在球体上是绕过去，在平板上会被断面截开——画的时候提醒一句 */}
+          {shapeType === 'slab' && (
+            <p
+              className="wk-dim"
+              style={{
+                position: 'absolute', left: '50%', bottom: 8, transform: 'translateX(-50%)',
+                margin: 0, padding: '4px 12px', pointerEvents: 'none', zIndex: 1,
+                background: 'rgba(13, 12, 11, 0.72)', borderRadius: 6, whiteSpace: 'nowrap',
+              }}
+            >
+              平板世界：画布四缘即世界的断面，贴边的大陆会被断面截开
+            </p>
+          )}
 
           {/* 主渲染画布在打开预览时会被搬进这里；尺寸由 main.js 量取后同步给渲染器 */}
           {previewOn && (

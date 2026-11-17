@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { latLngToVec3 } from '../utils.js';
 import { OVERLAY_ACTIVE, OVERLAY_BASE, OVERLAY_BORDER } from './overlay-palette.js';
 import { LAYER_CONTENT } from './render-layers.js';
 import { createMaterialBin } from './material-bin.js';
+import { SphereShape } from './shapes/sphere-shape.js';
 
-const FILL_R = 1.0025; // 填充面略高于地表，避免 z-fighting
-const LINE_R = 1.005;  // 边界线更高一点，盖在填充面上
+const FILL_LIFT = 0.0025; // 填充面略高于地表，避免 z-fighting
+const LINE_LIFT = 0.005;  // 边界线更高一点，盖在填充面上
 const MAX_TRI_DEG = 2; // 三角形最大边长（度），对应弦陷 0.00015，远小于层高
 const MAX_DEPTH = 6;   // 四分割深度上限，防止退化环死循环
 // 悬停只轻抬一层，选中只换边界色：整块区域变橙会压过地形
@@ -20,8 +20,16 @@ const HOVER_LINE_OPACITY = 0.95;
  * （大三角形直接投影会以弦的形式沉到球面以下，表现为填充空洞）。
  */
 export class RegionLayer {
-  constructor(parent, getConfig) {
+  /**
+   * @param {THREE.Object3D} parent
+   * @param {() => object} getConfig 返回画面设置（config.markers.fillOpacity）
+   * @param {() => import('./shapes/world-shape.js').WorldShape} [getShape] 当前世界形状
+   */
+  constructor(parent, getConfig, getShape = null) {
     this.getConfig = getConfig;
+    this.getShape = getShape ?? (() => new SphereShape());
+    /** 有没有项目（bridge 管理）；每帧与 shape.contentVisible 相乘得 group.visible */
+    this.hasContent = true;
     this.group = new THREE.Group();
     this.group.name = 'regions';
     parent.add(this.group);
@@ -75,15 +83,16 @@ export class RegionLayer {
 
   /** 只有地形变了：按存下的环重算贴地顶点（材质与颜色都不动） */
   relayout() {
+    const shape = this.getShape();
     const radiusFn = (lat, lng) => (this.terrainRadius?.(lat, lng) ?? 0);
     for (const entry of this.byId.values()) {
       const { polygons } = entry;
       if (entry.fill) {
         entry.fill.geometry.dispose();
-        entry.fill.geometry = buildFillGeometry(polygons, radiusFn);
+        entry.fill.geometry = buildFillGeometry(polygons, radiusFn, shape);
       }
       entry.line.geometry.dispose();
-      entry.line.geometry = buildBorderGeometry(polygons, radiusFn);
+      entry.line.geometry = buildBorderGeometry(polygons, radiusFn, shape);
     }
   }
 
@@ -161,7 +170,8 @@ export class RegionLayer {
   showPreview(ring) {
     this.hidePreview();
     if (!ring.length) return;
-    const verts = ring.map(([lng, lat]) => latLngToVec3(lat, lng, LINE_R + 0.002));
+    const shape = this.getShape();
+    const verts = ring.map(([lng, lat]) => shape.surfacePoint(lat, lng, LINE_LIFT + 0.002));
     if (verts.length === 1) {
       this._previewDots = new THREE.Points(
         new THREE.BufferGeometry().setFromPoints(verts),
@@ -197,48 +207,23 @@ export class RegionLayer {
 // ---------------------------------------------------------------- 剖分与细分
 
 /**
- * 环三角剖分后递归细分，投影到球面，返回非索引 BufferGeometry。
- * radiusFn(lat, lng) 提供每个投影点的地形抬升。
+ * 环三角剖分后递归细分，投影到世界形状表面，返回非索引 BufferGeometry。
+ * radiusFn(lat, lng) 提供每个投影点的地形抬升；环先过形状的裁剪
+ * （球体恒等返回，平板把跨边缘的环拆成多块），再逐块剖分。
  */
-function buildFillGeometry(polygons, radiusFn) {
+function buildFillGeometry(polygons, radiusFn, shape) {
   const positions = [];
   for (const ring of polygons) {
-    const contour = toVec2s(ring);
-    if (contour.length < 3) continue;
-    let faces;
-    try {
-      faces = THREE.ShapeUtils.triangulateShape(contour, []);
-    } catch { continue; }
-    for (const face of faces) {
-      pushSubdivided(contour[face[0]], contour[face[1]], contour[face[2]], radiusFn, positions, 0);
-    }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  return geo;
-}
-
-/** 环上相邻点两两连线（LineSegments），细分防弦陷 */
-function buildBorderGeometry(polygons, radiusFn) {
-  const positions = [];
-  const a = new THREE.Vector3();
-  const b = new THREE.Vector3();
-  for (const ring of polygons) {
-    for (let i = 0; i < ring.length; i++) {
-      const [lng1, lat1] = ring[i];
-      const [lng2, lat2] = ring[(i + 1) % ring.length]; // 闭合
-      let l2 = lng2;
-      if (l2 - lng1 > 180) l2 -= 360; // 跨 ±180° 按短弧插值
-      if (lng1 - l2 > 180) l2 += 360;
-      latLngToVec3(lat1, lng1, LINE_R + radiusFn(lat1, lng1), a);
-      positions.push(a.x, a.y, a.z);
-      const steps = Math.max(1, Math.ceil(edgeDeg(lng1, lat1, l2, lat2) / MAX_TRI_DEG));
-      for (let s = 1; s <= steps; s++) {
-        const t = s / steps;
-        const latT = lat1 + (lat2 - lat1) * t;
-        const lngT = lng1 + (l2 - lng1) * t;
-        latLngToVec3(latT, lngT, LINE_R + radiusFn(latT, lngT), b);
-        positions.push(b.x, b.y, b.z);
+    for (const piece of shape.clipPolygon(ring)) {
+      const contour = toVec2s(piece.outer);
+      if (contour.length < 3) continue;
+      let faces;
+      try {
+        // 孔洞入口已经留好（piece.holes），数据模型暂无孔洞，恒为空
+        faces = THREE.ShapeUtils.triangulateShape(contour, piece.holes.map(toVec2s));
+      } catch { continue; }
+      for (const face of faces) {
+        pushSubdivided(contour[face[0]], contour[face[1]], contour[face[2]], radiusFn, positions, 0, shape);
       }
     }
   }
@@ -247,10 +232,36 @@ function buildBorderGeometry(polygons, radiusFn) {
   return geo;
 }
 
-/** 考虑纬度收缩的边长（度） */
-function edgeDeg(lng1, lat1, lng2, lat2) {
-  const midLat = ((lat1 + lat2) / 2) * (Math.PI / 180);
-  return Math.hypot((lng2 - lng1) * Math.cos(midLat), lat2 - lat1);
+/** 环上相邻点两两连线（LineSegments），细分防弦陷 */
+function buildBorderGeometry(polygons, radiusFn, shape) {
+  const positions = [];
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  for (const ring of polygons) {
+    for (const piece of shape.clipPolygon(ring)) {
+      const ringPts = piece.outer;
+      for (let i = 0; i < ringPts.length; i++) {
+        const [lng1, lat1] = ringPts[i];
+        const [lng2, lat2] = ringPts[(i + 1) % ringPts.length]; // 闭合
+        let l2 = lng2;
+        if (l2 - lng1 > 180) l2 -= 360; // 跨 ±180° 按短弧插值
+        if (lng1 - l2 > 180) l2 += 360;
+        shape.surfacePoint(lat1, lng1, LINE_LIFT + radiusFn(lat1, lng1), a);
+        positions.push(a.x, a.y, a.z);
+        const steps = Math.max(1, Math.ceil(shape.edgeLengthDeg(lng1, lat1, l2, lat2) / MAX_TRI_DEG));
+        for (let s = 1; s <= steps; s++) {
+          const t = s / steps;
+          const latT = lat1 + (lat2 - lat1) * t;
+          const lngT = lng1 + (l2 - lng1) * t;
+          shape.surfacePoint(latT, lngT, LINE_LIFT + radiusFn(latT, lngT), b);
+          positions.push(b.x, b.y, b.z);
+        }
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  return geo;
 }
 
 function toVec2s(ring) {
@@ -259,14 +270,14 @@ function toVec2s(ring) {
 
 const _v3 = new THREE.Vector3();
 
-/** 三角形递归四分割后投影到球面（非索引顶点）；radiusFn(lat, lng) 决定每个顶点半径 */
-function pushSubdivided(a, b, c, radiusFn, out, depth) {
+/** 三角形递归四分割后投影到形状表面（非索引顶点）；radiusFn(lat, lng) 决定每个顶点的浮空量 */
+function pushSubdivided(a, b, c, radiusFn, out, depth, shape) {
   if (depth >= MAX_DEPTH ||
-      (edgeDeg(a.x, a.y, b.x, b.y) <= MAX_TRI_DEG &&
-       edgeDeg(b.x, b.y, c.x, c.y) <= MAX_TRI_DEG &&
-       edgeDeg(c.x, c.y, a.x, a.y) <= MAX_TRI_DEG)) {
+      (shape.edgeLengthDeg(a.x, a.y, b.x, b.y) <= MAX_TRI_DEG &&
+       shape.edgeLengthDeg(b.x, b.y, c.x, c.y) <= MAX_TRI_DEG &&
+       shape.edgeLengthDeg(c.x, c.y, a.x, a.y) <= MAX_TRI_DEG)) {
     for (const p of [a, b, c]) {
-      latLngToVec3(p.y, p.x, FILL_R + radiusFn(p.y, p.x), _v3);
+      shape.surfacePoint(p.y, p.x, FILL_LIFT + radiusFn(p.y, p.x), _v3);
       out.push(_v3.x, _v3.y, _v3.z);
     }
     return;
@@ -274,8 +285,8 @@ function pushSubdivided(a, b, c, radiusFn, out, depth) {
   const ab = new THREE.Vector2((a.x + b.x) / 2, (a.y + b.y) / 2);
   const bc = new THREE.Vector2((b.x + c.x) / 2, (b.y + c.y) / 2);
   const ca = new THREE.Vector2((c.x + a.x) / 2, (c.y + a.y) / 2);
-  pushSubdivided(a, ab, ca, radiusFn, out, depth + 1);
-  pushSubdivided(ab, b, bc, radiusFn, out, depth + 1);
-  pushSubdivided(ca, bc, c, radiusFn, out, depth + 1);
-  pushSubdivided(ab, bc, ca, radiusFn, out, depth + 1);
+  pushSubdivided(a, ab, ca, radiusFn, out, depth + 1, shape);
+  pushSubdivided(ab, b, bc, radiusFn, out, depth + 1, shape);
+  pushSubdivided(ca, bc, c, radiusFn, out, depth + 1, shape);
+  pushSubdivided(ab, bc, ca, radiusFn, out, depth + 1, shape);
 }

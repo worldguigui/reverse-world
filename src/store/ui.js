@@ -22,8 +22,8 @@ export const createUISlice = (set, get) => ({
   // 与编程接口的实时人物筛，取交集。章节都存在 project.groups 里，取消选中只是退出交集，
   // 章节本身不会消失。
   viewFilter: noView(),
-  // 当前镜头档位：1 = 出厂视角，64 = 相机推到底再收满镜头。
-  // 滚轮与设置面板滑块读写同一个数，不写进设置存档。
+  // 当前镜头档位：1 = 出厂视角；全域（含拉远超出厂的 <1 段与推近的上限）
+  // 由 config.js 的 zoomLevelRange 派生，滚轮与设置面板滑块读写同一个数，不落盘。
   cameraLevel: 1,
   pendingCoords: null,   // 放置事件时点选的经纬度
   drawCoords: [],        // 绘制路线/区域的 [[lng,lat]…]

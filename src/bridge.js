@@ -6,6 +6,7 @@ import * as P from './core/project.js';
 import { TerrainGrid } from './core/raster.js';
 import { useStore } from './store/index.js';
 import { session } from './session.js';
+import { getShapeForProject } from './view/shapes/index.js';
 
 export function initBridge() {
   const { subscribe } = useStore;
@@ -50,10 +51,11 @@ const hasCoords = (e) => e.lat != null && e.lng != null;
 export function rebuildLayers() {
   const s = useStore.getState();
   const p = s.project;
-  const visible = !!p;
-  session.eventDot.group.visible = visible;
-  session.routes.group.visible = visible;
-  session.regions.group.visible = visible;
+  // 只记「有没有项目」，不直接写 group.visible：每帧的显隐还要乘上
+  // shape.contentVisible（平板：相机潜入底面即藏起全部内容），两边互不覆盖
+  session.eventDot.hasContent = !!p;
+  session.routes.hasContent = !!p;
+  session.regions.hasContent = !!p;
   // 没有地点的事件不上球：它是一条正经事件，只是没有坐标，只进编年史。
   // 这里先筛掉，否则会照 null 经纬度算出一个 NaN 位置的光点
   session.eventDot.build(p ? p.events.filter(hasCoords) : []);
@@ -108,6 +110,16 @@ export async function applyStage() {
   const s = useStore.getState();
   const p = s.project;
   const rmap = p ? P.getRasterMap(p, p.baseRasterId) : null;
+
+  // 形状属舞台：换形状（或载入别的形状的世界）在这里重建主体。
+  // setShape 按形状 id 幂等——换地图时形状没变，几何与 shader 一概不动。
+  // 必须在贴图之前做：setRaster 的贴图环绕设置随形状走。
+  // 形状真的变了时相机一并落位到新形状的出厂视角：否则启动恢复平板世界时
+  // 相机会停在球体位姿上，档位读数、滚轮、滑块全都在错误的基准上打转
+  const shape = getShapeForProject(p);
+  const shapeChanged = session.globe.setShape(shape);
+  session.shape = shape;
+  if (shapeChanged) session.rig?.reseat(shape);
 
   const token = ++session.stageToken;
   session.applyingStage = true;

@@ -123,6 +123,17 @@ export const createWorldSlice = (set, get) => ({
     get().mutateProject((p) => Object.assign(p, patch));
   },
 
+  /**
+   * 切换世界形状（球 ↔ 平板）。形状属舞台：mutateProject 落数据，
+   * touchStage 让 applyStage 重建主体——与换地图完全同构，
+   * 游标、选中、视图筛选一概不动。
+   */
+  setProjectShape(type) {
+    if (!get().project) return;
+    get().mutateProject((p) => { p.shape = { type }; });
+    get().touchStage();
+  },
+
   /** 新建空白世界；有线内容未导出时先确认（与原行为一致） */
   newProject() {
     if (P.hasContent(get().project)

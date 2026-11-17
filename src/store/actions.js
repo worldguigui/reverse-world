@@ -12,7 +12,6 @@ import {
 import { buildSampleProject } from '../core/sample.js';
 import { session } from '../session.js';
 import { timeYear } from '../core/datetime.js';
-import { latLngToVec3, vec3ToLatLng } from '../utils.js';
 import { pickFile } from '../utils/files.js';
 import { IMAGE_UPLOAD } from '../config.js';
 
@@ -296,23 +295,24 @@ export const createActionsSlice = (set, get) => ({
    * 把镜头对准内容实际占着的那片地方。
    *
    * 载入一份世界之后必须做这件事：初始视角是画面设置里的固定经纬度，
-   * 而内容在哪完全是另一回事——落在地球另一面时，打开只看得到一片空球，
+   * 而内容在哪完全是另一回事——落在世界另一面时，打开只看得到一片空白，
    * 得自己转半天才找得到东西。
    *
-   * 取的是所有带坐标内容的平均方向（先转成三维向量再平均，
-   * 直接在经纬度上取平均会在换日线附近得出一个荒唐的结果）。
-   * 内容绕球一圈、平均值缩回原点时作废——那种情况下没有「中心」可言。
+   * 坐标先经当前形状的 surfacePoint 转成三维再平均（直接在经纬度上取平均，
+   * 会在换日线附近得出荒唐的结果）。球体得到的是平均方向（vec3ToLatLng 只看
+   * 方向，与旧实现一致）；平板得到的是质心位置。内容绕世界撒一圈、平均值
+   * 缩回原点时作废——那种情况下没有「中心」可言。
    */
   aimAtContent() {
     const p = get().project;
     const rig = session.rig;
-    if (!p || !rig) return;
-    // 累加器借一个三维向量：半径为 0 时它正好是原点，从零开始加
-    const sum = latLngToVec3(0, 0, 0);
+    const shape = session.shape;
+    if (!p || !rig || !shape) return;
+    const sum = shape.surfacePoint(0, 0, 0);
     let n = 0;
     const add = (lat, lng) => {
       if (lat == null || lng == null) return;
-      sum.add(latLngToVec3(lat, lng, 1));
+      sum.add(shape.surfacePoint(lat, lng, 0));
       n++;
     };
     for (const it of p.events) add(it.lat, it.lng);
@@ -320,9 +320,9 @@ export const createActionsSlice = (set, get) => ({
     for (const r of p.regions) for (const [lng, lat] of r.ring) add(lat, lng);
     if (!n) return;
     sum.divideScalar(n);
-    // 内容绕着球撒了一圈时平均值缩回原点，指向哪边都一样——那就别动镜头
+    // 内容绕着世界撒了一圈时平均值缩回原点，指向哪边都一样——那就别动镜头
     if (sum.length() < 0.1) return;
-    const { lat, lng } = vec3ToLatLng(sum);
+    const { lat, lng } = shape.pointToLatLng(sum);
     rig.flyToLatLng(lat, lng, { duration: 900 });
   },
 

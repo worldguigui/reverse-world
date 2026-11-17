@@ -1,27 +1,24 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { latLngToVec3, vec3ToLatLng } from '../utils.js';
+import { OPTICAL_MAX, zoomLevelRange } from '../config.js';
+import { SphereShape } from './shapes/sphere-shape.js';
+
+/** 没人注入形状时的兜底：世界默认是球体 */
+const FALLBACK_SHAPE = new SphereShape();
 
 /** 世界坐标系的「正北」：自转轴，也是复位视角时掰回去的方向 */
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
+/** 平面相机（平板）的「屏幕上方向」：正俯视时屏幕上边朝着世界北（−z） */
+const PLANAR_UP = new THREE.Vector3(0, 0, -1);
 
 /**
  * 滚轮一格要让画面「看起来」放大多少倍。1.10 = 每格大一成。
  *
- * 步长不按相机距离定：眼睛看到的地面大小是 1/(相机距离-1)，
- * 距离每乘一次固定倍率，越贴近球面分母掉得越狠，同一格放大得越多。
+ * 步长不按相机距离定：眼睛看到的地面大小是 1/(净距)，
+ * 净距每乘一次固定倍率，越贴近表面分母掉得越狠，同一格放大得越多。
  * 按看得见的大小等比例推进，全程才匀速。
  */
 const ZOOM_STEP = 1.10;
-
-/**
- * 相机推到最近档之后，镜头还能再收窄多少倍视场角。8 = 再放大八倍（45° → 5.625°）。
- *
- * 相机只能推到一定高度——再近就要进到球里了。但「推镜头」和「放大」本来就是两件事：
- * 相机停住之后改收窄视场角，画面照样继续放大，直到这个上限。
- * 再往上画面就是纯放大像素了，这个数只是给个够用的范围，改大改小都行。
- */
-const OPTICAL_MAX = 8;
 
 /** 档位变化小于这个量就不往外报，避免飞行/阻尼时每帧都写一遍外部状态 */
 const LEVEL_EPS = 1e-4;
@@ -56,13 +53,17 @@ export class CameraRig {
    * @param {THREE.PerspectiveCamera} camera
    * @param {HTMLElement} domElement 事件挂载元素（renderer.domElement）
    * @param {object} config config.camera + config.rotation（保持引用）
-   * @param {import('./utils.js').TweenManager} tweens
+   * @param {import('../utils.js').TweenManager} tweens
+   * @param {() => import('./shapes/world-shape.js').WorldShape} [getShape] 当前世界形状；
+   *   推近/放大/拖拽的「离表面多近」由 shape.referenceScale 推导，flyTo 的落点方向
+   *   由 shape 提供——相机代码本身对球体还是平板一无所知
    */
-  constructor(camera, domElement, config, tweens) {
+  constructor(camera, domElement, config, tweens, getShape = null) {
     this.camera = camera;
     this.config = config;
     this.tweens = tweens;
     this.domElement = domElement;
+    this.getShape = getShape ?? (() => FALLBACK_SHAPE);
     this._drag = null; // 正在拖拽时记 { x, y }：上一个指针位置
     this._optical = 1; // 镜头的额外倍率，1 = 出厂视角的视场角；相机推到底之后由它接着放大
 
@@ -103,11 +104,26 @@ export class CameraRig {
     this.config = config;
     // 设置面板改的是基础视场角，当前档位下的镜头倍率要一起算进去，否则一改设置画面就跳
     this._setOptical(this._optical);
-    this.controls.minDistance = config.minDistance;
-    this.controls.maxDistance = config.maxDistance;
+    // OrbitControls（双指捏合）的距离界限随形状换算：config 里的 1.25/8 是净距界限
+    // （球面以上 0.25~7），球体加参考面 1，平板 target 就在表面、不用加
+    this.controls.minDistance = this._boundMin();
+    this.controls.maxDistance = this._boundMax();
     // 自转不交给 OrbitControls 的 autoRotate：它绕的是相机自己的 up 轴，
     // 而我们允许把相机翻到任意朝向，那样「自转」会变成绕屏幕竖线打转。见 update()。
   }
+
+  // ------------------------------------------------- 距离换算（形状无关的梯子）
+
+  /** 出厂净距：config.distance 的语义是「球体出厂时到球心的距离」，减去球半径即净距 2 */
+  _factoryClearance() { return this.config.distance - 1; }
+
+  /** 出厂时到 target 的距离 = 出厂净距 + 参考面（球 2+1=3，平板 2+0=2） */
+  _factoryDistance() { return this._factoryClearance() + this.getShape().referenceScale; }
+
+  /** 距离界限（到 target）：净距界限 [0.25, 7] + 参考面 */
+  _boundMin() { return this.config.minDistance - 1 + this.getShape().referenceScale; }
+
+  _boundMax() { return this.config.maxDistance - 1 + this.getShape().referenceScale; }
 
   // ---------------------------------------------------------------- 自由翻滚
 
@@ -124,7 +140,9 @@ export class CameraRig {
     const dy = e.clientY - d.y;
     d.x = e.clientX;
     d.y = e.clientY;
-    if (dx || dy) this.orbit(dx, dy);
+    if (!dx && !dy) return;
+    if (this.getShape().planarCamera) this.pan(dx, dy);
+    else this.orbit(dx, dy);
   };
 
   _onUp = () => { this._drag = null; };
@@ -152,6 +170,24 @@ export class CameraRig {
   }
 
   /**
+   * 平面相机（平板）的拖动：不是旋转，是「抓着地图拖」——
+   * 内容跟着手走，视点中心往反方向滑。速度按「这一屏装得下多少地面」定：
+   * 一像素 = 净高 × tan(半FOV) × 2 / 视口高，缩放多少倍手感都一致。
+   * 相机保持正俯视锁死，只在 target 上方跟着平移。
+   */
+  pan(dx, dy) {
+    const t = this.controls.target;
+    const c = this.camera;
+    const h = c.position.distanceTo(t);
+    const wpp = (2 * h * Math.tan((c.fov * Math.PI) / 360)) / this.domElement.clientHeight;
+    t.x -= dx * wpp;
+    t.z -= dy * wpp;
+    this.getShape().clampCameraTarget(t);
+    c.position.x = t.x;
+    c.position.z = t.z;
+  }
+
+  /**
    * 拖拽速度的缩放系数：画面里能装下多少地表，就乘多少。
    *
    * 一屏装下的地表正比于 (相机距离 - 1) × tan(视场角 / 2)——前者是镜头离地表多远，
@@ -161,47 +197,79 @@ export class CameraRig {
    */
   _dragScale() {
     const d = this.camera.position.distanceTo(this.controls.target);
+    const refScale = this.getShape().referenceScale;
     const tanHalf = (fov) => Math.tan((fov * Math.PI) / 360);
-    const ref = (this.config.distance - 1) * tanHalf(this.config.fov);
-    return (Math.max(0, d - 1) * tanHalf(this.camera.fov)) / ref;
+    // 参考量与档位同源：出厂净距。放大多少倍，同样的拖动距离就走同样多的地面
+    const ref = this._factoryClearance() * tanHalf(this.config.fov);
+    return (Math.max(0, d - refScale) * tanHalf(this.camera.fov)) / ref;
   }
 
   /**
    * 复位视角：把「上」掰回正北，再飞回设置里的初始经纬度。
-   * 自由翻滚能把地平线转歪，这是唯一的回家路径。
+   * 自由翻滚能把地平线转歪，这是唯一的回家路径；平面相机本来就是锁死的，
+   * 掰的是「屏幕上边朝北」这根方向。
    */
   resetView() {
-    this.camera.up.copy(WORLD_UP);
+    this.camera.up.copy(this.getShape().planarCamera ? PLANAR_UP : WORLD_UP);
     this.camera.lookAt(this.controls.target);
     this._setOptical(1); // 复位就是把镜头也拧回出厂视角，不能留着上一段的放大倍率
-    this.flyToLatLng(this.config.lat, this.config.lon, { distance: this.config.distance });
+    this.flyToLatLng(this.config.lat, this.config.lon, { distance: this._factoryDistance() });
+  }
+
+  /**
+   * 形状切换后的落位：硬切到新形状的出厂位姿（舞台切换的一部分，与换地图同性质）。
+   * 不做动画——上一形状的相机语义（弧线/平移、朝向、target 位置）对新形状毫无意义，
+   * 球→板的瞬间就该是「一睁眼已是正俯视」，拖着旧视角滑过去反而怪。
+   * 启动恢复平板世界时也走这里：不落位的话相机会一直停在球体出厂位姿上，
+   * 档位读数、滚轮、滑块全都在错误的基准上打转。
+   */
+  reseat(shape) {
+    const pose = shape.getCameraPose(this.config.lat, this.config.lon, { distance: this._factoryDistance() });
+    this.camera.up.copy(shape.planarCamera ? PLANAR_UP : WORLD_UP);
+    this.camera.position.copy(pose.position);
+    this.controls.target.copy(pose.target);
+    this.camera.lookAt(pose.target);
+    this._setOptical(1); // 镜头倍率也回出厂，别把上一形状的放大倍率带过来
+    // 距离界限必须随形状刷新：controls.update() 每帧把相机半径夹回 [min,max]，
+    // 停在球体的 1.25 会把平板推近到 0.25 的位置顶回去——滚轮放不到底、
+    // 滑块拖过去又被弹回，都是这一句没跑的后果
+    this.setConfig(this.config);
+    this._syncLevel();
   }
 
   // ---------------------------------------------------------------- 缩放档位
 
   /**
-   * 当前档位：相对出厂视角（相机距离 config.distance、视场角 config.fov）在屏幕上看到的大小。
-   * 推近相机与收窄视场角都会放大画面，两者合成这一个数，滚轮只跟它打交道。
+   * 当前档位：相对出厂视角（出厂净距、视场角 config.fov）在屏幕上看到的大小。
+   * 净距 = 到 target 的距离 − referenceScale，两种形状共用同一根梯子。
+   * 档位全域由 zoomLevelRange 从 config 派生（出厂净距 2 = 档位 1），
+   * 注释里不写具体档位数，免得注释与代码漂移。
    */
   _level() {
     const d = this.camera.position.distanceTo(this.controls.target);
-    if (!(d > 1)) return 1; // 相机不该进到球面以内；真发生了也别算出负档位
-    return ((this.config.distance - 1) / (d - 1)) * this._optical;
+    const clearance = d - this.getShape().referenceScale;
+    if (!(clearance > 0)) return 1; // 相机不该进到表面以内；真发生了也别算出负档位
+    return (this._factoryClearance() / clearance) * this._optical;
   }
 
   /**
    * 档位落成相机的实际状态，分两段：
-   *  - 推到底之前：只动相机，视场角保持出厂值；
-   *  - 推到底之后：相机停住，剩下的倍数全交给视场角——「视角降到一定高度就只放大」。
-   * 分界由 config.minDistance 定，dollyMax 就是相机推到底能到几倍。
+   *  - 推到最近档（dollyMax）之前：只动相机，视场角保持出厂值；
+   *  - 之后：相机停住（净距到底 = _boundMin），剩下的倍数全交给视场角。
+   * 距离 = referenceScale + 出厂净距 / 档位——球体逐值等于旧公式，平板同一根梯子。
+   * 档位全域（含拉远超出厂的 <1 段）来自 zoomLevelRange，与设置滑块共用；
+   * 两段的分界是 dollyMax（推到最近档），不是全域上限——两者混淆会让
+   * 光学段失效、相机被推进表面，再被 controls 界限弹回，滑块就卡在分界档上。
    */
   _levelToState(level) {
-    const refD = this.config.distance;
-    const dollyMin = (refD - 1) / (this.config.maxDistance - 1); // 拉到最远档
-    const dollyMax = (refD - 1) / (this.config.minDistance - 1); // 推到最近档
-    const L = THREE.MathUtils.clamp(level, dollyMin, dollyMax * OPTICAL_MAX);
-    if (L <= dollyMax) return { level: L, distance: 1 + (refD - 1) / L, optical: 1 };
-    return { level: L, distance: this.config.minDistance, optical: L / dollyMax };
+    const refScale = this.getShape().referenceScale;
+    const refC = this._factoryClearance();
+    const minD = this._boundMin();
+    const dollyMax = refC / (minD - refScale); // 推到最近档 = 光学段的起点
+    const { min: dollyMin, max: levelMax } = zoomLevelRange(this.config);
+    const L = THREE.MathUtils.clamp(level, dollyMin, levelMax);
+    if (L <= dollyMax) return { level: L, distance: refScale + refC / L, optical: 1 };
+    return { level: L, distance: minD, optical: L / dollyMax };
   }
 
   /** 把档位落定：距离与视场角一起动，滚轮与按档位飞行都走这里 */
@@ -234,11 +302,14 @@ export class CameraRig {
     this.onLevelChange?.(level);
   }
 
-  /** 沿当前视线把相机摆到离球心 d 处：只改远近，朝向与「上」都不动 */
+  /** 沿当前视线把相机摆到离 target d 处：只改远近，朝向与「上」都不动。
+   * 球体 target 恒为原点（与旧实现逐值一致）；平板 target 在板面上，
+   * 推近/拉远就变成真正的「贴向/离开那个点」 */
   _setDistance(d) {
-    const v = this.camera.position;
+    const t = this.controls.target;
+    const v = this.camera.position.clone().sub(t);
     const len = v.length();
-    if (len > 1e-6) v.multiplyScalar(d / len);
+    if (len > 1e-6) this.camera.position.copy(t).addScaledVector(v, d / len);
   }
 
   /** 落定镜头倍率：收窄视场角放大画面，相机位置不动 */
@@ -269,10 +340,14 @@ export class CameraRig {
   update(dt = 0) {
     // 自转绕世界 Y 轴（南北极），不是相机自己的上方向——
     // 翻过球之后两者会不一致，用相机 up 当轴会变成绕屏幕竖线打转。
+    // 平面相机（平板）没有自转：地图不该自己转，只有你拖动它才会动。
     // 飞行期间先让位：两个动画同时改位置会互相抵消；飞完自动恢复，用户的自转开关不动。
-    if (this.config.enabled && dt > 0 && !this.tweens.has('camera')) {
+    if (this.config.enabled && dt > 0 && !this.getShape().planarCamera && !this.tweens.has('camera')) {
       _qSpin.setFromAxisAngle(WORLD_UP, this.config.speed * (Math.PI / 180) * dt);
       this.camera.position.applyQuaternion(_qSpin);
+      // target 不在原点（平板已定位到某个点）时随相机一起转：
+      // 绕着世界转圈，视线与世界的相对关系保持不变
+      if (this.controls.target.lengthSq() > 1e-8) this.controls.target.applyQuaternion(_qSpin);
       this.camera.up.applyQuaternion(_qSpin);
       // 星场拿同一个旋转一起转：相机画面转了，星空在屏幕上仍原样停着。
       // 手动拖动镜头不走这里，星空照常跟着视角走。
@@ -284,7 +359,8 @@ export class CameraRig {
 
   /** 当前视角对应的经纬度、距离与档位；档位是画面实际的放大倍数，滚轮与飞行都按它走 */
   getLatLngZoom() {
-    const { lat, lng } = vec3ToLatLng(this.camera.position);
+    const shape = this.getShape();
+    const { lat, lng } = shape.pointToLatLng(this.camera.position);
     return { lat, lng, distance: this.camera.position.length(), level: this._level() };
   }
 
@@ -302,22 +378,32 @@ export class CameraRig {
    */
   flyToLatLng(lat, lng, { distance = null, level = null, duration = 1400 } = {}) {
     const c = this.camera;
-    const fromDir = c.position.clone().normalize();
-    const fromDist = c.position.length();
+    const shape = this.getShape();
+    if (shape.planarCamera) return this._flyPlanar(lat, lng, { distance, level, duration });
+    const fromPos = c.position.clone();
+    const fromTarget = this.controls.target.clone();
+    const fromDir = fromPos.clone().normalize(); // 弧线骨架：绕原点的方向
+    const fromDist = fromPos.length();
     const fromLevel = this._level();
-    const toDir = latLngToVec3(lat, lng, 1).normalize();
     const toState = level != null ? this._levelToState(level) : null;
-    const toDist = toState
-      ? toState.distance
-      : THREE.MathUtils.clamp(distance ?? fromDist, this.controls.minDistance, this.controls.maxDistance);
-    // 档位不同的两处，距离可能一样（都在最近档上），所以要连档位一起比
-    const settled = fromDir.distanceTo(toDir) < 1e-6
-      && Math.abs(fromDist - toDist) < 1e-6
+    // 落点位姿由形状给全（位置 + 视线目标点）。distance 语义 = 到 target 的距离，
+    // 只给 distance 时按视野上下限夹一次（与旧行为一致）
+    const rawDist = THREE.MathUtils.clamp(
+      distance ?? fromPos.distanceTo(fromTarget),
+      this.controls.minDistance, this.controls.maxDistance,
+    );
+    const toPose = shape.getCameraPose(lat, lng, { distance: toState ? toState.distance : rawDist });
+    const toPos = toPose.position;
+    const toTarget = toPose.target;
+    const toDist = toPos.length();
+    // 档位不同的两处，距离可能一样（都在最近档上），所以要连档位与 target 一起比
+    const settled = fromPos.distanceTo(toPos) < 1e-6
+      && fromTarget.distanceTo(toTarget) < 1e-6
       && (!toState || Math.abs(fromLevel - toState.level) < 1e-6);
     if (settled) return;
 
     const qIdentity = new THREE.Quaternion();
-    const qTarget = new THREE.Quaternion().setFromUnitVectors(fromDir, toDir);
+    const qTarget = new THREE.Quaternion().setFromUnitVectors(fromDir, toPos.clone().normalize());
     const qK = new THREE.Quaternion();
     const pos = new THREE.Vector3();
     this.tweens.add({
@@ -327,9 +413,56 @@ export class CameraRig {
         qK.slerpQuaternions(qIdentity, qTarget, k);
         pos.copy(fromDir).applyQuaternion(qK).multiplyScalar(THREE.MathUtils.lerp(fromDist, toDist, k));
         c.position.copy(pos);
+        // 视线目标点一起过渡：球体恒为原点（零位移，与旧行为逐值一致），
+        // 平板从原点滑到目标点——落地时相机真正朝向那个位置
+        this.controls.target.lerpVectors(fromTarget, toTarget, k);
         // 摆好位置后再按当前档位落定距离与视场角（上面那个距离的插值会被它盖掉）。
         // 档位是乘法量：一路等比插过去，从哪一档起飞都是同样的收拢速度
         if (toState) this._applyLevel(fromLevel * Math.pow(toState.level / fromLevel, k));
+      },
+    });
+  }
+
+  /**
+   * 平面相机的飞行：不是弧线翻转，是平移——target 在板面上从原地滑到目的地，
+   * 相机锁死在正上方、屏幕上边始终朝北，不转任何方向。高度（净距）与视场角
+   * 按档位一起落定，语义与球体的「落到哪一档」完全一致。
+   */
+  _flyPlanar(lat, lng, { distance = null, level = null, duration = 1400 } = {}) {
+    const c = this.camera;
+    const shape = this.getShape();
+    const from = this.controls.target.clone();
+    const fromH = c.position.distanceTo(from);
+    const fromLevel = this._level();
+    const toState = level != null ? this._levelToState(level) : null;
+    const rawDist = THREE.MathUtils.clamp(
+      distance ?? fromH,
+      this._boundMin(), this._boundMax(),
+    );
+    const toPose = shape.getCameraPose(lat, lng, { distance: toState ? toState.distance : rawDist });
+    const to = toPose.target;
+    const toH = toPose.position.y; // 正上方净高
+    const settled = from.distanceTo(to) < 1e-6
+      && Math.abs(fromH - toH) < 1e-6
+      && (!toState || Math.abs(fromLevel - toState.level) < 1e-6);
+    if (settled) return;
+
+    c.up.copy(PLANAR_UP); // 兜住形状切换瞬间的任意朝向
+    this.tweens.add({
+      tag: 'camera',
+      duration,
+      onUpdate: (k) => {
+        const t = this.controls.target;
+        t.lerpVectors(from, to, k);
+        if (toState) {
+          // 相机跟着 target 走（保持正上方），高度与视场角由档位落定
+          c.position.x = t.x;
+          c.position.z = t.z;
+          this._applyLevel(fromLevel * Math.pow(toState.level / fromLevel, k));
+        } else {
+          const h = THREE.MathUtils.lerp(fromH, toH, k);
+          c.position.set(t.x, t.y + h, t.z);
+        }
       },
     });
   }
