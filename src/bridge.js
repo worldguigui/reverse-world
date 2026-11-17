@@ -119,6 +119,10 @@ export async function applyStage() {
   const shape = getShapeForProject(p);
   const shapeChanged = session.globe.setShape(shape);
   session.shape = shape;
+  // 检视模式保存的相机状态属于旧形状，形状切换即作废——硬切退出（不补间回旧位姿）
+  if (shapeChanged && useStore.getState().inspectMode) {
+    useStore.getState().setInspectMode(false, { instant: true });
+  }
   if (shapeChanged) session.rig?.reseat(shape);
 
   const token = ++session.stageToken;

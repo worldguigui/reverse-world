@@ -50,14 +50,32 @@ export class WorldShape {
   /** 区域三角形是否需要防弦陷的递归细分（曲面要，平面直线投影不需要） */
   subdivides = true;
 
-  /** 是否有球状大气（外圈辉光 + 地表薄雾）；平板没有，设置面板据隐藏对应项 */
+  /** 是否有氛围效果（球=外圈辉光+薄雾，平板=板底边缘光晕）；设置面板据适配控件文案 */
   hasAtmosphere = false;
 
   /**
-   * 平面相机模式：true = 锁死正俯视、左键拖动平移地图、无翻转/自转/弧线飞行，
+   * 氛围色在 config.atmosphere 里的键名：两种形状各存一份默认色，互不覆盖——
+   * 球体蓝（外圈辉光的经典配色）、平板暗金（项目色板的旧金边界色）。
+   * 面板改的是当前形状的那一份。
+   */
+  atmosphereColorKey = 'colorSphere';
+
+  /**
+   * 平面相机模式：true = 锁死视角、左键拖动平移地图、无翻转/自转/弧线飞行，
    * 飞行是 target 在平面上的滑动（平板地图的样子）；false = 自由翻滚轨道相机（球体）。
    */
   planarCamera = false;
+
+  /**
+   * 平面相机的「相机 − target」基准偏移向量，长度 = 到 target 的距离。
+   * 基类给正上方；平板向南倾一个固定角，让地形坡面朝向镜头、有侧影。
+   * 这只是「基准方向」——水平方位角（绕竖直轴的旋转）由 rig 统一施加，
+   * 形状不感知当前朝向。
+   */
+  // eslint-disable-next-line no-unused-vars
+  planarCameraOffset(distance, target = new THREE.Vector3()) {
+    return new THREE.Vector3(0, distance, 0);
+  }
 
   /**
    * 平面相机拖动平移时，把视点中心夹回有效范围（不许滑出世界之外）。
@@ -203,6 +221,17 @@ export class WorldShape {
     throw new Error('WorldShape.raycastSurface 未实现');
   }
 
+  /**
+   * 出厂位姿（初始载入 / 形状落位 / 视角复位的落点）。
+   * 球体 = 设置里的经纬度；平板 = 板面中心——切换到平板时板心位于画面中心。
+   * @param {{ lat:number, lon:number }} config config.camera（也容忍整个 viewConfig）
+   * @returns {{ position: THREE.Vector3, target: THREE.Vector3 }}
+   */
+  getHomePose(config, distance) {
+    const cam = config.camera ?? config;
+    return this.getCameraPose(cam.lat, cam.lon, { distance });
+  }
+
   // ---------------------------------------------------------- 渲染工厂
 
   /** 主体几何（宽度段数已按设置封顶）；位移 shader 由 patchBodyMaterial 配套 */
@@ -220,6 +249,15 @@ export class WorldShape {
   buildStaticMeshes() {
     return [];
   }
+
+  /**
+   * 栅格变化后刷新形状的静态附属（平板：侧壁断面纹理重绑定）。
+   * 在 Globe.setRaster 末尾调用；base 无操作。只换纹理内容，不重建几何。
+   * @param {object} grid TerrainGrid
+   * @param {THREE.Texture} map 顶面正在使用的颜色纹理（侧壁直接共享它，接缝由构造保证）
+   */
+  // eslint-disable-next-line no-unused-vars
+  updateFrame(grid, map) {}
 
   /**
    * 给主体材质注入位移/法线 shader。uniforms 里的三个共享量由 Globe 持有
@@ -251,7 +289,7 @@ export class WorldShape {
   // eslint-disable-next-line no-unused-vars
   updateMask(mask, camera) {}
 
-  /** 球状大气（辉光 + 薄雾）；hasAtmosphere=false 的形状不实现 */
+  /** 形状专属的氛围效果（球=外圈辉光+薄雾，平板=板底边缘光晕）；hasAtmosphere=false 的形状不实现 */
   // eslint-disable-next-line no-unused-vars
   buildAtmosphere(group, config) {}
 

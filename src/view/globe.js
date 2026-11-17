@@ -205,6 +205,8 @@ export class Globe {
     this._uHeightTex.value = this._heightTex;
     this._uHeightTexel.value.set(1 / grid.w, 1 / grid.h);
     this.bodyMat.map = this._colorTex;
+    // 附属网格里引用顶面纹理的（平板侧壁断面共享顶面纹理），换栅格时重绑一次
+    this.shape.updateFrame?.(grid, this._colorTex);
   }
 
   /** 栅格画布内容变化后刷新纹理（不重建） */

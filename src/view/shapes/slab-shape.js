@@ -7,9 +7,11 @@ import { WorldShape } from './world-shape.js';
 const SLAB_W = 1.8;
 const SLAB_D = 0.9;
 /** 板身厚度：顶面 y=0，向下到 y=-THICK。负地形沉入板身之内 */
-const SLAB_THICK = 0.12;
+const SLAB_THICK = 0.3;
 /** 相机在目标点正上方的最低余量（与球体 minDistance 1.25 − 1 同值） */
 const CAMERA_MIN_CLEARANCE = 0.25;
+/** 平面相机的仰角（视线与板面的夹角，朝南俯视）：正俯视没立体感，太斜图压得扁。55° 起步，可调 */
+const PLANAR_ELEVATION = (55 * Math.PI) / 180;
 /** 侧壁/底面的岩层色：与近黑场景底色同族的暖炭色 */
 const ROCK_COLOR = 0x272219;
 
@@ -97,8 +99,9 @@ export class SlabShape extends WorldShape {
   heightScale = 0.5; // P2 初始值：比等斜率等效（0.29）更突出，最终以同机位截图定值
   topology = Object.freeze({ longitudeWrap: false, latitudeWrap: false });
   subdivides = false;
-  hasAtmosphere = false;
+  hasAtmosphere = true; // 氛围效果 = 十二棱描边，沿用大气强度设置
   planarCamera = true;
+  atmosphereColorKey = 'colorSlab'; // 平板默认暗金：项目色板的旧金边界色
   /** 平板自己的高度比例 uniform：球体 shader 没有这个量，不能挂进共享 uniform */
   _uHeightScale = { value: this.heightScale };
 
@@ -270,10 +273,22 @@ export class SlabShape extends WorldShape {
    */
   getCameraPose(lat, lng, { distance = 2 } = {}) {
     const p = this.surfacePoint(lat, lng, 0);
+    const h = Math.max(distance, CAMERA_MIN_CLEARANCE);
     return {
-      position: new THREE.Vector3(p.x, Math.max(distance, CAMERA_MIN_CLEARANCE), p.z),
-      target: new THREE.Vector3(p.x, 0, p.z),
+      position: p.clone().add(this.planarCameraOffset(h, p)),
+      target: p.clone(),
     };
+  }
+
+  /** 相机−target 偏移：从正上方朝南倾到固定仰角（PLANAR_ELEVATION），地形坡面朝向镜头有侧影 */
+  planarCameraOffset(distance) {
+    return new THREE.Vector3(0, Math.sin(PLANAR_ELEVATION), Math.cos(PLANAR_ELEVATION))
+      .multiplyScalar(distance);
+  }
+
+  /** 出厂位姿落点 = 板面中心：切换到平板时板心位于画面中心 */
+  getHomePose(config, distance) {
+    return this.getCameraPose(0, 0, { distance });
   }
 
   /**
@@ -293,8 +308,13 @@ export class SlabShape extends WorldShape {
     t.z = THREE.MathUtils.clamp(t.z, -mz, mz);
   }
 
-  /** 射线打「名义顶面」无限平面，落点在板面范围内才算命中 */
+  /**
+   * 射线打「名义顶面」无限平面，落点在板面范围内才算命中。
+   * 射线必须朝下（direction.y < 0）：绕到板底时仰视顶面不提供命中——
+   * intersectPlane 对底面仰视也会给出交点，但那不是编辑语义。
+   */
   raycastSurface(raycaster) {
+    if (raycaster.ray.direction.y >= 0) return null;
     const hit = raycaster.ray.intersectPlane(_plane, _hit);
     if (!hit) return null;
     if (Math.abs(hit.x) > SLAB_W / 2 || Math.abs(hit.z) > SLAB_D / 2) return null;
@@ -312,31 +332,88 @@ export class SlabShape extends WorldShape {
   }
 
   /**
-   * 板身（侧壁 + 底面）：不位移、不贴图的静态岩层。
-   * 侧壁从顶面 y=0 落到 y=-THICK，负地形像浮雕一样沉在「盒」里；
-   * 顶面不封口——位移平面自己就是顶面，封了会和海平面 z-fighting。
+   * 板身（侧壁 + 底面）：侧壁与顶面**共享同一张颜色纹理**，用定制 UV 采样地图边缘，
+   * 顶点色沿深度渐暗——断面即「地图边缘往下切开」，与顶面接缝零误差（同源采样）。
+   * 侧壁 UV 映射：长度轴采样地图的纬向（v 轴），竖直轴钉在边缘的 u（Clamp 取最边列/行）；
+   * 顶缘顶点色 = 1（原色，与顶面无缝），底缘 = 0.4（埋深渐暗）。
+   * 底面不封口逻辑同前：顶面位移平面自己就是顶面。
    */
   buildStaticMeshes() {
-    const mat = new THREE.MeshPhongMaterial({ color: ROCK_COLOR, shininess: 4, side: THREE.DoubleSide });
+    const wallMat = new THREE.MeshPhongMaterial({
+      color: ROCK_COLOR, shininess: 4, side: THREE.DoubleSide, vertexColors: true,
+    });
+    const bottomMat = new THREE.MeshPhongMaterial({ color: ROCK_COLOR, shininess: 4, side: THREE.DoubleSide });
     const group = new THREE.Group();
     group.name = 'slab-frame';
-    const wall = (w, h, x, y, z, ry = 0) => {
+
+    // 按世界 y 给顶点色：顶缘原色，底缘埋深渐暗
+    const depthShade = (geo) => {
+      const pos = geo.attributes.position;
+      const colors = new Float32Array(pos.count * 3);
+      for (let i = 0; i < pos.count; i++) {
+        const k = pos.getY(i) < 0 ? 0.4 : 1;
+        colors[i * 3] = k;
+        colors[i * 3 + 1] = k;
+        colors[i * 3 + 2] = k;
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    };
+
+    // 覆写 UV：mode 决定长度轴采样纬向（v）还是经向（u），竖直轴钉在边缘
+    const edgeUV = (geo, mode) => {
+      const uv = geo.attributes.uv;
+      for (let i = 0; i < uv.count; i++) {
+        const u = uv.getX(i);
+        if (mode === 'north') uv.setXY(i, u, 1);
+        else if (mode === 'south') uv.setXY(i, u, 0);
+        else if (mode === 'east') uv.setXY(i, 1, u);
+        else uv.setXY(i, 0, 1 - u); // 西壁：local +x 朝南，纬向反向
+      }
+    };
+
+    const wall = (w, h, x, z, ry, mode) => {
       const g = new THREE.PlaneGeometry(w, h);
       if (ry) g.rotateY(ry);
-      const m = new THREE.Mesh(g, mat);
-      m.position.set(x, y, z);
+      edgeUV(g, mode);
+      depthShade(g);
+      const m = new THREE.Mesh(g, wallMat);
+      m.position.set(x, -SLAB_THICK / 2, z);
       group.add(m);
+      return m;
     };
-    wall(SLAB_W, SLAB_THICK, 0, -SLAB_THICK / 2, SLAB_D / 2);           // 南缘（面向 +z）
-    wall(SLAB_W, SLAB_THICK, 0, -SLAB_THICK / 2, -SLAB_D / 2, Math.PI); // 北缘
-    wall(SLAB_D, SLAB_THICK, -SLAB_W / 2, -SLAB_THICK / 2, 0, -Math.PI / 2); // 西缘
-    wall(SLAB_D, SLAB_THICK, SLAB_W / 2, -SLAB_THICK / 2, 0, Math.PI / 2);   // 东缘
+    wall(SLAB_W, SLAB_THICK, 0, SLAB_D / 2, 0, 'south');
+    wall(SLAB_W, SLAB_THICK, 0, -SLAB_D / 2, Math.PI, 'north');
+    wall(SLAB_D, SLAB_THICK, -SLAB_W / 2, 0, -Math.PI / 2, 'west');
+    wall(SLAB_D, SLAB_THICK, SLAB_W / 2, 0, Math.PI / 2, 'east');
     const bottom = new THREE.PlaneGeometry(SLAB_W, SLAB_D);
     bottom.rotateX(Math.PI / 2); // 朝下
-    const bottomMesh = new THREE.Mesh(bottom, mat);
+    const bottomMesh = new THREE.Mesh(bottom, bottomMat);
     bottomMesh.position.y = -SLAB_THICK;
     group.add(bottomMesh);
+
+    this._wallMat = wallMat;
+    this._wallHasMap = false;
     return [group];
+  }
+
+  /**
+   * 侧壁共享顶面颜色纹理：断面 = 地图边缘往下切开，与顶面接缝零误差（同源采样）。
+   * UV 已在几何里钉死（长度轴采样纬向、竖直轴钉在边缘列/行），
+   * 这里只在换栅格时重绑纹理对象。首次绑上 map 需置 needsUpdate（USE_MAP 分支变化）；
+   * 之后换栅格只是纹理对象变化，材质已带 map，不触发重编译。
+   * 工坊实时预览走 updateRasterTextures()——纹理内容刷新，断面自动跟着变，零额外代码。
+   */
+  updateFrame(grid, map) {
+    if (!this._wallMat || !map) return;
+    if (this._wallMat.map !== map) {
+      this._wallMat.map = map;
+      // sRGB 解码与顶面一致，断面颜色才不会偏；
+      // color 归一为白——map 之上的 color 是染色，岩色底会把贴图压成近黑
+      this._wallMat.color.set(0xffffff);
+      this._wallMat.map.colorSpace = THREE.SRGBColorSpace;
+      this._wallMat.needsUpdate = true;
+      this._wallHasMap = true;
+    }
   }
 
   /**
@@ -412,5 +489,61 @@ export class SlabShape extends WorldShape {
     return mask;
   }
 
-  // 大气：hasAtmosphere=false，基类的空实现即可
+  // ---------------------------------------------------------- 氛围：实体边缘线
+
+  /**
+   * 平板的「大气」= 实体边缘线（Core Edge）：立方体 **十二条棱** 的发光线——
+   * 顶面 4 条、底面 4 条、竖棱 4 条，世界空间的真实几何（不随相机、不呼吸闪烁），
+   * 把整块「地图标本」的轮廓完整勾出来。
+   * 「边缘辉光」控件直接驱动它：颜色=线的颜色，强度=线的浓度。
+   * 柔光外扩（Soft Halo）暂缓：先看这条线够不够，不够再加第二层。
+   */
+  buildAtmosphere(group, config) {
+    const hw = SLAB_W / 2;
+    const hd = SLAB_D / 2;
+    const top = 0.001;
+    const bottom = -SLAB_THICK - 0.001; // 底缘略低一线，避免与底面 z-fighting
+    const corners = [
+      [-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd],
+    ];
+    const pts = [];
+    for (let i = 0; i < 4; i++) {
+      const [x1, z1] = corners[i];
+      const [x2, z2] = corners[(i + 1) % 4];
+      pts.push(x1, top, z1, x2, top, z2);           // 顶面 4 条
+      pts.push(x1, bottom, z1, x2, bottom, z2);     // 底面 4 条
+      pts.push(x1, top, z1, x1, bottom, z1);        // 竖棱 4 条
+    }
+    const edgeMat = new THREE.LineBasicMaterial({
+      color: new THREE.Color(config.atmosphere[this.atmosphereColorKey]),
+      transparent: true,
+      opacity: Math.min(0.9, config.atmosphere.strength * 0.5),
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const edge = new THREE.LineSegments(new THREE.BufferGeometry()
+      .setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)), edgeMat);
+    edge.name = 'slab-edge';
+
+    this._atmo = { edge, edgeMat };
+    group.add(edge);
+    this.applyAtmosphereConfig(config);
+  }
+
+  applyAtmosphereConfig(config) {
+    if (!this._atmo) return;
+    const on = config.atmosphere.enabled;
+    this._atmo.edge.visible = on;
+    this._atmo.edgeMat.color.set(config.atmosphere[this.atmosphereColorKey]);
+    // 强度滑块直接控制边的浓度：0 = 隐形，滑到顶不超过 0.9
+    this._atmo.edgeMat.opacity = Math.min(0.9, config.atmosphere.strength * 0.5);
+  }
+
+  disposeAtmosphere(group) {
+    if (!this._atmo) return;
+    group.remove(this._atmo.edge);
+    this._atmo.edge.geometry.dispose();
+    this._atmo.edgeMat.dispose();
+    this._atmo = null;
+  }
 }

@@ -90,7 +90,10 @@ export const DEFAULT_CONFIG = {
   },
   atmosphere: {
     enabled: true,
-    color: '#5d8bff',  // 异世界可以换成绿/紫
+    // 氛围色按形状各存一份：球体蓝（外圈辉光经典配色）、平板暗金（项目色板旧金），
+    // 面板改的是当前形状的那一份，互不覆盖
+    colorSphere: '#5d8bff',
+    colorSlab: '#A98B60',
     strength: 1.1,
   },
   stars: { enabled: true, count: STARS_COUNT_MAX },
@@ -124,6 +127,11 @@ export function loadViewConfig() {
     STARS_COUNT_MAX,
     Math.max(STARS_COUNT_MIN, Math.round(config.stars.count)),
   );
+  // 旧存档只有单一 atmosphere.color（不区分形状）：迁移到球体名下
+  if (typeof config.atmosphere.color === 'string') {
+    config.atmosphere.colorSphere = config.atmosphere.color;
+    delete config.atmosphere.color;
+  }
   // 网格精度只认预设档位，存档里被改坏就回到默认
   if (!TERRAIN_MESH_SEGMENTS.includes(config.terrain.meshSegments)) {
     config.terrain.meshSegments = DEFAULT_CONFIG.terrain.meshSegments;

@@ -8,8 +8,6 @@ const FALLBACK_SHAPE = new SphereShape();
 
 /** 世界坐标系的「正北」：自转轴，也是复位视角时掰回去的方向 */
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
-/** 平面相机（平板）的「屏幕上方向」：正俯视时屏幕上边朝着世界北（−z） */
-const PLANAR_UP = new THREE.Vector3(0, 0, -1);
 
 /**
  * 滚轮一格要让画面「看起来」放大多少倍。1.10 = 每格大一成。
@@ -29,6 +27,8 @@ const _up = new THREE.Vector3();
 const _qSpin = new THREE.Quaternion();
 const _qSide = new THREE.Quaternion();
 const _qTilt = new THREE.Quaternion();
+const _qTmp = new THREE.Quaternion();
+const _pivot = new THREE.Vector3();
 
 /**
  * 轨道相机封装：自由翻滚（四元数）+ 滚轮缩放（OrbitControls）+ flyTo 球面飞行。
@@ -64,8 +64,10 @@ export class CameraRig {
     this.tweens = tweens;
     this.domElement = domElement;
     this.getShape = getShape ?? (() => FALLBACK_SHAPE);
-    this._drag = null; // 正在拖拽时记 { x, y }：上一个指针位置
+    this._drag = null; // 正在拖拽时记 { mode, x, y }：上一个指针位置与操作
     this._optical = 1; // 镜头的额外倍率，1 = 出厂视角的视场角；相机推到底之后由它接着放大
+    this.inspecting = false;   // 自由检视模式：左键改自由环绕，退出时恢复进入前的相机状态
+    this._inspectSaved = null; // { position, target, up, optical }
 
     // 滚轮必须先于 OrbitControls 注册：两边都挂在同一个元素上、都在冒泡阶段，
     // 先注册的先跑，_onWheel 里才能用 stopImmediatePropagation 把它那个滚轮处理拦下来。
@@ -129,8 +131,19 @@ export class CameraRig {
 
   /** 左键（触摸也是 0 号）按下开始转；其余按键交给 OrbitControls */
   _onDown = (e) => {
+    // 检视模式：左键=自由环绕（不限制角度，看得到所有侧壁）；正常模式按形状分派
+    if (this.inspecting) {
+      if (e.button !== 0) return;
+      this._drag = { mode: 'orbit', x: e.clientX, y: e.clientY };
+      return;
+    }
+    if (this.getShape().planarCamera) {
+      if (e.button !== 0) return;
+      this._drag = { mode: 'pan', x: e.clientX, y: e.clientY };
+      return;
+    }
     if (e.button !== 0) return;
-    this._drag = { x: e.clientX, y: e.clientY };
+    this._drag = { mode: 'orbit', x: e.clientX, y: e.clientY };
   };
 
   _onMove = (e) => {
@@ -141,8 +154,8 @@ export class CameraRig {
     d.x = e.clientX;
     d.y = e.clientY;
     if (!dx && !dy) return;
-    if (this.getShape().planarCamera) this.pan(dx, dy);
-    else this.orbit(dx, dy);
+    if (d.mode === 'orbit') this.orbit(dx, dy);
+    else this.pan(dx, dy);
   };
 
   _onUp = () => { this._drag = null; };
@@ -164,16 +177,18 @@ export class CameraRig {
     _qTilt.setFromAxisAngle(_right, -dy * k);
     _qSide.multiply(_qTilt);
 
-    this.camera.position.applyQuaternion(_qSide);
+    // 围绕 controls.target 旋转：球体 target=原点，与旧行为逐值一致；
+    // 检视模式下 target 在板面上，绕它转视点中心才不飘
+    _pivot.copy(this.camera.position).sub(this.controls.target).applyQuaternion(_qSide);
+    this.camera.position.copy(this.controls.target).add(_pivot);
     this.camera.up.applyQuaternion(_qSide).normalize();
     this.camera.lookAt(this.controls.target);
   }
 
   /**
-   * 平面相机（平板）的拖动：不是旋转，是「抓着地图拖」——
-   * 内容跟着手走，视点中心往反方向滑。速度按「这一屏装得下多少地面」定：
-   * 一像素 = 净高 × tan(半FOV) × 2 / 视口高，缩放多少倍手感都一致。
-   * 相机保持正俯视锁死，只在 target 上方跟着平移。
+   * 平面相机（平板）的拖动：「抓着地图拖」——内容跟着手走，视点中心往反方向滑。
+   * 速度按「这一屏装得下多少地面」定：一像素 = 净高 × tan(半FOV) × 2 / 视口高，
+   * 缩放多少倍手感都一致。相机锁死在形状给的固定视角上（含倾角），只跟着 target 平移。
    */
   pan(dx, dy) {
     const t = this.controls.target;
@@ -183,8 +198,12 @@ export class CameraRig {
     t.x -= dx * wpp;
     t.z -= dy * wpp;
     this.getShape().clampCameraTarget(t);
-    c.position.x = t.x;
-    c.position.z = t.z;
+    c.position.copy(t).add(this.getShape().planarCameraOffset(h, t));
+  }
+
+  /** 平面相机位姿点：target + 形状基准偏移（固定视角） */
+  _planarPosition(t, h) {
+    return t.clone().add(this.getShape().planarCameraOffset(h, t));
   }
 
   /**
@@ -210,10 +229,13 @@ export class CameraRig {
    * 掰的是「屏幕上边朝北」这根方向。
    */
   resetView() {
-    this.camera.up.copy(this.getShape().planarCamera ? PLANAR_UP : WORLD_UP);
+    this.camera.up.copy(WORLD_UP);
     this.camera.lookAt(this.controls.target);
     this._setOptical(1); // 复位就是把镜头也拧回出厂视角，不能留着上一段的放大倍率
-    this.flyToLatLng(this.config.lat, this.config.lon, { distance: this._factoryDistance() });
+    // 复位落点也走形状的出厂位姿：平板回到板面中心
+    const home = this.getShape().getHomePose(this.config, this._factoryDistance());
+    const { lat, lng } = this.getShape().pointToLatLng(home.target);
+    this.flyToLatLng(lat, lng, { distance: this._factoryDistance() });
   }
 
   /**
@@ -224,8 +246,8 @@ export class CameraRig {
    * 档位读数、滚轮、滑块全都在错误的基准上打转。
    */
   reseat(shape) {
-    const pose = shape.getCameraPose(this.config.lat, this.config.lon, { distance: this._factoryDistance() });
-    this.camera.up.copy(shape.planarCamera ? PLANAR_UP : WORLD_UP);
+    const pose = shape.getHomePose(this.config, this._factoryDistance());
+    this.camera.up.copy(WORLD_UP);
     this.camera.position.copy(pose.position);
     this.controls.target.copy(pose.target);
     this.camera.lookAt(pose.target);
@@ -235,6 +257,60 @@ export class CameraRig {
     // 滑块拖过去又被弹回，都是这一句没跑的后果
     this.setConfig(this.config);
     this._syncLevel();
+  }
+
+  /**
+   * 自由检视：原地解锁轨道相机——左键自由环绕（绕 target，不限制角度），
+   * 滚轮沿用档位梯子，可以绕到板侧/板底看断面与轮廓。世界数据与拾取语义零变化。
+   * 进入时原地生效（用户还在看刚才看的地方）；退出时补间恢复进入前的全部相机状态。
+   */
+  enterInspect() {
+    if (this.inspecting) return;
+    this.inspecting = true;
+    this._inspectSaved = {
+      position: this.camera.position.clone(),
+      target: this.controls.target.clone(),
+      up: this.camera.up.clone(),
+      optical: this._optical,
+    };
+  }
+
+  /**
+   * 退出检视：统一补间恢复 position/target/up/optical——位置回去了，
+   * 朝向和缩放也必须一起回去。instant = true 时硬切（形状切换等场景）。
+   */
+  exitInspect({ instant = false } = {}) {
+    if (!this.inspecting) return;
+    this.inspecting = false;
+    const saved = this._inspectSaved;
+    this._inspectSaved = null;
+    if (!saved) return;
+    this.tweens.cancel('camera');
+    if (instant) {
+      this.camera.position.copy(saved.position);
+      this.controls.target.copy(saved.target);
+      this.camera.up.copy(saved.up).normalize();
+      this._setOptical(saved.optical);
+      this.camera.lookAt(saved.target);
+      this._syncLevel();
+      return;
+    }
+    const fromPos = this.camera.position.clone();
+    const fromTarget = this.controls.target.clone();
+    const fromUp = this.camera.up.clone();
+    const fromOptical = this._optical;
+    this.tweens.add({
+      tag: 'camera',
+      duration: 600,
+      onUpdate: (k) => {
+        this.camera.position.lerpVectors(fromPos, saved.position, k);
+        this.controls.target.lerpVectors(fromTarget, saved.target, k);
+        this.camera.up.lerpVectors(fromUp, saved.up, k).normalize();
+        this._setOptical(fromOptical + (saved.optical - fromOptical) * k);
+        this.camera.lookAt(this.controls.target);
+        this._syncLevel();
+      },
+    });
   }
 
   // ---------------------------------------------------------------- 缩放档位
@@ -441,28 +517,24 @@ export class CameraRig {
     );
     const toPose = shape.getCameraPose(lat, lng, { distance: toState ? toState.distance : rawDist });
     const to = toPose.target;
-    const toH = toPose.position.y; // 正上方净高
+    const toH = toPose.position.distanceTo(toPose.target); // 到 target 的距离（含倾角）
     const settled = from.distanceTo(to) < 1e-6
       && Math.abs(fromH - toH) < 1e-6
       && (!toState || Math.abs(fromLevel - toState.level) < 1e-6);
     if (settled) return;
 
-    c.up.copy(PLANAR_UP); // 兜住形状切换瞬间的任意朝向
+    c.up.copy(WORLD_UP); // 兜住形状切换瞬间的任意朝向
     this.tweens.add({
       tag: 'camera',
       duration,
       onUpdate: (k) => {
         const t = this.controls.target;
         t.lerpVectors(from, to, k);
-        if (toState) {
-          // 相机跟着 target 走（保持正上方），高度与视场角由档位落定
-          c.position.x = t.x;
-          c.position.z = t.z;
-          this._applyLevel(fromLevel * Math.pow(toState.level / fromLevel, k));
-        } else {
-          const h = THREE.MathUtils.lerp(fromH, toH, k);
-          c.position.set(t.x, t.y + h, t.z);
-        }
+        const h = THREE.MathUtils.lerp(fromH, toH, k);
+        // 相机锁死在固定视角与当前方位角上，只随 target 平移；
+        // 给了档位再由 _applyLevel 落定距离与视场角（方向不变）
+        c.position.copy(this._planarPosition(t, h));
+        if (toState) this._applyLevel(fromLevel * Math.pow(toState.level / fromLevel, k));
       },
     });
   }

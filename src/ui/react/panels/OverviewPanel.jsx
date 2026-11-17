@@ -19,6 +19,7 @@ export function OverviewPanel() {
   const counts = useStore((s) => s.derived.counts);
   const updateProject = useStore((s) => s.updateProject);
   const setProjectShape = useStore((s) => s.setProjectShape);
+  const setInspectMode = useStore((s) => s.setInspectMode);
   const openWorkshop = useStore((s) => s.openWorkshop);
   const generateRealEarth = useStore((s) => s.generateRealEarth);
   const setOverviewOpen = useStore((s) => s.setOverviewOpen);
@@ -100,9 +101,20 @@ export function OverviewPanel() {
           平板
         </button>
       </div>
+      {shapeType === 'slab' && (
+        <button
+          className="btn"
+          style={{ width: '100%', marginTop: '6px' }}
+          onClick={() => setInspectMode(true)}
+        >
+          自由检视
+        </button>
+      )}
 
       <p className="insp-hint" style={{ marginTop: '10px' }}>
-        单击球面上的路线与区域查看详情；拖动底部游标，查看事件
+        {shapeType === 'slab'
+          ? '左键拖动平移地图，滚轮缩放；点路线与区域查看详情，点事件可定位'
+          : '单击球面上的路线与区域查看详情；拖动底部游标，查看事件'}
       </p>
     </div>
   );

@@ -23,6 +23,7 @@ export class SphereShape extends WorldShape {
   topology = Object.freeze({ longitudeWrap: true, latitudeWrap: false });
   subdivides = true;
   hasAtmosphere = true;
+  atmosphereColorKey = 'colorSphere'; // 球体默认蓝：外圈辉光的经典配色
 
   // ---------------------------------------------------------- 坐标映射
 
@@ -227,7 +228,7 @@ export class SphereShape extends WorldShape {
   buildAtmosphere(group, config) {
     const atmoMat = new THREE.ShaderMaterial({
       uniforms: {
-        uColor: { value: new THREE.Color(config.atmosphere.color) },
+        uColor: { value: new THREE.Color(config.atmosphere[this.atmosphereColorKey]) },
         uStrength: { value: config.atmosphere.strength },
         uPower: { value: 3.5 },
       },
@@ -262,7 +263,7 @@ export class SphereShape extends WorldShape {
     // 地表薄雾：FrontSide 菲涅尔
     const hazeMat = new THREE.ShaderMaterial({
       uniforms: {
-        uColor: { value: new THREE.Color(config.atmosphere.color) },
+        uColor: { value: new THREE.Color(config.atmosphere[this.atmosphereColorKey]) },
         uStrength: { value: config.atmosphere.strength * 0.3 },
       },
       vertexShader: /* glsl */ `
@@ -295,10 +296,10 @@ export class SphereShape extends WorldShape {
 
   applyAtmosphereConfig(config) {
     if (!this._atmo) return;
-    this._atmo.mat.uniforms.uColor.value.set(config.atmosphere.color);
+    this._atmo.mat.uniforms.uColor.value.set(config.atmosphere[this.atmosphereColorKey]);
     this._atmo.mat.uniforms.uStrength.value = config.atmosphere.strength;
     this._atmo.mesh.visible = config.atmosphere.enabled;
-    this._atmo.hazeMat.uniforms.uColor.value.set(config.atmosphere.color);
+    this._atmo.hazeMat.uniforms.uColor.value.set(config.atmosphere[this.atmosphereColorKey]);
     this._atmo.hazeMat.uniforms.uStrength.value = config.atmosphere.strength * 0.3;
     this._atmo.hazeMesh.visible = config.atmosphere.enabled;
   }

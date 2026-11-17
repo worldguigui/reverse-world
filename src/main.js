@@ -64,9 +64,9 @@ async function main() {
   // 平板=悬在初始点上方净距 2、正俯视（屏幕上边朝北）。
   // 出厂距离 = 出厂净距（config.distance−1）+ 各形状的参考面——与相机档位梯子同一出处
   const factoryDist = config.camera.distance - 1 + globe.shape.referenceScale;
-  const initPose = globe.shape.getCameraPose(config.camera.lat, config.camera.lon, { distance: factoryDist });
+  const initPose = globe.shape.getHomePose(config.camera, factoryDist);
   camera.position.copy(initPose.position);
-  camera.up.copy(globe.shape.planarCamera ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(0, 1, 0));
+  camera.up.set(0, 1, 0);
   camera.lookAt(initPose.target);
   const rig = new CameraRig(camera, renderer.domElement, { ...config.camera, ...config.rotation }, tweens, () => session.shape);
   // 视线目标点与位姿一致：球=原点（与旧行为相同），平板=初始点（正俯视的支点）
@@ -279,6 +279,17 @@ async function main() {
   // 用户自己动了镜头：打断进行中的 flyTo，让用户立即接管镜头
   rig.onUserInterrupt = () => {}; // 回调保留，便于将来扩展镜头相关行为
 
+  // 检视模式的浮动退出芯片（plain DOM，与 toast 同一套办法）：
+  // 固定视角的用户不一定想得起 Esc，芯片常驻提醒怎么回去
+  const inspectChip = document.createElement('button');
+  inspectChip.className = 'btn';
+  inspectChip.hidden = true;
+  inspectChip.textContent = '◉ 自由检视中，Esc 返回';
+  inspectChip.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:40';
+  inspectChip.addEventListener('click', () => store.getState().setInspectMode(false));
+  document.body.appendChild(inspectChip);
+  useStore.subscribe((s) => s.inspectMode, (v) => { inspectChip.hidden = !v; });
+
   // ---------------------------------------------------------- 鼠标交互
   const raycaster = new THREE.Raycaster();
   raycaster.layers.enable(LAYER_CONTENT); // 内容在单独一层，拾取要显式打开
@@ -405,6 +416,8 @@ async function main() {
     const s = store.getState();
     // 加载页、地图工坊与编年史都是全屏浮层：键盘先归它们，别在背后改动编辑状态
     if (s.loading || s.workshopOpen || s.chronicleOpen) return;
+    // 检视模式的退出优先于一切快捷键；其他按键照常（检视不影响时间轴浏览）
+    if (s.inspectMode && e.key === 'Escape') { s.setInspectMode(false); return; }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
     // 输入框里的 Esc / Enter 属于控件本身（收起候选、提交输入），中文组字时同理
     if (typing || e.isComposing || e.defaultPrevented) return;

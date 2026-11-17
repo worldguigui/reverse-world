@@ -4,6 +4,7 @@
  */
 import { uid, noView } from '../core/project.js';
 import { buildDerived } from './world.js';
+import { session } from '../session.js';
 
 export const blankDrawForm = () => ({ title: '', description: '', from: null, to: null });
 
@@ -25,6 +26,8 @@ export const createUISlice = (set, get) => ({
   // 当前镜头档位：1 = 出厂视角；全域（含拉远超出厂的 <1 段与推近的上限）
   // 由 config.js 的 zoomLevelRange 派生，滚轮与设置面板滑块读写同一个数，不落盘。
   cameraLevel: 1,
+  // 自由检视模式：true = 左键自由环绕（相机临时解锁），退出时恢复进入前的相机状态
+  inspectMode: false,
   pendingCoords: null,   // 放置事件时点选的经纬度
   drawCoords: [],        // 绘制路线/区域的 [[lng,lat]…]
   eventDraft: {},        // 新建事件草稿（换位置不丢内容）
@@ -131,6 +134,14 @@ export const createUISlice = (set, get) => ({
 
   /** 镜头把实际落定的档位报回来（滚轮、飞行、复位都会触发），滑块据此跟随 */
   syncCameraLevel(level) { set({ cameraLevel: level }); },
+
+  /** 进入/退出自由检视。instant = 硬切恢复（形状切换等相机状态已失效的场景） */
+  setInspectMode(v, { instant = false } = {}) {
+    const rig = session.rig;
+    if (v) rig?.enterInspect();
+    else rig?.exitInspect({ instant });
+    set({ inspectMode: v && !!rig });
+  },
 
   // ---------------------------------------------------------------- 放置 / 绘制
 

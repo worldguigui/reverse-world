@@ -155,6 +155,7 @@ export function SettingsPanel() {
   const cameraLevel = useStore((s) => s.cameraLevel);
   const setCameraLevel = useStore((s) => s.setCameraLevel);
   const shapeType = useStore((s) => s.project?.shape?.type ?? 'sphere');
+  const colorKey = shapeType === 'slab' ? 'colorSlab' : 'colorSphere';
   // 缩放档位的全域：滑块的上下限从它派生，不写死数字（出处与滚轮/飞行同一处）
   const levelRange = zoomLevelRange(config.camera);
   // 收起时整个渲染成空，容器靠 #settings:empty 隐掉（与检查器同一套办法）
@@ -181,20 +182,14 @@ export function SettingsPanel() {
       </Group>
 
       <Group title="大气与星空">
-        {/* 大气是球状世界的专属效果（外圈辉光 + 菲涅尔薄雾），平板世界没有对应物：
-            形状是平板时整组收起，只留一句说明，开关不装样子。 */}
-        {shapeType === 'slab' ? (
-          <p className="insp-hint">大气辉光是球体世界的专属效果；平板世界可在日后接入边缘辉光。</p>
-        ) : (
-          <>
-            <Check label="大气层" checked={config.atmosphere.enabled}
-              onChange={(v) => set({ atmosphere: { enabled: v } })} />
-            <Color label="大气颜色" value={config.atmosphere.color}
-              onChange={(v) => set({ atmosphere: { color: v } })} />
-            <Slider label="大气强度" value={config.atmosphere.strength} min={0} max={3} step={0.05}
-              onChange={(v) => set({ atmosphere: { strength: v } })} />
-          </>
-        )}
+        {/* 氛围效果语义随形状：球体=外圈辉光+薄雾，平板=十二棱描边。
+            颜色按形状各存一份（colorSphere 蓝 / colorSlab 暗金），改的只是当前形状那份。 */}
+        <Check label={'大气层'} checked={config.atmosphere.enabled}
+          onChange={(v) => set({ atmosphere: { enabled: v } })} />
+        <Color label="大气颜色" value={config.atmosphere[colorKey]}
+          onChange={(v) => set({ atmosphere: { [colorKey]: v } })} />
+        <Slider label="大气强度" value={config.atmosphere.strength} min={0} max={3} step={0.05}
+          onChange={(v) => set({ atmosphere: { strength: v } })} />
         <Check label="星空" checked={config.stars.enabled}
           onChange={(v) => set({ stars: { enabled: v } })} />
         <Slider label="星星数量" value={config.stars.count} min={STARS_COUNT_MIN} max={STARS_COUNT_MAX} step={1} commit="release"
