@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../store/index.js';
 import { useProjectRevision } from './hooks.js';
-import { searchCharacters } from './common.jsx';
+import { searchCharacters, searchTags, TagChips } from './common.jsx';
 import { timeTicks } from '../../core/timeline.js';
 import { formatTime, timeYear } from '../../core/datetime.js';
 import { isViewFiltered } from '../../core/project.js';
@@ -36,6 +36,7 @@ export function Chronicle() {
   const viewFilter = useStore((s) => s.viewFilter);
   const setViewFilter = useStore((s) => s.setViewFilter);
   const chapterFromCharacter = useStore((s) => s.chapterFromCharacter);
+  const chapterFromTag = useStore((s) => s.chapterFromTag);
   const { groupIds } = viewFilter;
 
   // 「全部」只取消所有选中，不删章节——取消选中不等于把章节删掉
@@ -48,8 +49,11 @@ export function Chronicle() {
   const [hit, setHit] = useState(0);
 
   const characters = project?.characters ?? [];
+  // 候选是「人物 + 标签」的混合清单：人物在前、标签在后，各自内部按命中率排序。
   // 不按条数截断：候选菜单限高并可滚动，截断会让第 9 个以后的人永远选不到
-  const cands = searchCharacters(characters, query);
+  const charCands = searchCharacters(characters, query).map((c) => ({ type: 'char', item: c }));
+  const tagCands = searchTags(project?.events ?? [], query).map((t) => ({ type: 'tag', item: t }));
+  const cands = [...charCands, ...tagCands];
   // 输着字且光标还在框里时才展开候选；一失焦就收，免得挡住长卷
   const searching = focused && query.trim().length > 0;
 
@@ -71,10 +75,12 @@ export function Chronicle() {
     hitRef.current?.scrollIntoView({ block: 'nearest' });
   }, [hit, query]);
 
-  const pickCharacter = (c) => {
-    // 搜索即建章节：把此人此刻涉及的事件取成清单，新建一个普通章节并选中。
-    // 无年份的事件也收——它们上不了长卷，但在球上照样是此人相关的一批事件
-    chapterFromCharacter(c);
+  const pickCandidate = (cand) => {
+    // 搜索即建章节：人物按「此刻涉及的事件」、标签按「此刻带这个标签的事件」
+    // 各取成清单，新建一个普通章节并选中。无年份的事件也收——它们上不了长卷，
+    // 但在球上照样是此人相关/带此标签的一批事件
+    if (cand.type === 'char') chapterFromCharacter(cand.item);
+    else chapterFromTag(cand.item.label);
     setQuery('');
     setHit(0);
   };
@@ -96,7 +102,7 @@ export function Chronicle() {
       setHit((i) => (i - 1 + cands.length) % cands.length);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      pickCharacter(cands[Math.min(hit, cands.length - 1)]);
+      pickCandidate(cands[Math.min(hit, cands.length - 1)]);
     }
   };
 
@@ -197,7 +203,7 @@ export function Chronicle() {
             className="inp"
             type="text"
             value={query}
-            placeholder={characters.length ? '搜索人物（名字或别名）' : '还没有人物'}
+            placeholder={characters.length || project?.events.length ? '搜索人物或标签' : '还没有人物或标签'}
             disabled={!characters.length}
             title="选中后把此人当前涉及的事件建成一个新章节，清单不随数据更新"
             onChange={(e) => { setQuery(e.target.value); setHit(0); }}
@@ -208,22 +214,28 @@ export function Chronicle() {
           {searching && (
             <div className="char-menu">
               {cands.length === 0 ? (
-                <p className="char-none">没有匹配的人物</p>
+                <p className="char-none">没有匹配的人物或标签</p>
               ) : (
-                cands.map((c, i) => (
+                cands.map((cand, i) => (
                   <button
-                    key={c.id}
+                    key={cand.type === 'tag' ? `#${cand.item.label}` : cand.item.id}
                     ref={i === hit ? hitRef : null}
                     type="button"
                     className={`char-opt${i === hit ? ' hit' : ''}`}
                     // 按下时挡掉默认行为：一失焦候选就收，紧接着的 click 会落空
                     onMouseDown={(e) => e.preventDefault()}
                     onMouseEnter={() => setHit(i)}
-                    onClick={() => pickCharacter(c)}
+                    onClick={() => pickCandidate(cand)}
                   >
-                    <i className="char-dot" style={{ background: c.color }} />
-                    <span className="char-name">{c.name}</span>
-                    {c.aliases?.length > 0 && <span className="char-alias">{c.aliases.join('、')}</span>}
+                    {cand.type === 'tag'
+                      ? <i className="char-dot tag-dot" />
+                      : <i className="char-dot" style={{ background: cand.item.color }} />}
+                    <span className="char-name">
+                      {cand.type === 'tag' ? `#${cand.item.label}` : cand.item.name}
+                    </span>
+                    <span className="char-alias">
+                      {cand.type === 'tag' ? `${cand.item.count} 条事件` : cand.item.aliases?.join('、')}
+                    </span>
                   </button>
                 ))
               )}
@@ -285,6 +297,12 @@ export function Chronicle() {
         {ticks.map((t) => {
           // 长卷报年月日；游标仍只有年份，所以「还没走到」按年份判断
           const year = timeYear(t.from);
+          // 时间戳与备注分开渲染：备注降档、限两行，长备注不许把整排卡片撑高。
+          // from 是规范时间串（datetime.js 只在空格后放备注），首个空白前是时间正文
+          const raw = typeof t.from === 'string' ? t.from : '';
+          const sp = /\s/.exec(raw);
+          const timeHead = sp ? raw.slice(0, sp.index) : raw;
+          const timeNote = sp ? raw.slice(sp.index).trim() : '';
           const cls = ['chr-item', t.id === currentId && 'at-cursor', year > cursor && 'ahead']
             .filter(Boolean).join(' ');
           return (
@@ -292,12 +310,20 @@ export function Chronicle() {
               key={t.id}
               ref={t.id === currentId ? activeRef : null}
               className={cls}
-              title={t.lat == null ? '没有地点：只在这条长卷里' : '跳到它发生的那一年并飞过去'}
               onClick={() => jumpToEvent(t.id)}
             >
-              <span className="chr-year">{formatTime(t.from)}</span>
+              <span className="chr-year">
+                <span className="chr-time">{formatTime(timeHead || raw)}</span>
+                {timeNote && <span className="chr-time-note">{timeNote}</span>}
+              </span>
               <span className="chr-name">{t.title}</span>
-              {t.lat == null && <span className="chr-note">无地点</span>}
+              {/* 注记行只在有内容时渲染：没有标签/备注就不占任何高度 */}
+              {((t.tags?.length ?? 0) > 0 || t.lat == null) && (
+                <span className="chr-tags">
+                  <TagChips tags={t.tags} max={2} />
+                  {t.lat == null && <span className="chr-note">无地点</span>}
+                </span>
+              )}
             </button>
           );
         })}

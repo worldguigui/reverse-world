@@ -242,6 +242,7 @@ export const createWorldSlice = (set, get) => ({
       lng: c?.lng ?? null,
       from: d.from ?? null,
       to: d.to ?? null,
+      tags: P.cleanTags(d.tags),
       characters: d.characters ?? [],
       groupIds: d.groupIds ?? [],
     });
@@ -317,6 +318,25 @@ export const createWorldSlice = (set, get) => ({
         .filter((e) => e.characters?.includes(c.id))
         .map((e) => e.id);
       return P.addItem(p, 'group', { name: c.name, eventIds });
+    });
+    if (!g) return null;
+    const { groupIds } = get().viewFilter;
+    get().setViewFilter({ groupIds: [...groupIds, g.id] });
+    return g.id;
+  },
+
+  /**
+   * 标签搜索：把**此刻**带这个标签的事件取成一份清单，新建一个章节并选中——
+   * 与 chapterFromCharacter 完全同一条路：章节是搜索那一刻的快照，事件之后
+   * 再挂同名标签不会自动回写它；再搜一次就是再建一章。label 按完整名匹配
+   * （eventsWithTag 里忽略首尾空格与大小写），不做部分匹配建章。
+   */
+  chapterFromTag(label) {
+    const name = String(label ?? '').trim();
+    if (!name) return null;
+    const g = get().mutateProject((p) => {
+      const eventIds = P.eventsWithTag(p, name).map((e) => e.id);
+      return P.addItem(p, 'group', { name, eventIds });
     });
     if (!g) return null;
     const { groupIds } = get().viewFilter;

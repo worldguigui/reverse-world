@@ -2,7 +2,8 @@ import { normalizeProject, addRasterMap } from './project.js';
 import { buildRealEarthGrid, EARTH_RES } from './realearth.js';
 
 /**
- * 示例世界：真实地球地形 + 第一次世界大战。
+ * 示例世界：真实地球地形 + 《重返未来：1999》游戏叙事
+ * （司辰与十四行诗追着星锑的足迹，暴雨将至的那条故事线）。
  *
  * 叙事数据（章节、人物、事件、路线、区域）全部放在 public/data/sample-world.json，
  * 与用户导出的 .world.json 同一套结构，走同一个 normalizeProject 检查；

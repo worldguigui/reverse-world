@@ -43,6 +43,11 @@ export function installAPI({ ctx, project, cursor }) {
     /** 全部章节，按录入先后 */
     listGroups: () => ctx.groups(),
     addGroup: (data) => ctx.addGroupViaApi(data),
+    /**
+     * 按标签搜出一章：把**此刻**带这个标签的事件取成清单，新建一个普通章节并选中。
+     * 与编年史里的标签搜索是同一件事：章节是快照，之后新挂同标签的事件不会自动进章。
+     */
+    chapterFromTag: (label) => ctx.chapterFromTag(label),
     /** 某个章节里的事件，按时间先后 */
     eventsOfGroup: (id) => ctx.eventsOfGroup(id),
     /** 当前视图条件：选中的章节列表与实时人物筛 */
@@ -104,6 +109,7 @@ export function installAPI({ ctx, project, cursor }) {
       + "world.addRegion({ name, ring: [[lng,lat]...] })  加区域\n"
       + 'world.listGroups() / eventsOfGroup(id)          章节清单 / 某章里的事件\n'
       + "world.addGroup({ name })                         加章节\n"
+      + 'world.chapterFromTag(label)                     按标签搜出一章并选中（快照）\n'
       + 'world.filterByGroup(id) / filterByCharacter(id)  只看某一章 / 某个人物涉及的事件\n'
       + 'world.getViewFilter() / clearFilter()           当前筛选条件 / 退出筛选\n'
       + 'world.listCharacters()                        全部人物\n'

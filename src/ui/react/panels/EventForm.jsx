@@ -3,6 +3,7 @@ import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import {
   Labeled, AutoTextarea, TimeInput, CoordInput, CharacterPicker, GroupPicker, ItemImage,
+  TagEditor,
 } from '../common.jsx';
 
 /**
@@ -134,6 +135,10 @@ export function EventForm() {
       <p className="insp-hint">
         时间格式yyyy-MM-ddThh:mm:ss，时间后可以以空格分隔添加注释
       </p>
+
+      <Labeled as="div" label="标签">
+        <TagEditor tags={draft.tags ?? []} onChange={(tags) => saveDraft({ tags })} />
+      </Labeled>
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
         <button className="btn btn-primary" onClick={() => commitEvent()}>✔ 创建</button>

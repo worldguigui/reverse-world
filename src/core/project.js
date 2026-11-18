@@ -27,9 +27,10 @@ export function createProject({ name = '未命名世界', description = '' } = {
     baseRasterId: null, // 地图 id（工坊可编辑的那种），空 = 深色空球
     shape: { type: 'sphere' }, // 世界形状：sphere（球）| slab（平板）。舞台属性，与时间无关
     rasterMaps: [], // { id, name, w, h, dataUrl } 地图（R+G=高度、B+A=RGB565 颜色）
-    events: [],     // { id, title, description, image, lat, lng, from, to } 事件
+    events: [],     // { id, title, description, image, lat, lng, from, to, tags, characters } 事件
                     //   from / to 是 Y…YMDHMS 时间串或 null；空格后是备注
                     //   lat / lng 为空 = 纯叙事事件：不上球、不渲染标注，只进编年史
+                    //   tags 是展示性注记 [{ label, text }]：不参与排序、在场判定与时间轴
     routes: [],     // { id, title, description, points: [{lat,lng}...], from, to, color }
                     //   color 为 null = 跟随界面默认配色
     regions: [],    // { id, name, description, ring: [[lng,lat]...], from, to, color }
@@ -67,6 +68,24 @@ function needStrings(v, what) {
     formatError(`${what} 必须是字符串数组`);
   }
   return v;
+}
+
+/**
+ * 事件的展示性注记：[{ label, text }]，label 是元信息、text 是内容。
+ * 字段是后加的：旧文件缺失时兜底为空数组（与 shape / characters 同一先例，
+ * 免迁移即可加载），字段在时仍严格校验。注记不参与排序与在场判定，校验只看结构。
+ */
+function needTags(v, what) {
+  if (v == null) return [];
+  if (!Array.isArray(v)) formatError(`${what} 必须是数组`);
+  return v.map((t, i) => {
+    const at = `${what}[${i}]`;
+    needObject(t, at);
+    return {
+      label: needString(t.label, `${at}.label`),
+      text: needString(t.text, `${at}.text`),
+    };
+  });
 }
 
 function needNumber(v, what) {
@@ -164,6 +183,7 @@ export function normalizeProject(raw) {
       lng: ev.lng === null ? null : needNumber(ev.lng, `${what}.lng`),
       from: needTime(ev.from, `${what}.from`),
       to: needTime(ev.to, `${what}.to`),
+      tags: needTags(ev.tags, `${what}.tags`),
       characters: needStrings(ev.characters, `${what}.characters`),
     };
   });
@@ -266,10 +286,10 @@ export function getRasterMap(project, id) {
 
 const DEFAULTS = {
   // 坐标可以缺省——缺省就是纯叙事事件，不上球。
-  // 事件上常驻 characters 一个键（哪怕空的），筛起来不必到处兜底
+  // 事件上常驻 characters / tags 两个键（哪怕空的），筛起来不必到处兜底
   event: (d) => ({
     title: '新事件', description: '', image: null,
-    lat: null, lng: null, characters: [], ...d,
+    lat: null, lng: null, characters: [], tags: [], ...d,
   }),
   route: (d) => ({
     title: '新路线', description: '', points: [], color: null, ...d,
@@ -471,6 +491,30 @@ export function eventsOfGroup(project, id) {
   return project.events
     .filter((ev) => ids.has(ev.id))
     .sort((a, b) => compareDateTime(a.from, b.from));
+}
+
+/**
+ * 带 label 这个标签的全部事件（按事件录入先后，不排序）。
+ * label 完整匹配，忽略首尾空格与大小写——标签是注记，反查是现算的，与
+ * eventsOfCharacter 同一先例：关联只写在事件那一侧（tags 内联在事件上），
+ * 不设独立实体与 id。
+ */
+export function eventsWithTag(project, label) {
+  const key = String(label ?? '').trim().toLowerCase();
+  if (!key) return [];
+  return project.events.filter((ev) =>
+    ev.tags?.some((t) => String(t.label).trim().toLowerCase() === key));
+}
+
+/**
+ * 保存前清洗标签：各去两端空白，丢弃 label 与 text 都为空的行。
+ * 编辑器里允许空行存在（填到一半），落库前在这里收口——与 normalizeTime
+ * 在写入路径上归一化的角色相同。只留空白的 label 同样保留（有 text 就是有内容的注记）。
+ */
+export function cleanTags(tags) {
+  return (tags ?? [])
+    .map((t) => ({ label: String(t?.label ?? '').trim(), text: String(t?.text ?? '').trim() }))
+    .filter((t) => t.label || t.text);
 }
 
 // ---------------------------------------------------------------- 在场判定

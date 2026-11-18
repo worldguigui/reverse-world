@@ -119,6 +119,39 @@ export function searchCharacters(characters, query, exclude = []) {
 }
 
 /**
+ * 按标签检索事件里的 tag。标签内联在事件上（{ label, text }），不是独立实体：
+ * 这里把全部事件上的标签按完整 label 去重聚合成候选，text 只留第一条做预览，
+ * count 是带这个标签的事件数。排序与 searchCharacters 同一梯队：label 开头命中 →
+ * label 中间命中 → 只命中 text，同分按事件数多者在前。忽略首尾空格与大小写。
+ * 部分命中只是用来找出候选；拿候选建章用完整 label（chapterFromTag → eventsWithTag），
+ * 「搜得到」与「筛得着」在两处一致的道理与 searchCharacters 相同。
+ */
+export function searchTags(events, query) {
+  const key = query.trim().toLowerCase();
+  if (!key) return [];
+  const byLabel = new Map();
+  for (const ev of events) {
+    for (const t of ev.tags ?? []) {
+      const label = String(t.label).trim();
+      const norm = label.toLowerCase();
+      if (!norm) continue;
+      const hit = byLabel.get(norm);
+      if (hit) hit.count += 1;
+      else byLabel.set(norm, { label, text: String(t.text ?? ''), count: 1 });
+    }
+  }
+  const scored = [];
+  for (const t of byLabel.values()) {
+    const label = t.label.toLowerCase();
+    const text = t.text.toLowerCase();
+    const rank = label.startsWith(key) ? 0 : label.includes(key) ? 1 : text.includes(key) ? 2 : -1;
+    if (rank >= 0) scored.push({ t, rank });
+  }
+  scored.sort((a, b) => a.rank - b.rank || b.t.count - a.t.count);
+  return scored.map((x) => x.t);
+}
+
+/**
  * 挂人时的候选：已经挂上的不再出现。
  * 不截断条数——菜单本身限高并可滚动，按条数截断只会让第 9 个以后的名字永远选不到。
  */
@@ -523,5 +556,85 @@ export function CoordInput({ id, value, min, max, onChange, placeholder = '' }) 
       onBlur={(e) => commit(e.target.value, e.target)}
       onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.target.blur(); }}
     />
+  );
+}
+
+/**
+ * 标签编辑器：展示性注记 { label, text } 的增删改。受控组件——结果由调用方写回
+ * （新建事件写 store 草稿、编辑事件写本地草稿），与 CharacterPicker 同一套约定。
+ * 本组件定义在模块层：定义进组件函数体会因函数身份每次变化导致内部状态重置
+ * （见 EventEditor 里 RelationFields 的注释，同一坑）。
+ */
+export function TagEditor({ tags = [], onChange }) {
+  const patch = (i, key, value) => {
+    onChange(tags.map((t, j) => (j === i ? { ...t, [key]: value } : t)));
+  };
+  return (
+    <div className="tag-edit">
+      {tags.length === 0 ? (
+        <p className="insp-hint">暂无标签。标签仅有展示作用。</p>
+      ) : (
+        <div className="tag-rows">
+          {tags.map((t, i) => (
+            <div key={i} className="tag-row">
+              <input
+                className="inp"
+                value={t.label}
+                placeholder="标签名"
+                onChange={(e) => patch(i, 'label', e.target.value)}
+              />
+              <input
+                className="inp"
+                value={t.text}
+                placeholder="内容"
+                onChange={(e) => patch(i, 'text', e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn btn-mini"
+                title="移除这个标签"
+                onClick={() => onChange(tags.filter((_, j) => j !== i))}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        className="btn btn-mini"
+        onClick={() => onChange([...tags, { label: '', text: '' }])}
+      >
+        ＋ 添加标签
+      </button>
+    </div>
+  );
+}
+
+/**
+ * 标签阅读态：一排小 chip，只显示 label，完整 text 放在 title 里（悬停可看）。
+ * max 限制展示条数，余下的折成 +N——长卷卡片空间小，两个足够看出有注记，
+ * 悬停 +N 可看到被折起的标签名。chip 渲染成 span 而不是 button：长卷卡片本身就是
+ * button，里面再嵌交互元素会把点击语义搅乱；这里只是展示，不需要自己的点击行为。
+ */
+export function TagChips({ tags = [], max = 0 }) {
+  if (!tags.length) return null;
+  const shown = max > 0 ? tags.slice(0, max) : tags;
+  const extra = tags.length - shown.length;
+  return (
+    <span className="tag-chips">
+      {shown.map((t, i) => (
+        <span key={i} className="tag-chip" title={`${t.label}：${t.text}`}>{t.label}</span>
+      ))}
+      {extra > 0 && (
+        <span
+          className="tag-chip tag-more"
+          title={tags.slice(max).map((t) => `${t.label}：${t.text}`).join('\n')}
+        >
+          +{extra}
+        </span>
+      )}
+    </span>
   );
 }

@@ -15,7 +15,7 @@
 - **前端框架**：React + Zustand，仅接管 UI 层与状态层（`core/`、`view/` 不进框架）；构建产物相对路径，可静态部署。
 - **命令**：`npm install` / `npm run dev`（http://localhost:5173）/ `npm run build`（dist/）。
 - **验证脚本**（`scripts/`，node 直跑、无需浏览器）：`npm run verify:shapes`（世界形状几何矩阵：坐标往返、边缘裁剪、路线拆段、相机降级）、`npm run verify:zoom`（缩放梯子端到端：CameraRig 假 DOM 桩，滑块/滚轮同链路请求-回读断言）。
-- **编程入口**：浏览器控制台 `window.world`（由 `src/api.js#installAPI` 挂载），提供 `help()/loadSample()/getCursor()/setCursor()/stepCursor()/jumpToEvent()/showChronicle()/generateRealEarth()/openWorkshop()/paintTerrain()/sampleTerrain()/listEvents()/addEvent()/addRoute()/addRegion()/flyTo()/where()/resetView()`，以及人物与章节的 `addCharacter()/listCharacters()/eventsOfCharacter()/addGroup()/listGroups()/eventsOfGroup()/filterByGroup()/filterByCharacter()/clearFilter()` 等。
+- **编程入口**：浏览器控制台 `window.world`（由 `src/api.js#installAPI` 挂载），提供 `help()/loadSample()/getCursor()/setCursor()/stepCursor()/jumpToEvent()/showChronicle()/generateRealEarth()/openWorkshop()/paintTerrain()/sampleTerrain()/listEvents()/addEvent()/addRoute()/addRegion()/flyTo()/where()/resetView()`，以及人物与章节的 `addCharacter()/listCharacters()/eventsOfCharacter()/addGroup()/listGroups()/eventsOfGroup()/chapterFromTag()/filterByGroup()/filterByCharacter()/clearFilter()` 等。
 
 ### 2. 核心概念
 
@@ -25,7 +25,7 @@
 - **舞台只有一张脸**：球体不随时间换皮。`baseRasterId` 指向唯一那张地图（栅格地形），为空就是**深色空球**。**拖游标不换脸**——这是刻意的，地图是一张图，它跟时间没有关系。地图就是能在 2D 工坊里编辑、同时显示在 3D 球面上的那个东西；没有第二种「只能贴图、不能编辑」的底图。
 - **游标**：一个**数值年**（`cursor`，负数为公元前，允许小数）。它不是项目数据，而是「此刻在看哪一年」，所以不进 `project`；拖动它只翻内容的可见性，一个像素都不重画。
 - **内容生命周期**：带时间的内容（事件 / 路线 / 区域）都有 `from` / `to` 两个**年份**（留空 = 该端开放，两端都空就是「常驻」）。可见性判定唯一位置 `project.js#isActiveAt`（闭区间 `from <= cursor <= to`），三类内容共用这一条判据。
-- **事件**：一条事件是「哪一年发生了什么」，可以带坐标、也可以不带——**纯叙事事件不上球**，只进编年史（长卷里标注「无地点」）。**事件不铺点**：事件一多，球面会被点铺满，也会让人以为「点上去能选中」。事件的入口只有时间轴刻度与编年史长卷两处，球上只把**选中那一条**的坐标点亮成一枚光点，改选别人它就灭。事件还是**时间轴刻度的唯一来源**（`core/timeline.js#timeTicks`）——路线与区域虽然也带年份，但不画刻度。
+- **事件**：一条事件是「哪一年发生了什么」，可以带坐标、也可以不带——**纯叙事事件不上球**，只进编年史（长卷里标注「无地点」）。**事件不铺点**：事件一多，球面会被点铺满，也会让人以为「点上去能选中」。事件的入口只有时间轴刻度与编年史长卷两处，球上只把**选中那一条**的坐标点亮成一枚光点，改选别人它就灭。事件还是**时间轴刻度的唯一来源**（`core/timeline.js#timeTicks`）——路线与区域虽然也带年份，但不画刻度。事件的**标签**（`tags`）是另一回事：`{ label, text }` 的**纯展示注记**，编年史可以按标签搜出一章（与按人物搜同一套「搜索即建章节」），但不参与排序、在场判定与时间轴。
 - **时间轴与编年史**：轴的定义域由内容自己的 `from`/`to` 算出来（`timeDomain`），没有任何需要人维护的槽位——给某条内容填上时间，轴就长出来一截。轴上不铺标题（挤在一起没法看），标题在**编年史长卷**里按时间铺开。
 - **人物与章节**：人物是事件的参与者，不是地点上的东西——所以不上球、没有存续区间，`born` / `died` 只是生平，不参与在场判定。章节是事件的归类，本身不带年份，标签上的范围（`1914–1919`）由组内事件的年份算出来。两者与事件的关联都**只写在事件那一侧**（`characters` / `groupId`），人物卡上那张「涉及的事件」是现算的——反向关系是求值，不是数据。
 - **视图条件**：`viewFilter = { groupId, characterId }` 决定「此刻在看什么」，两个都可空，同时给就是交集。指向章节时是真的翻章；按人物筛出的那一组是**算出来的**，用完就没了，不落盘、不进 `groups`。两者共用一条筛选路径——收窄换的只是「谁在场」，一个像素都不用重画。
@@ -64,7 +64,7 @@ src/
     landmask.js    LandMask：二值海陆场 + 离岸距离（倒角距离变换）。只管「是陆是海」，可选
     realearth.js   真实地球：16-bit 陆海高程 + 海陆掩膜合成、河流栅格化
     storage.js     IndexedDB 持久化 + 防抖自动保存 + .world.json 导出/导入
-    sample.js      示例世界（真实地形 + 一战六年：32 条事件、16 位人物、1 条路线、1 块区域）
+    sample.js      示例世界加载器：取回 public/data/sample-world.json（《重返未来：1999》游戏叙事，332 条事件），铺上真实地球舞台
   view/            3D 视图层（引擎封装边界，对外只暴露业务语义方法）
     render-layers.js  渲染趟次编号：场景 / 深度掩膜 / 内容（见「一帧三趟」）
     material-bin.js   材质回收桶：整层重建时复用材质，避免 GL 程序被连坐销毁
@@ -129,7 +129,7 @@ public/            静态资源：data/ne_50m_rivers.geojson（河网）、textu
 | 16-bit 陆海高程 `earth-relief.png` | Mapzen/Amazon Terrarium z=4 瓦片，由 `scripts/gen-relief.mjs` 离线重投影并编码 | `core/realearth.js#loadRelief` |
 | 海陆掩膜 `earth-water.png` | Natural Earth 10m land + lakes，由 `scripts/gen-mask.mjs` 栅格化到 2048×1024，再用同尺寸高程图把海里的正高度改判为陆地 | `core/landmask.js#fromImage`（由 `core/realearth.js#buildRealEarthGrid` 调用） |
 | 河流 `ne_50m_rivers.geojson` | 运行时 fetch 本地静态文件 | `core/realearth.js#rasterizeRivers` |
-| 示例世界剧情 | 硬编码 | `core/sample.js#buildSampleProject` |
+| 示例世界剧情 | `public/data/sample-world.json`（《重返未来：1999》游戏叙事） | `core/sample.js#buildSampleProject` |
 | 画面设置 | localStorage | `config.js#loadViewConfig/saveViewConfig` |
 | 项目持久化 | IndexedDB | `core/storage.js#idbPut/idbGet/createAutoSaver` |
 
@@ -147,7 +147,7 @@ public/            静态资源：data/ne_50m_rivers.geojson（河网）、textu
 - 地图切换为硬切（交叉淡化待做）。
 - **没有「地点」这一等实体**（见 v0.0.13）：地名印刷留待日后作为一层外挂（行政区图层）接回来。在那之前，一个地方要「在场」，写成一条事件——事件本来就有坐标、有配图、有存续区间，而地点与事件原先的差别只在谁上球、谁画刻度（v0.0.9 之后两者都不上球）。**代价是标一个位置就不再是件轻量的事**：事件一定会占掉时间轴上的一个刻度、并进编年史长卷，而只想在地图上点一个地名的人并不想讲一件事；另外事件是点、区域是面，一笔带过的地名也没法画成区域。
 - **同年多条事件时刻度叠在一起**：刻度按事件的年份落位，同一年里的几条落在同一个 x 上，鼠标只有最上面那一个点得中。逐条读的入口是底部的 ◀ ▶：按一下换一条，并把游标与检查器一起带过去。轴没有「槽位」这个概念，刻度叠置是这个模型的直接后果。
-- 轴是按年份**线性**铺开的，年份跨度大的世界会把内容稀疏的段落拉得很快（改成均匀分布是「非线性压缩轴」，属于另一个需求）。示例世界收在一战这六年里，正是为了让刻度排得开。
+- 轴是按年份**线性**铺开的，年份跨度大的世界会把内容稀疏的段落拉得很快（改成均匀分布是「非线性压缩轴」，属于另一个需求）。示例世界的 332 条事件全部落在 2007 年一年里，刻度因此全部叠在同一年上（见上一条同年刻度叠置的限制）。
 - v1 项目导入时只保留**最后一张**地图与地形，旧模型里的**地点**（`entries`）也不再保留：v1 是逐时间点各存一套舞台，v2 的球只有一张脸，多出来的那几套会丢掉；地点则是这一等实体本身已经取消，硬塞成事件只会把地名表混进叙事（事件 / 路线 / 区域 / 人物 / 章节一条不丢，时间点转成事件）。旧项目里的**图片底图**同样不再保留——它只能贴不能编辑，与地图是两条管线，已整体移除。
 - 无单元测试框架（仅 scripts/ 三个 E2E）；`main.js#main` 仍是约 350 行的组装函数（UI 与状态已外移，剩下渲染基础、鼠标键盘交互与启动）。
 
@@ -156,6 +156,13 @@ public/            静态资源：data/ne_50m_rivers.geojson（河网）、textu
 ## 第二部分 · 版本迭代记录
 
 > 更新规则：**新版本条目插入本列表顶部**（最新在上），保持「从头检索先见最新」。历史条目只追加不改。
+
+### v1.0.11 事件标签与编年史卡片重排
+
+1. 事件新增“标签tags”，只用于展示，不参与任何排序；保存时自动剔除空白行；旧存档缺失该字段载入时兜底为空数组，零迁移。
+2. 编年史支持按标签搜索建章筛选`。
+3. 编年史事件卡片重新排版，时间备注另起一行，整体更美观。
+4. 修复时间轴同年刻度点击总是命中最后一条的问题。
 
 ### v1.0.10 平板世界：断面、检视与氛围
 

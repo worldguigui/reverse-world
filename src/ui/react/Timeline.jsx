@@ -87,7 +87,7 @@ export function Timeline() {
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         >
-          {ticks.map((t) => {
+          {ticks.map((t, i) => {
             // 事件时间精确到秒，但轴只按年铺开：这里取年份再定位
             const fromYear = timeYear(t.from);
             const endYear = timeYear(t.to);
@@ -104,7 +104,13 @@ export function Timeline() {
                 )}
                 <button
                   className={`tl-tick${atCursor ? ' at-cursor' : ''}`}
-                  style={{ left: `${posOf(fromYear)}%` }}
+                  style={{
+                    left: `${posOf(fromYear)}%`,
+                    // 同年（乃至同刻度堆里）的刻度叠在同一个 x 上，DOM 后面的会盖住
+                    // 前面的——不反转的话点到的永远是堆里最晚的那条。按渲染序倒着
+                    // 给 z-index，先发生的沉到上层：点轴得到的是最早的一条
+                    zIndex: ticks.length - i,
+                  }}
                   title={`${t.title} · ${formatTime(t.from)}`}
                   onClick={() => jumpToEvent(t.id)}
                 />

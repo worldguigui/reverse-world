@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom';
 import { useStore } from '../../../store/index.js';
 import { fileToDataUrl } from '../../../utils/files.js';
 import { useProjectRevision } from '../hooks.js';
+import { cleanTags } from '../../../core/project.js';
 import {
   Labeled, AutoTextarea, BackToOverview, TimeInput, CoordInput, CharacterPicker, GroupPicker, ItemImage,
+  TagEditor,
 } from '../common.jsx';
 
 /**
@@ -14,8 +16,9 @@ import {
  * 时间轴、编年史与球面都会跟着重排，边打字边提交会让这些地方每敲一个字抖一次。
  * 「取消」把草稿恢复成项目里的样子，什么都没动过。
  *
- * 描述写得长的详情页，右栏要滚很久才看得到人物与时间。所以「涉及人物」往后的
- * 尾部字段同时投到左侧固定栏（#inspector-left）：左右是同一份草稿的两处入口，
+ * 描述写得长的详情页，右栏要滚很久才看得到人物与时间。所以「所属章节」往后的
+ * 尾部字段（章节 / 坐标 / 时间 / 标签）同时投到左侧固定栏（#inspector-left）：
+ * 左右是同一份草稿的两处入口，
  * 内容允许重合，在哪边改都同步。草稿是本组件的 state，两栏必须同属一棵 React
  * 树才能共享它，因此用 portal 投过去，而不是给左边单独挂一个面板根。
  */
@@ -34,33 +37,56 @@ function makeDraft(project, item) {
     lng: item.lng,
     from: item.from,
     to: item.to,
+    tags: (item.tags ?? []).map((t) => ({ label: t.label, text: t.text })),
   };
 }
 
 /**
- * 涉及人物 + 所属章节。右栏与左侧固定栏各渲染一份，绑的是同一份草稿。
+ * 关联字段拆成小组件：右栏两段都要，左栏从「所属章节」开始（涉及人物只留右栏）。
  * 必须留在模块层：定义进 EventEditor 的话每次输入都会换新函数类型，
  * CharacterPicker 里的搜索词会被连着重置。
  */
+
+/** 涉及人物。关联只写在这一侧：人物的反向清单由它现算，人物卡上不存副本。
+    picker 里有一排 tag button，不能包在 <label> 里（见 Labeled 注释） */
+function CharacterField({ draft, patch }) {
+  return (
+    <Labeled as="div" label="涉及人物">
+      <CharacterPicker
+        ids={draft.characters}
+        onChange={(ids) => patch({ characters: ids })}
+      />
+    </Labeled>
+  );
+}
+
+function GroupField({ draft, patch }) {
+  return (
+    <Labeled as="div" label="所属章节">
+      <GroupPicker
+        ids={draft.groupIds}
+        onChange={(ids) => patch({ groupIds: ids })}
+      />
+    </Labeled>
+  );
+}
+
+/** 右栏渲染完整关联（人物 + 章节） */
 function RelationFields({ draft, patch }) {
   return (
     <>
-      {/* 关联只写在这一侧：人物的反向清单由它现算，人物卡上不存副本。
-          picker 里有一排 tag button，不能包在 <label> 里（见 Labeled 注释） */}
-      <Labeled as="div" label="涉及人物">
-        <CharacterPicker
-          ids={draft.characters}
-          onChange={(ids) => patch({ characters: ids })}
-        />
-      </Labeled>
-
-      <Labeled as="div" label="所属章节">
-        <GroupPicker
-          ids={draft.groupIds}
-          onChange={(ids) => patch({ groupIds: ids })}
-        />
-      </Labeled>
+      <CharacterField draft={draft} patch={patch} />
+      <GroupField draft={draft} patch={patch} />
     </>
+  );
+}
+
+/** 标签注记：两栏各渲染一份，绑的是同一份草稿（与 RelationFields 同一复用方式） */
+function TagsField({ draft, patch }) {
+  return (
+    <Labeled as="div" label="标签">
+      <TagEditor tags={draft.tags} onChange={(tags) => patch({ tags })} />
+    </Labeled>
   );
 }
 
@@ -144,7 +170,7 @@ export function EventEditor({ id }) {
 
   // 保存与取消都回事件清单：这两张卡只是清单里的一条，处理完该回到列表继续翻
   const save = () => {
-    updateItem('event', id, { ...draft });
+    updateItem('event', id, { ...draft, tags: cleanTags(draft.tags) });
     toast('事件已保存');
     select({ kind: 'events' });
   };
@@ -202,6 +228,9 @@ export function EventEditor({ id }) {
 
       <SpaceTimeFields draft={draft} patch={patch} flyToItem={flyToItem} latId="event-lat" lngId="event-lng" />
 
+      {/* 标签是展示性注记：两栏共用 TagsField，绑同一份草稿 */}
+      <TagsField draft={draft} patch={patch} />
+
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
         <button className="btn btn-primary" onClick={save}>✔ 保存</button>
         <button className="btn" onClick={reset} title="放弃未保存的修改">取消</button>
@@ -216,13 +245,15 @@ export function EventEditor({ id }) {
       <BackToOverview />
     </div>
 
-    {/* 左侧固定栏：固定展示尾部字段（人物/章节/坐标/时间），不做任何动态判断——
-        事件详情开着它就在。与右栏允许重合，改哪边都写进同一份草稿 */}
+    {/* 左侧固定栏：从「所属章节」起展示尾部字段（章节/坐标/时间/标签），不做任何
+        动态判断——事件详情开着它就在。与右栏允许重合，改哪边都写进同一份草稿；
+        「涉及人物」只留右栏（人物搜索墙放进左栏会把起点顶得太靠下） */}
     {leftEl && createPortal(
       <div className="insp-block">
         <div className="insp-title">内容关联</div>
-        <RelationFields draft={draft} patch={patch} />
+        <GroupField draft={draft} patch={patch} />
         <SpaceTimeFields draft={draft} patch={patch} flyToItem={flyToItem} />
+        <TagsField draft={draft} patch={patch} />
       </div>,
       leftEl,
     )}
