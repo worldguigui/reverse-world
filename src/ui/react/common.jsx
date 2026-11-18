@@ -625,12 +625,12 @@ export function TagChips({ tags = [], max = 0 }) {
   return (
     <span className="tag-chips">
       {shown.map((t, i) => (
-        <span key={i} className="tag-chip" title={`${t.label}：${t.text}`}>{t.label}</span>
+        <span key={i} className="tag-chip" title={`${t.label}:${t.text}`}>{t.label}</span>
       ))}
       {extra > 0 && (
         <span
           className="tag-chip tag-more"
-          title={tags.slice(max).map((t) => `${t.label}：${t.text}`).join('\n')}
+          title={tags.slice(max).map((t) => `${t.label}:${t.text}`).join('\n')}
         >
           +{extra}
         </span>

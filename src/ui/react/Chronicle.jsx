@@ -3,7 +3,7 @@ import { useStore } from '../../store/index.js';
 import { useProjectRevision } from './hooks.js';
 import { searchCharacters, searchTags, TagChips } from './common.jsx';
 import { timeTicks } from '../../core/timeline.js';
-import { formatTime, timeYear } from '../../core/datetime.js';
+import { formatTime } from '../../core/datetime.js';
 import { isViewFiltered } from '../../core/project.js';
 
 /**
@@ -13,8 +13,9 @@ import { isViewFiltered } from '../../core/project.js';
  * 这里才有地方把「哪一年、发生了什么」写成一行行读给人听。
  * 没有地点的事件也在这里：它们不上球，但同属这个世界的叙事。
  *
- * 两条时间线索分工不同：**游标管远近**——还没走到的事件先淡着；**选中管焦点**——
- * 亮起来并自动滚进视野的，是检查器里正在讲的那一条。
+ * **选中管焦点**：亮起来并自动滚进视野的，是检查器里正在讲的那一条。早年间的
+ * 「游标管远近」淡出（游标之后的年份压暗）已移除：事件如今在轴上压成年份堆，
+ * 点选是长卷的主要交互，「选不同年份、淡出范围剧变」的反馈只剩困惑。
  *
  * 顶上的标签都是「一批事件」的入口，也就是章节：手动建的、姓名搜索生成的，
  * 都是同一种普通章节，没有类型之分。标签可以选中任意多个，长卷、时间轴与球面
@@ -28,7 +29,6 @@ import { isViewFiltered } from '../../core/project.js';
  */
 export function Chronicle() {
   const project = useStore((s) => s.project);
-  const cursor = useStore((s) => s.cursor);
   const selection = useStore((s) => s.selection);
   const open = useStore((s) => s.chronicleOpen);
   const jumpToEvent = useStore((s) => s.jumpToEvent);
@@ -295,16 +295,18 @@ export function Chronicle() {
           </div>
         )}
         {ticks.map((t) => {
-          // 长卷报年月日；游标仍只有年份，所以「还没走到」按年份判断
-          const year = timeYear(t.from);
           // 时间戳与备注分开渲染：备注降档、限两行，长备注不许把整排卡片撑高。
           // from 是规范时间串（datetime.js 只在空格后放备注），首个空白前是时间正文
           const raw = typeof t.from === 'string' ? t.from : '';
           const sp = /\s/.exec(raw);
           const timeHead = sp ? raw.slice(0, sp.index) : raw;
           const timeNote = sp ? raw.slice(sp.index).trim() : '';
-          const cls = ['chr-item', t.id === currentId && 'at-cursor', year > cursor && 'ahead']
-            .filter(Boolean).join(' ');
+          // 分级高度：有无时间备注决定等级（t2 由备注区自然增高），tags 不参与分级
+          const cls = [
+            'chr-item',
+            timeNote ? 'chr-t2' : 'chr-t1',
+            t.id === currentId && 'at-cursor',
+          ].filter(Boolean).join(' ');
           return (
             <button
               key={t.id}
@@ -321,7 +323,6 @@ export function Chronicle() {
               {((t.tags?.length ?? 0) > 0 || t.lat == null) && (
                 <span className="chr-tags">
                   <TagChips tags={t.tags} max={2} />
-                  {t.lat == null && <span className="chr-note">无地点</span>}
                 </span>
               )}
             </button>

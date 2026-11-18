@@ -23,6 +23,8 @@ export function ChapterList() {
   const project = useStore((s) => s.project);
   const setViewFilter = useStore((s) => s.setViewFilter);
   const setChronicleOpen = useStore((s) => s.setChronicleOpen);
+  const jumpToEvent = useStore((s) => s.jumpToEvent);
+  const eventsOfGroup = useStore((s) => s.eventsOfGroup);
   const addGroup = useStore((s) => s.addGroup);
   const updateItem = useStore((s) => s.updateItem);
   const deleteItem = useStore((s) => s.deleteItem);
@@ -88,10 +90,14 @@ export function ChapterList() {
                       <span style={{ flex: 1 }} />
                       <button
                         className="btn btn-mini"
-                        title="只看这一章：取消其他选中，长卷、时间轴刻度、球上的事件一起收窄"
+                        title="只看这一章并跳过去：长卷收窄到本章，游标落到本章最早的一条事件"
                         onClick={() => {
                           setViewFilter({ groupIds: [g.id], characterId: null });
                           setChronicleOpen(true);
+                          // 跳到本章最早的一条（即其年份的第一条）；未定年的事件不上
+                          // 长卷与时间轴，跳了也无处高亮，跳过。空章节只收窄不跳
+                          const first = eventsOfGroup(g.id).find((ev) => ev.from != null);
+                          if (first) jumpToEvent(first.id);
                         }}
                       >
                         Go

@@ -17,6 +17,7 @@ export function Timeline() {
   const cursor = useStore((s) => s.cursor);
   const stepCursor = useStore((s) => s.stepCursor);
   const jumpToEvent = useStore((s) => s.jumpToEvent);
+  const setChronicleOpen = useStore((s) => s.setChronicleOpen);
   const toggleChronicle = useStore((s) => s.toggleChronicle);
   const viewFilter = useStore((s) => s.viewFilter);
   useProjectRevision(); // 事件的年份改了，轴上的刻度要跟着重排
@@ -112,7 +113,9 @@ export function Timeline() {
                     zIndex: ticks.length - i,
                   }}
                   title={`${t.title} · ${formatTime(t.from)}`}
-                  onClick={() => jumpToEvent(t.id)}
+                  // 与事件清单的「看」同一套：跳过去的同时把长卷拉起来，
+                  // 高亮与滚动到选中条才有落脚处（刻度本就在当前视图内，不用退筛选）
+                  onClick={() => { setChronicleOpen(true); jumpToEvent(t.id); }}
                 />
               </span>
             );

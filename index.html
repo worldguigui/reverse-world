@@ -494,10 +494,11 @@
     .tag-chip {
       display: inline-block; min-width: 0; flex: 0 1 auto;
       max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
       font-size: 10px; font-weight: 400; line-height: 1.5;
       color: var(--text-muted);
     }
-    .tag-chip:not(:last-child)::after { content: '/'; margin: 0 5px; color: var(--text-disabled); }
+    .tag-chip:not(:last-child)::after { content: '·'; margin: 0 5px; color: var(--text-disabled); }
     /* +N 与注记同样式，只靠透明度再弱半档，不另起一套样子 */
     .tag-more { opacity: 0.8; }
     /* 候选菜单里标签用空心点，与人物实心点区分开 */
@@ -660,7 +661,12 @@
       color: inherit; font-size: 11px; line-height: 1;
     }
     .chr-x:hover { color: var(--danger-text); }
-    .chr-strip { display: flex; gap: 8px; padding: 7px 14px 8px; overflow-x: auto; }
+    /* align-items: flex-start 解除高度耦合：单行 flex 默认 stretch 会把所有卡片
+       拉到全卷最高卡的高度；改为每张卡只保留自己等级的自然高度——
+       无备注的一级卡紧凑，带备注的二级卡由备注区自然增高（约 35px）。
+       二级卡顶边对齐；一级卡 center 相对整条线垂直居中，夹在二级卡之间时不吊在顶上 */
+    .chr-strip { display: flex; align-items: flex-start; gap: 8px; padding: 7px 14px 8px; overflow-x: auto; }
+    .chr-item.chr-t1 { align-self: flex-start; }
     .chr-strip .insp-hint { padding: 2px 0; }
     .chr-empty { display: grid; gap: 8px; padding: 2px 0; }
     .chr-empty-actions { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -677,38 +683,71 @@
       color: var(--text); font-family: inherit;
     }
     .chr-item:hover { background: var(--surface-hover); border-color: rgba(169, 139, 96, 0.45); }
-    /* 游标还没走到的事件先淡着：长卷是读出来的，读到哪儿亮到哪儿 */
-    .chr-item.ahead { opacity: 0.45; }
     .chr-item.at-cursor {
       opacity: 1; background: var(--accent-soft);
       border-color: var(--accent-border);
     }
     /* 时间区：时间戳一行（选中态转强调橙），备注另起一段降一档、限两行省略——
        备注是辅助信息，不许无限撑高卡片 */
-    .chr-year { font-variant-numeric: tabular-nums; min-width: 0; }
+    
+    .chr-year {
+      font-variant-numeric: tabular-nums;
+      min-width: 0;
+    }
+
+    /* 卡片四级文本的字体分工：时间以 Inter 优先（拉丁数字走 Inter、中文回落
+       Noto Sans SC）；备注 / 标题 / 标签整体钉在 Noto Sans SC——其中的拉丁
+       字符与中文保持同一字形，不再被 Inter 抢走 */
     .chr-time {
-      display: block; font-size: 12px; font-weight: 400; line-height: 1.4;
-      color: var(--text-muted-raised); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      display: block;
+      font-family: "Inter", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      font-size: 12px;
+      font-weight: 400;
+      line-height: 1.4;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .chr-item.at-cursor .chr-time { color: var(--accent-text); }
+
+    .chr-item.at-cursor .chr-time {
+      color: var(--accent-text);
+    }
+
     .chr-time-note {
-      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
       overflow: hidden;
-      font-size: 11px; font-weight: 400; line-height: 1.4;
-      color: var(--text-muted-raised); overflow-wrap: anywhere;
+      font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 1.5;
+      color: var(--text-muted-raised);
+      overflow-wrap: anywhere;
     }
+
     .chr-name {
-      font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--text-strong);
-      /* 限两行，放不下在第二行末省略 */
-      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+      font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      font-size: 15px;
+      font-weight: 500;
+      line-height: 1.4;
+      color: var(--text-strong);
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
       overflow: hidden;
     }
-    /* 底部注记区：标签注记行与「无地点」共用一行；没有注记时整段不渲染 */
+
     .chr-tags {
-      display: flex; align-items: center; gap: 4px; min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
       overflow: hidden;
     }
-    .chr-note { font-size: 10px; color: var(--text-muted-raised); flex: none; }
 
     /* ---------------- 画面设置 ---------------- */
     #settings {

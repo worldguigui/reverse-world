@@ -65,8 +65,9 @@ export function EventList() {
                 <div className="event-row" key={ev.id}>
                   <button
                     className="char-row"
-                    title="查看并编辑这条事件"
-                    onClick={() => select({ kind: 'event', id: ev.id })}
+                    title="查看并编辑这条事件，编年史同步跳过去"
+                    // 与「看」同一套（打开编辑器之外，长卷拉起、游标与高亮跟过去）
+                    onClick={() => { select({ kind: 'event', id: ev.id }); look(ev); }}
                   >
                     <b>{ev.from == null ? '未定年' : formatTime(ev.from)}</b>
                     <span>{ev.title}</span>
