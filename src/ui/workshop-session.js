@@ -24,6 +24,9 @@ export const workshop = {
   wrap: null,        // 画布容器，缩放/平移都相对它算
   overlayCanvas: null, // 已有路线/区域的只读参考层（屏幕坐标重绘）
   overlayCtx: null,
+  maskCanvas: null,  // 掩膜预览层：白=保留、黑=透明洞，与颜色画布同 transform
+  maskCtx: null,
+  _maskImg: null,    // 掩膜预览的 ImageData 缓冲（网格分辨率）
   brushEl: null,     // 跟着指针走的笔刷范围框（屏幕坐标）
   pointer: null,     // 最近一次指针在画布上的位置（clientX/clientY）
   brushVisible: false, // 指针是否在画布上；平移、离开画布时框要收起来
@@ -34,7 +37,7 @@ export const workshop = {
   view: { zoom: 1, tx: 0, ty: 0 },
 };
 
-/** 撤销步数：网格越大，一份快照越贵（快照 = 高度 + 颜色两份数组） */
+/** 撤销步数：网格越大，一份快照越贵（快照 = 高度 + 颜色 + 掩膜（如有）的数组拷贝） */
 const undoLimit = () => (workshop.grid?.w >= 1024 ? 8 : 15);
 
 /** 笔刷大小上限的基准格数，以及它是在多宽的栅格上调出来的 */
@@ -93,6 +96,9 @@ export function endWorkshop() {
   workshop.painting = false;
   workshop.overlayCanvas = null;
   workshop.overlayCtx = null;
+  workshop.maskCanvas = null;
+  workshop.maskCtx = null;
+  workshop._maskImg = null;
   workshop.brushEl = null;
   workshop.pointer = null;
   workshop.brushVisible = false;
@@ -127,6 +133,11 @@ function applyView() {
   // 缩小时（画布比容器宽——分辨率一高，适应窗口那一档就是缩小）最近点会丢行丢列，
   // 满是细线与色带的地图会抖成一片；这一档交回浏览器的平滑缩放。
   canvas.style.imageRendering = rendering;
+  // 掩膜预览层与颜色画布共用同一套 transform 与像素感（一格一像素的锐利度）
+  if (workshop.maskCanvas) {
+    workshop.maskCanvas.style.transform = transform;
+    workshop.maskCanvas.style.imageRendering = rendering;
+  }
   // 路线/区域参考层按屏幕坐标重画，不吃这个 transform：平移缩放后要重新算一遍落点
   drawRouteOverlay();
   // 笔刷框也按屏幕坐标摆放；缩放、平移后要跟着重新量
@@ -207,7 +218,11 @@ const canvasReady = () => !!(workshop.canvas && workshop.wrap && workshop.grid);
 
 // ---------------------------------------------------------------- 撤销 / 重做
 
-const snapshot = () => ({ h: workshop.grid.height.slice(), c: workshop.grid.color.slice() });
+const snapshot = () => ({
+  h: workshop.grid.height.slice(),
+  c: workshop.grid.color.slice(),
+  m: workshop.grid.mask ? workshop.grid.mask.slice() : null,
+});
 
 /** 把一份已经拍好的快照压进撤销栈；异步操作要在结果确认有效之后再调用 */
 function pushSnapshot(snap) {
@@ -225,7 +240,11 @@ function restore(snap) {
   const g = workshop.grid;
   g.height.set(snap.h);
   g.color.set(snap.c);
+  // 掩膜必须拷贝而不是共享引用：快照数组还压在撤销/重做栈里，
+  // 后续边界笔是就地写 mask 的，共享引用会把栈里的历史一起改掉
+  g.mask = snap.m ? new Uint8Array(snap.m) : null;
   g.renderColor();
+  drawMaskPreview();
   workshop.hooks.onChange(g);
 }
 
@@ -407,6 +426,47 @@ export function syncOverlayView() {
   if (on) drawRouteOverlay();
 }
 
+// ---------------------------------------------------------------- 掩膜预览层
+
+/**
+ * 掩膜预览：白 = 保留地形，黑 = 透明洞。与颜色画布同分辨率、同 transform，
+ * 一格一像素；只读，不吃指针事件。开关切换后由 React 调 syncMaskView()。
+ */
+export function syncMaskView() {
+  const { maskCanvas } = workshop;
+  if (!maskCanvas) return;
+  const on = useStore.getState().workshopShowMask;
+  maskCanvas.style.display = on ? 'block' : 'none';
+  if (on) drawMaskPreview();
+}
+
+/**
+ * 把透明掩膜画进预览层。传 rect=[x,y,w,h] 只重画脏区（每笔都走这里，必须便宜）；
+ * 无掩膜时整层画白——「全图保留」本身就是预览要传达的信息。
+ */
+function drawMaskPreview(rect) {
+  const { maskCanvas, maskCtx, _maskImg: img } = workshop;
+  if (!maskCanvas || !maskCtx) return;
+  const { w, h, mask } = workshop.grid;
+  const x0 = rect ? Math.max(0, rect[0]) : 0;
+  const y0 = rect ? Math.max(0, rect[1]) : 0;
+  const x1 = rect ? Math.min(w - 1, rect[0] + rect[2] - 1) : w - 1;
+  const y1 = rect ? Math.min(h - 1, rect[1] + rect[3] - 1) : h - 1;
+  if (x0 > x1 || y0 > y1) return;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const i = y * w + x;
+      const v = mask ? mask[i] : 255;
+      const o = i * 4;
+      img.data[o] = v;
+      img.data[o + 1] = v;
+      img.data[o + 2] = v;
+      img.data[o + 3] = 255;
+    }
+  }
+  maskCtx.putImageData(img, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+}
+
 // ---------------------------------------------------------------- 指针绘制
 
 /**
@@ -492,9 +552,18 @@ function paint(canvas, e) {
   const size = Math.min(st.workshopSize, brushSizeMax());
   const [gx, gy] = toGrid(canvas, e);
   const g = workshop.grid;
+  // 边界笔只写透明掩膜，不碰高度与颜色；形态/上色笔写高度与颜色，两路互不干扰
+  if (st.workshopTool === 'erase' || st.workshopTool === 'restore' || st.workshopTool === 'reverse') {
+    const dirty = g.applyMaskBrush(st.workshopTool, gx, gy, size, st.workshopHard);
+    if (!dirty) return;
+    g.renderColor(dirty);
+    drawMaskPreview(dirty);
+    workshop.dirty = true;
+    workshop.hooks.onChange(g);
+    return;
+  }
   // 上色笔用颜料色；形态笔用高度基色，画笔内部按最终高度和坡度重算颜色
   const brushColor = st.workshopTool === 'paint' ? st.workshopColor : st.workshopHeightColor;
-  // 颜色笔直接写目标色，重复点击结果不变；「加入阴影」只影响 paint，按坡度给目标色叠明暗
   const dirty = g.applyBrush(
     st.workshopTool, gx, gy, size, st.workshopStrength,
     st.workshopHard, hexTo565(brushColor), st.workshopPaintShadow,
@@ -528,6 +597,19 @@ export function attachCanvas(canvas, wrap) {
   wrap.appendChild(overlay);
   workshop.overlayCanvas = overlay;
   workshop.overlayCtx = overlay.getContext('2d');
+  // 掩膜预览层：与颜色画布同分辨率同 transform（applyView 统一同步），
+  // 叠在颜色画布上方、路线/区域参考层之下（insertBefore 压住 z 序），开关由 syncMaskView 控制
+  const maskView = document.createElement('canvas');
+  maskView.width = workshop.grid.w;
+  maskView.height = workshop.grid.h;
+  maskView.style.cssText = 'position:absolute;left:0;top:0;transform-origin:0 0;'
+    + 'pointer-events:none;display:none;';
+  maskView.style.width = `${workshop.grid.w}px`;
+  maskView.style.height = `${workshop.grid.h}px`;
+  wrap.insertBefore(maskView, overlay);
+  workshop.maskCanvas = maskView;
+  workshop.maskCtx = maskView.getContext('2d');
+  workshop._maskImg = workshop.maskCtx.createImageData(workshop.grid.w, workshop.grid.h);
   // 笔刷框单独用一个不吃指针事件的 DOM 节点：跟着指针量一个矩形，比每帧重画画布便宜
   const brush = document.createElement('div');
   brush.className = 'wk-brush';
@@ -652,10 +734,14 @@ export function attachCanvas(canvas, wrap) {
     removeEventListener('blur', onBlur);
     overlay.remove();
     brush.remove();
+    maskView.remove();
     workshop.canvas = null;
     workshop.wrap = null;
     workshop.overlayCanvas = null;
     workshop.overlayCtx = null;
+    workshop.maskCanvas = null;
+    workshop.maskCtx = null;
+    workshop._maskImg = null;
     workshop.brushEl = null;
     workshop.pointer = null;
     workshop.brushVisible = false;

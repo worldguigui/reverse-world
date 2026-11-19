@@ -68,6 +68,10 @@ export class Globe {
       map: this._blankTex,
       shininess: 6,
       specular: new THREE.Color(0x111111),
+      // alphaTest 常开：透明边界掩膜写在颜色画布的 alpha 里（0/255 二值），
+      // 无掩膜时 alpha 恒 255、一片都不会被裁。常开的意义在「换地图永不重编译」——
+      // 若按有/无掩膜切换 alphaTest，每条 define 分支变化都是一次 100ms+ 的程序重链接
+      alphaTest: 0.5,
     });
     this.shape.patchBodyMaterial(this.bodyMat, {
       uniforms: {
@@ -82,7 +86,7 @@ export class Globe {
     this._buildStatic();
   }
 
-  /** 形状的静态附属网格（平板的侧壁/底面岩层）；球体没有 */
+  /** 形状的静态附属网格（若有）；形状在 patchBodyMaterial 里自定双面渲染等材质语义 */
   _buildStatic() {
     this._staticMeshes = this.shape.buildStaticMeshes?.(this.config) ?? [];
     for (const m of this._staticMeshes) this.group.add(m);
@@ -177,6 +181,8 @@ export class Globe {
     this._disposeRasterTextures();
     this.bodyMat.map = this._blankTex;
     this._uHeightTex.value = this._flatHeightTex;
+    // 颜色贴图退回空体：旧颜色纹理刚被 dispose，不能留在槽位上被再次上传
+    this._uSurfaceColorTex.value = this._blankTex;
   }
 
   /**
@@ -187,9 +193,20 @@ export class Globe {
     this._grid = grid;
     this._applyMesh(grid.w);
     this._disposeRasterTextures();
-    this._colorTex = new THREE.CanvasTexture(grid.colorCanvas);
+    // 颜色纹理不走 canvas：canvas 是预乘存储，掩膜挖洞后洞格 alpha=0，
+    // RGB 会被清零，切割线上保留的片元混进一半黑色，看起来发暗发淡
+    // （raster.js 头注释记录的同一个预乘坑）。改用 renderColor 维护的
+    // ImageData 直通 alpha 上传：洞格 RGB 原样保留，只作双线性过滤的边缘色——
+    // 切割线颜色全强度，观感与四缘断面（满 alpha 格夹边采样）一致
+    this._colorTex = new THREE.DataTexture(grid._image.data, grid.w, grid.h);
     this._colorTex.colorSpace = THREE.SRGBColorSpace;
+    this._colorTex.magFilter = THREE.LinearFilter;
+    this._colorTex.minFilter = THREE.LinearFilter;
+    this._colorTex.generateMipmaps = false;
+    // canvas 的 y 向下、纹理 v 向上，与原 CanvasTexture 的 flipY 对齐
+    this._colorTex.flipY = true;
     this._colorTex.anisotropy = this.maxAnisotropy;
+    this._colorTex.needsUpdate = true;
     // 高度纹理画布：R+G=16 位高度，alpha 恒为 255。
     // 颜色低位不能塞进 alpha：canvas 会预乘 alpha，连 R/G 的高度一起压坏。
     this._heightTex = new THREE.CanvasTexture(grid.packedCanvas);
@@ -205,8 +222,9 @@ export class Globe {
     this._uHeightTex.value = this._heightTex;
     this._uHeightTexel.value.set(1 / grid.w, 1 / grid.h);
     this.bodyMat.map = this._colorTex;
-    // 附属网格里引用顶面纹理的（平板侧壁断面共享顶面纹理），换栅格时重绑一次
-    this.shape.updateFrame?.(grid, this._colorTex);
+    // 薄雾的掩膜判据吃同一张颜色贴图（换地图换纹理对象，槽位在这里换绑）
+    if (this._uAtmoColorTex) this._uAtmoColorTex.value = this._colorTex;
+    // 附属网格随形状走（当前两形状均无静态附属）
   }
 
   /** 栅格画布内容变化后刷新纹理（不重建） */
@@ -223,7 +241,14 @@ export class Globe {
   }
 
   _buildAtmosphere() {
-    this.shape.buildAtmosphere(this.group, this.config);
+    // 薄雾要随地形起伏位移并按掩膜开洞：把共享高度/夸张 uniform（Globe 持有，
+    // 换地图调 value 即全员生效）与颜色贴图槽位一起交给形状
+    this._uAtmoColorTex = { value: this._colorTex ?? this._blankTex };
+    this.shape.buildAtmosphere(this.group, this.config, {
+      uHeightTex: this._uHeightTex,
+      uExaggeration: this._uExaggeration,
+      uColorTex: this._uAtmoColorTex,
+    });
   }
 
   _buildLights() {

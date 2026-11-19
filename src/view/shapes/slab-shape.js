@@ -6,14 +6,10 @@ import { WorldShape } from './world-shape.js';
 /** 板面尺寸（世界单位）。外接半径 √(0.9²+0.45²)≈1.006≈referenceScale，相机公式处处有效 */
 const SLAB_W = 1.8;
 const SLAB_D = 0.9;
-/** 板身厚度：顶面 y=0，向下到 y=-THICK。负地形沉入板身之内 */
-const SLAB_THICK = 0.3;
 /** 相机在目标点正上方的最低余量（与球体 minDistance 1.25 − 1 同值） */
 const CAMERA_MIN_CLEARANCE = 0.25;
 /** 平面相机的仰角（视线与板面的夹角，朝南俯视）：正俯视没立体感，太斜图压得扁。55° 起步，可调 */
 const PLANAR_ELEVATION = (55 * Math.PI) / 180;
-/** 侧壁/底面的岩层色：与近黑场景底色同族的暖炭色 */
-const ROCK_COLOR = 0x272219;
 
 const EPS = 1e-9;
 
@@ -82,14 +78,17 @@ const _plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const _hit = new THREE.Vector3();
 
 /**
- * 平板世界：一张等距圆柱地图铺在一块有厚度的板面上。
+ * 平板世界：一张等距圆柱地图铺在一张平面上（无厚度，像一张纸）。
  * 经度沿 x（东 = +x），纬度沿 z（北 = −z，像从南缘看一张桌面地图）；
- * 高度沿 +y 位移，正高度隆起于顶面（y=0）之上，负高度沉入板身之内。
+ * 高度沿 +y 位移，正高度隆起于平面（y=0）之上，负高度凹到平面之下。
+ *
+ * 「一张纸遮住眼睛」：平面完好处正反面都不透视（材质双面渲染，一个参数），
+ * 透明掩膜挖掉地形的地方真的透明，星空从洞里透出。
  *
  * 遮挡双机制（见 world-shape.js 头注释）：
  *  - 「地形不挡内容」由渲染趟次的 clearDepth() 直接保证（平板掩膜无事可做，
  *    返回一个隐藏网格占住 LAYER_MASK 的位置）；
- *  - 「世界底面不露内容」由 contentVisible（相机高于顶面 y=0）整体显隐保证——
+ *  - 「背面不露内容」由 contentVisible（相机高于平面 y=0）整体显隐保证——
  *    一张水平平面挡不住相机两侧的内容，这条规则必须由显隐开关直接执行。
  */
 export class SlabShape extends WorldShape {
@@ -99,7 +98,7 @@ export class SlabShape extends WorldShape {
   heightScale = 0.5; // P2 初始值：比等斜率等效（0.29）更突出，最终以同机位截图定值
   topology = Object.freeze({ longitudeWrap: false, latitudeWrap: false });
   subdivides = false;
-  hasAtmosphere = true; // 氛围效果 = 十二棱描边，沿用大气强度设置
+  hasAtmosphere = true; // 氛围效果 = 四棱顶缘描边，沿用大气强度设置
   planarCamera = true;
   atmosphereColorKey = 'colorSlab'; // 平板默认暗金：项目色板的旧金边界色
   /** 平板自己的高度比例 uniform：球体 shader 没有这个量，不能挂进共享 uniform */
@@ -286,14 +285,14 @@ export class SlabShape extends WorldShape {
       .multiplyScalar(distance);
   }
 
-  /** 出厂位姿落点 = 板面中心：切换到平板时板心位于画面中心 */
-  getHomePose(config, distance) {
-    return this.getCameraPose(0, 0, { distance });
+  /** 平板出厂落点 = 板面中心 (0,0)：配置经纬度是球体的出厂朝向语义，平板不适用 */
+  getHomeLatLng() {
+    return { lat: 0, lng: 0 };
   }
 
   /**
-   * 相机潜到顶面（y=0）以下即视为看世界的底面：内容整体隐藏。
-   * 正俯视锁死视角下到不了底面，这条判据只是兜底（形状切换瞬间的过渡态）。
+   * 相机潜到平面（y=0）以下即视为看纸的背面：内容整体隐藏。
+   * 正俯视锁死视角下到不了背面，这条判据只是兜底（形状切换瞬间的过渡态）。
    * 这是 V1 的行为规范（产品语义选择，不是渲染推导），观察后再调。
    */
   contentVisible(camera) {
@@ -332,98 +331,16 @@ export class SlabShape extends WorldShape {
   }
 
   /**
-   * 板身（侧壁 + 底面）：侧壁与顶面**共享同一张颜色纹理**，用定制 UV 采样地图边缘，
-   * 顶点色沿深度渐暗——断面即「地图边缘往下切开」，与顶面接缝零误差（同源采样）。
-   * 侧壁 UV 映射：长度轴采样地图的纬向（v 轴），竖直轴钉在边缘的 u（Clamp 取最边列/行）；
-   * 顶缘顶点色 = 1（原色，与顶面无缝），底缘 = 0.4（埋深渐暗）。
-   * 底面不封口逻辑同前：顶面位移平面自己就是顶面。
-   */
-  buildStaticMeshes() {
-    const wallMat = new THREE.MeshPhongMaterial({
-      color: ROCK_COLOR, shininess: 4, side: THREE.DoubleSide, vertexColors: true,
-    });
-    const bottomMat = new THREE.MeshPhongMaterial({ color: ROCK_COLOR, shininess: 4, side: THREE.DoubleSide });
-    const group = new THREE.Group();
-    group.name = 'slab-frame';
-
-    // 按世界 y 给顶点色：顶缘原色，底缘埋深渐暗
-    const depthShade = (geo) => {
-      const pos = geo.attributes.position;
-      const colors = new Float32Array(pos.count * 3);
-      for (let i = 0; i < pos.count; i++) {
-        const k = pos.getY(i) < 0 ? 0.4 : 1;
-        colors[i * 3] = k;
-        colors[i * 3 + 1] = k;
-        colors[i * 3 + 2] = k;
-      }
-      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    };
-
-    // 覆写 UV：mode 决定长度轴采样纬向（v）还是经向（u），竖直轴钉在边缘
-    const edgeUV = (geo, mode) => {
-      const uv = geo.attributes.uv;
-      for (let i = 0; i < uv.count; i++) {
-        const u = uv.getX(i);
-        if (mode === 'north') uv.setXY(i, u, 1);
-        else if (mode === 'south') uv.setXY(i, u, 0);
-        else if (mode === 'east') uv.setXY(i, 1, u);
-        else uv.setXY(i, 0, 1 - u); // 西壁：local +x 朝南，纬向反向
-      }
-    };
-
-    const wall = (w, h, x, z, ry, mode) => {
-      const g = new THREE.PlaneGeometry(w, h);
-      if (ry) g.rotateY(ry);
-      edgeUV(g, mode);
-      depthShade(g);
-      const m = new THREE.Mesh(g, wallMat);
-      m.position.set(x, -SLAB_THICK / 2, z);
-      group.add(m);
-      return m;
-    };
-    wall(SLAB_W, SLAB_THICK, 0, SLAB_D / 2, 0, 'south');
-    wall(SLAB_W, SLAB_THICK, 0, -SLAB_D / 2, Math.PI, 'north');
-    wall(SLAB_D, SLAB_THICK, -SLAB_W / 2, 0, -Math.PI / 2, 'west');
-    wall(SLAB_D, SLAB_THICK, SLAB_W / 2, 0, Math.PI / 2, 'east');
-    const bottom = new THREE.PlaneGeometry(SLAB_W, SLAB_D);
-    bottom.rotateX(Math.PI / 2); // 朝下
-    const bottomMesh = new THREE.Mesh(bottom, bottomMat);
-    bottomMesh.position.y = -SLAB_THICK;
-    group.add(bottomMesh);
-
-    this._wallMat = wallMat;
-    this._wallHasMap = false;
-    return [group];
-  }
-
-  /**
-   * 侧壁共享顶面颜色纹理：断面 = 地图边缘往下切开，与顶面接缝零误差（同源采样）。
-   * UV 已在几何里钉死（长度轴采样纬向、竖直轴钉在边缘列/行），
-   * 这里只在换栅格时重绑纹理对象。首次绑上 map 需置 needsUpdate（USE_MAP 分支变化）；
-   * 之后换栅格只是纹理对象变化，材质已带 map，不触发重编译。
-   * 工坊实时预览走 updateRasterTextures()——纹理内容刷新，断面自动跟着变，零额外代码。
-   */
-  updateFrame(grid, map) {
-    if (!this._wallMat || !map) return;
-    if (this._wallMat.map !== map) {
-      this._wallMat.map = map;
-      // sRGB 解码与顶面一致，断面颜色才不会偏；
-      // color 归一为白——map 之上的 color 是染色，岩色底会把贴图压成近黑
-      this._wallMat.color.set(0xffffff);
-      this._wallMat.map.colorSpace = THREE.SRGBColorSpace;
-      this._wallMat.needsUpdate = true;
-      this._wallHasMap = true;
-    }
-  }
-
-  /**
    * 位移 shader：与球体同构但更简单——
    *  - 顶点沿 +y 位移（球沿径向），高度乘 heightScale（板的世界尺度与球不同）；
    *  - 基础法线恒为 (0,1,0)，东西/北切框是常量，无极点、无 heightUv 缝合；
    *  - uExaggeration 仍来自 Globe 的共享 uniform（设置滑块实时生效），
    *    uHeightScale 是形状自己的常量，不进共享池。
+   * 另设双面渲染：平面完好处从正反面都不透视（three.js 的 side 一个参数），
+   * 掩膜挖掉的地方双面一起消失，星空从洞里透出。
    */
   patchBodyMaterial(mat, { uniforms }) {
+    mat.side = THREE.DoubleSide;
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uHeightTex = uniforms.uHeightTex;
       shader.uniforms.uExaggeration = uniforms.uExaggeration;
@@ -457,7 +374,7 @@ export class SlabShape extends WorldShape {
         ].join('\n'))
         .replace('#include <begin_vertex>', [
           '#include <begin_vertex>',
-          '// 沿板法线（+y）按高度位移：h=0 海平面，h>0 隆起，h<0 沉入板身',
+          '// 沿平面法线（+y）按高度位移：h=0 海平面，h>0 隆起，h<0 凹到纸的下方',
           'transformed.y += unpackHeight(texture2D(uHeightTex, uv).rg) * uExaggeration * uHeightScale;',
         ].join('\n'));
     };
@@ -492,9 +409,8 @@ export class SlabShape extends WorldShape {
   // ---------------------------------------------------------- 氛围：实体边缘线
 
   /**
-   * 平板的「大气」= 实体边缘线（Core Edge）：立方体 **十二条棱** 的发光线——
-   * 顶面 4 条、底面 4 条、竖棱 4 条，世界空间的真实几何（不随相机、不呼吸闪烁），
-   * 把整块「地图标本」的轮廓完整勾出来。
+   * 平板的「大气」= 实体边缘线（Core Edge）：顶面四条棱的发光线，
+   * 世界空间的真实几何（不随相机、不呼吸闪烁），把这张「纸」的轮廓勾出来。
    * 「边缘辉光」控件直接驱动它：颜色=线的颜色，强度=线的浓度。
    * 柔光外扩（Soft Halo）暂缓：先看这条线够不够，不够再加第二层。
    */
@@ -502,7 +418,6 @@ export class SlabShape extends WorldShape {
     const hw = SLAB_W / 2;
     const hd = SLAB_D / 2;
     const top = 0.001;
-    const bottom = -SLAB_THICK - 0.001; // 底缘略低一线，避免与底面 z-fighting
     const corners = [
       [-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd],
     ];
@@ -510,9 +425,7 @@ export class SlabShape extends WorldShape {
     for (let i = 0; i < 4; i++) {
       const [x1, z1] = corners[i];
       const [x2, z2] = corners[(i + 1) % 4];
-      pts.push(x1, top, z1, x2, top, z2);           // 顶面 4 条
-      pts.push(x1, bottom, z1, x2, bottom, z2);     // 底面 4 条
-      pts.push(x1, top, z1, x1, bottom, z1);        // 竖棱 4 条
+      pts.push(x1, top, z1, x2, top, z2);           // 顶面 4 条棱
     }
     const edgeMat = new THREE.LineBasicMaterial({
       color: new THREE.Color(config.atmosphere[this.atmosphereColorKey]),

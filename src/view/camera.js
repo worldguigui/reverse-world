@@ -224,18 +224,17 @@ export class CameraRig {
   }
 
   /**
-   * 复位视角：把「上」掰回正北，再飞回设置里的初始经纬度。
-   * 自由翻滚能把地平线转歪，这是唯一的回家路径；平面相机本来就是锁死的，
-   * 掰的是「屏幕上边朝北」这根方向。
+   * 复位视角：飞回形状的出厂落点，档位落回 1，「上」一路掰回正北。
+   * 自由翻滚能把地平线转歪，这是唯一的回家路径。全程补间，没有瞬时硬切：
+   *  - 落点由形状提供（getHomeLatLng：球体=配置经纬度、平板=板面中心）。
+   *    不能拿 home.target 反推经纬度——球体的 target 是原点，原点没有经纬度，
+   *    vec3ToLatLng 会算出 NaN 并把整个相机写废（画面静默全黑、档位冻结）；
+   *  - level: 1 让距离与视场角随档位插值平滑落定（档位 1 = 出厂视角）；
+   *  - up: WORLD_UP 让「上」随飞行一路掰回正北，位置、朝向、缩放一起动。
    */
   resetView() {
-    this.camera.up.copy(WORLD_UP);
-    this.camera.lookAt(this.controls.target);
-    this._setOptical(1); // 复位就是把镜头也拧回出厂视角，不能留着上一段的放大倍率
-    // 复位落点也走形状的出厂位姿：平板回到板面中心
-    const home = this.getShape().getHomePose(this.config, this._factoryDistance());
-    const { lat, lng } = this.getShape().pointToLatLng(home.target);
-    this.flyToLatLng(lat, lng, { distance: this._factoryDistance() });
+    const { lat, lng } = this.getShape().getHomeLatLng(this.config);
+    this.flyToLatLng(lat, lng, { level: 1, up: WORLD_UP });
   }
 
   /**
@@ -452,15 +451,18 @@ export class CameraRig {
    * @param {number} lng
    * @param {{ distance?: number, level?: number, duration?: number }} opts
    */
-  flyToLatLng(lat, lng, { distance = null, level = null, duration = 1400 } = {}) {
+  flyToLatLng(lat, lng, { distance = null, level = null, duration = 1400, up = null } = {}) {
     const c = this.camera;
     const shape = this.getShape();
-    if (shape.planarCamera) return this._flyPlanar(lat, lng, { distance, level, duration });
+    if (shape.planarCamera) return this._flyPlanar(lat, lng, { distance, level, duration, up });
     const fromPos = c.position.clone();
     const fromTarget = this.controls.target.clone();
     const fromDir = fromPos.clone().normalize(); // 弧线骨架：绕原点的方向
     const fromDist = fromPos.length();
     const fromLevel = this._level();
+    // up 目标（视角复位用）：给了一路插值过去，朝向随飞行平滑掰正，不做瞬时硬切。
+    // 朝向 = (位置, target, up) 的 lookAt 结果，up 归位后 Horizon 自然回正
+    const fromUp = up ? c.up.clone().normalize() : null;
     const toState = level != null ? this._levelToState(level) : null;
     // 落点位姿由形状给全（位置 + 视线目标点）。distance 语义 = 到 target 的距离，
     // 只给 distance 时按视野上下限夹一次（与旧行为一致）
@@ -472,10 +474,12 @@ export class CameraRig {
     const toPos = toPose.position;
     const toTarget = toPose.target;
     const toDist = toPos.length();
-    // 档位不同的两处，距离可能一样（都在最近档上），所以要连档位与 target 一起比
+    // 档位不同的两处，距离可能一样（都在最近档上），所以要连档位与 target 一起比；
+    // 给了 up 目标时，「上」没掰到位也算没到家
     const settled = fromPos.distanceTo(toPos) < 1e-6
       && fromTarget.distanceTo(toTarget) < 1e-6
-      && (!toState || Math.abs(fromLevel - toState.level) < 1e-6);
+      && (!toState || Math.abs(fromLevel - toState.level) < 1e-6)
+      && (!fromUp || fromUp.dot(up) > 0.9999);
     if (settled) return;
 
     const qIdentity = new THREE.Quaternion();
@@ -492,6 +496,7 @@ export class CameraRig {
         // 视线目标点一起过渡：球体恒为原点（零位移，与旧行为逐值一致），
         // 平板从原点滑到目标点——落地时相机真正朝向那个位置
         this.controls.target.lerpVectors(fromTarget, toTarget, k);
+        if (fromUp) c.up.lerpVectors(fromUp, up, k).normalize();
         // 摆好位置后再按当前档位落定距离与视场角（上面那个距离的插值会被它盖掉）。
         // 档位是乘法量：一路等比插过去，从哪一档起飞都是同样的收拢速度
         if (toState) this._applyLevel(fromLevel * Math.pow(toState.level / fromLevel, k));
@@ -504,12 +509,13 @@ export class CameraRig {
    * 相机锁死在正上方、屏幕上边始终朝北，不转任何方向。高度（净距）与视场角
    * 按档位一起落定，语义与球体的「落到哪一档」完全一致。
    */
-  _flyPlanar(lat, lng, { distance = null, level = null, duration = 1400 } = {}) {
+  _flyPlanar(lat, lng, { distance = null, level = null, duration = 1400, up = null } = {}) {
     const c = this.camera;
     const shape = this.getShape();
     const from = this.controls.target.clone();
     const fromH = c.position.distanceTo(from);
     const fromLevel = this._level();
+    const fromUp = up ? c.up.clone().normalize() : null;
     const toState = level != null ? this._levelToState(level) : null;
     const rawDist = THREE.MathUtils.clamp(
       distance ?? fromH,
@@ -518,22 +524,31 @@ export class CameraRig {
     const toPose = shape.getCameraPose(lat, lng, { distance: toState ? toState.distance : rawDist });
     const to = toPose.target;
     const toH = toPose.position.distanceTo(toPose.target); // 到 target 的距离（含倾角）
+    // 自由检视后相机可能不在锁定位姿上：记下真实起点，落位时从它一路融过去，
+    // 否则补间第一帧会瞬移到锁定位姿（「先突然来到一个位置，再转过去」）
+    const fromPosW = c.position.clone();
     const settled = from.distanceTo(to) < 1e-6
       && Math.abs(fromH - toH) < 1e-6
-      && (!toState || Math.abs(fromLevel - toState.level) < 1e-6);
+      && (!toState || Math.abs(fromLevel - toState.level) < 1e-6)
+      && (!fromUp || fromUp.dot(up) > 0.9999);
     if (settled) return;
 
-    c.up.copy(WORLD_UP); // 兜住形状切换瞬间的任意朝向
+    // 兜住形状切换瞬间的任意朝向：无 up 目标时立刻回正（原行为），
+    // 有 up 目标（视角复位）则在补间里一路插值，不做瞬时硬切
+    if (!fromUp) c.up.copy(WORLD_UP);
     this.tweens.add({
       tag: 'camera',
       duration,
       onUpdate: (k) => {
         const t = this.controls.target;
         t.lerpVectors(from, to, k);
+        if (fromUp) c.up.lerpVectors(fromUp, up, k).normalize();
         const h = THREE.MathUtils.lerp(fromH, toH, k);
         // 相机锁死在固定视角与当前方位角上，只随 target 平移；
-        // 给了档位再由 _applyLevel 落定距离与视场角（方向不变）
-        c.position.copy(this._planarPosition(t, h));
+        // 给了档位再由 _applyLevel 落定距离与视场角（方向不变）。
+        // 正常飞行时 fromPosW 与锁定位姿本就重合（lerp 同点 = 原样），
+        // 只有自由检视后的复位才看得出这个过渡
+        c.position.lerpVectors(fromPosW, this._planarPosition(t, h), k);
         if (toState) this._applyLevel(fromLevel * Math.pow(toState.level / fromLevel, k));
       },
     });

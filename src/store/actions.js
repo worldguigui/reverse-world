@@ -12,7 +12,7 @@ import {
 import { buildSampleProject } from '../core/sample.js';
 import { session } from '../session.js';
 import { timeYear } from '../core/datetime.js';
-import { pickFile } from '../utils/files.js';
+import { pickFile, readFileAsDataUrl } from '../utils/files.js';
 import { IMAGE_UPLOAD } from '../config.js';
 
 /** 工坊面板的打开方式由 main.js 在组装期注入（它需要拿三维句柄做实时预览） */
@@ -73,6 +73,7 @@ export const createActionsSlice = (set, get) => ({
           rmap.w = grid.w;
           rmap.h = grid.h;
           rmap.dataUrl = dataUrl;
+          delete rmap.maskDataUrl; // 换脸是全新地图，旧世界的透明边界不留
         } else {
           rmap = P.addRasterMap(p, { name: '真实地球', w: grid.w, h: grid.h, dataUrl });
           p.baseRasterId = rmap.id;
@@ -103,6 +104,8 @@ export const createActionsSlice = (set, get) => ({
    * 画笔改的是内存里的网格，必须重新编码回 PNG 才会被持久化。
    * size 是正方形笔刷的边长（格，按奇数处理）：1 只涂落点所在格，
    * 更大的奇数以该格为中心向四周展开；偶数向上取到相邻奇数。
+   * tool 除形态/上色四笔外还有边界笔 erase（挖透明洞）/ restore（回填）/
+   * reverse（范围内透明状态逐格反转），它们只写透明掩膜，高度与颜色一概不动。
    * color 只对 paint 笔有效；shadow 让 paint 按坡度给颜色叠明暗（只改亮度）；
    * reliefColor 是高度笔的基色。
    */
@@ -120,18 +123,58 @@ export const createActionsSlice = (set, get) => ({
     // 拿它去重绘颜色画布，省掉整张网格的全量重算
     let dirty = null;
     for (let i = 0; i < passes; i++) {
-      dirty = g.applyBrush(tool, cx, cy, size, strength, hard, color565, shadow);
+      dirty = tool === 'erase' || tool === 'restore' || tool === 'reverse'
+        ? g.applyMaskBrush(tool, cx, cy, size, hard)
+        : g.applyBrush(tool, cx, cy, size, strength, hard, color565, shadow);
     }
     g.renderColor(dirty);
     // 这里刻意不走 mutateProject：它会连 derived 快照一起重建，而 bridge 一见 derived
     // 变化就把路线/区域整层重做——内容一条没变，
     // 纯属白干。stats 不含地形像素，跳过重建不会让面板显示过期数据。
     const rmap = P.getRasterMap(p, p.baseRasterId);
-    if (rmap) rmap.dataUrl = g.encodePNG();
+    if (rmap) {
+      rmap.dataUrl = g.encodePNG();
+      // 掩膜随地形同步持久化；无洞就不留字段
+      if (g.hasHoles()) rmap.maskDataUrl = g.encodeMaskPNG();
+      else delete rmap.maskDataUrl;
+    }
     session.autosaver?.save(p);
     session.globe?.updateRasterTextures();
     get().touchLayout(); // 内容没变，只是地形变了 → 重新贴地
     return g.sample(lat, lng);
+  },
+
+  /**
+   * 导入外部透明边界掩膜（灰度 PNG：白=保留地形、黑=透明洞），直接覆盖现有边界。
+   * 掩膜不碰地形数据：高度、颜色、事件、路线、区域一概原样，只是「哪里显示」变了。
+   * 尺寸与地图不同时按最近邻对齐；导入后全不透明则视为清除掩膜。
+   */
+  async importTerrainMask(file) {
+    const p = get().project;
+    if (!p || !P.getRasterMap(p, p.baseRasterId)) {
+      get().toast('先有一张地图，再导入掩膜');
+      return;
+    }
+    const grid = session.currentGrid;
+    const rmap = P.getRasterMap(p, p.baseRasterId);
+    if (!grid || session.gridCache.get(rmap.id) !== grid) {
+      get().toast('地图尚未就绪，稍后再试');
+      return;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const hasHoles = grid.applyMaskPNG(dataUrl);
+      grid.renderColor();
+      // 与 paintTerrain 同一策略：直接改 rmap，不走 mutateProject（内容一条没变）
+      if (hasHoles) rmap.maskDataUrl = grid.encodeMaskPNG();
+      else delete rmap.maskDataUrl;
+      session.autosaver?.save(p);
+      // setRaster 重建纹理并重绑掩膜（洞只是显示问题，高度没变，内容不必重贴地）
+      session.globe?.setRaster(grid);
+      get().toast(hasHoles ? '透明边界已更新' : '掩膜全不透明，已视为清除');
+    } catch (err) {
+      get().toast(`掩膜导入失败：${err.message}`);
+    }
   },
 
   // ---------------------------------------------------------------- 项目载入

@@ -3,9 +3,10 @@ import { useStore } from '../../store/index.js';
 import * as W from '../workshop-session.js';
 
 /**
- * 地形工具箱按用途分成七块：形态、颜色、阴影、实时预览、颜色盘、地图操作、画布交互。
- * 形态与颜色是笔刷，阴影/预览/颜色盘是设置，地图操作是命令，画布交互只是快捷键说明。
+ * 地形工具箱按用途分成八块：形态、颜色、阴影、边界、实时预览、颜色盘、地图操作、画布交互。
+ * 形态与颜色是笔刷，阴影/边界/预览/颜色盘是设置，地图操作是命令，画布交互只是快捷键说明。
  * 笔刷统一是正方形，边长恒为奇数：1 格只涂指针所在格，更大的以该格为中心对称展开。
+ * 边界笔（擦除/恢复）只写透明掩膜：地形有效范围（挖洞 / 回填），高度颜色一概不碰。
  */
 const SHAPE_TOOLS = [
   ['raise', '抬升', '点一下让一个区域变高'],
@@ -13,12 +14,21 @@ const SHAPE_TOOLS = [
   ['smooth', '抹平', '把陡的区域磨平'],
 ];
 
+const BOUNDARY_TOOLS = [
+  ['erase', '擦除', '让区域变得透明'],
+  ['restore', '恢复', '让区域变得不透明'],
+  ['reverse', '反转', '反转区域的透明状态'],
+];
+
 /**
  * 画布本身是网格自带的节点，塞进来后按「一格一 CSS 像素」摆好，缩放交给 transform。
  * 尺寸由 workshop-session 在 attachCanvas 时写死（跟着网格分辨率走），这里只管定位与像素感。
+ * 画布背景是棋盘格：透明掩膜挖出的洞写进 alpha（0），透明像素露出棋盘格——
+ * 「这里没有地形」的通用语义；无掩膜时画布全不透明，棋盘格根本看不见。
  */
 const CANVAS_STYLE = 'position:absolute;left:0;top:0;transform-origin:0 0;'
-  + 'image-rendering:pixelated;cursor:crosshair;background:#000;touch-action:none;display:block;';
+  + 'image-rendering:pixelated;cursor:crosshair;touch-action:none;display:block;'
+  + 'background:repeating-conic-gradient(#141210 0% 25%, #26221e 0% 50%) 0 0 / 16px 16px;';
 
 /**
  * 当前颜色行：排版与颜色盘一致，左侧色块、中间名称、右侧箭头。
@@ -140,7 +150,9 @@ export function Workshop({ container, preview }) {
   const canRedo = useStore((s) => s.canRedo);
   const zoom = useStore((s) => s.workshopZoom);
   const showOverlay = useStore((s) => s.workshopShowOverlay);
+  const showMask = useStore((s) => s.workshopShowMask);
   const shapeType = useStore((s) => s.project?.shape?.type ?? 'sphere');
+  const setProjectShape = useStore((s) => s.setProjectShape);
   const setWorkshopBrush = useStore((s) => s.setWorkshopBrush);
   const [generating, setGenerating] = useState(false);
   // 载入真实地球失败的原因。显示在按钮下方而不是弹窗：工坊是全屏层，
@@ -155,7 +167,9 @@ export function Workshop({ container, preview }) {
   const sizeMax = W.brushSizeMax();
   const clampedSize = Math.min(storedSize, sizeMax);
   const size = clampedSize % 2 === 1 ? clampedSize : clampedSize + 1;
-  const isHeightTool = tool !== 'paint';
+  // 形态笔显示「厚度」；边界笔与形态笔共用「硬笔/软笔」（软笔按衰减≥0.5 落界）
+  const isHeightTool = tool === 'raise' || tool === 'lower' || tool === 'smooth';
+  const isMaskTool = tool === 'erase' || tool === 'restore';
 
   // 容器常驻 DOM，只切 .hidden——不卸载，E2E 与样式都按这个来。
   // 这一步必须排在下面挂画布之前：容器还 display:none 时量不出尺寸，算不出适应窗口的比例。
@@ -201,6 +215,9 @@ export function Workshop({ container, preview }) {
 
   // 路线/区域参考层由 attachCanvas 建好：开关只切显隐，打开时补画一次
   useEffect(() => { if (open) W.syncOverlayView(); }, [showOverlay, open]);
+
+  // 掩膜预览层同理：开关只切显隐，打开时补画一次
+  useEffect(() => { if (open) W.syncMaskView(); }, [showMask, open]);
 
   // 快捷键：Esc 取消，Ctrl+Z / Ctrl+Y 撤销重做。
   // 真实地球还在下载时不能取消：此时关掉会话会让下载结果落空，也让“生成中”的按钮无处可归。
@@ -314,29 +331,29 @@ export function Workshop({ container, preview }) {
             </label>
 
             {isHeightTool && (
-              <>
-                <label className="wk-slider">
-                  <span className="wk-slider-head">
-                    <span className="wk-field-label">厚度</span>
-                    <b>{Math.round(strength * 100)}%</b>
-                  </span>
-                  <input
-                    type="range"
-                    min={1}
-                    max={400}
-                    value={Math.round(strength * 100)}
-                    title="高度笔每落一笔改变的高度"
-                    onChange={(e) => setWorkshopBrush({ workshopStrength: +e.target.value / 100 })}
-                  />
-                </label>
+              <label className="wk-slider">
+                <span className="wk-slider-head">
+                  <span className="wk-field-label">厚度</span>
+                  <b>{Math.round(strength * 100)}%</b>
+                </span>
+                <input
+                  type="range"
+                  min={1}
+                  max={400}
+                  value={Math.round(strength * 100)}
+                  title="高度笔每落一笔改变的高度"
+                  onChange={(e) => setWorkshopBrush({ workshopStrength: +e.target.value / 100 })}
+                />
+              </label>
+            )}
 
-                <button
-                  className={`wk-tool${hard ? ' active' : ''}`}
-                  onClick={() => setWorkshopBrush({ workshopHard: !hard })}
-                >
-                  {hard ? '硬笔（无扩散）' : '软笔（高斯）'}
-                </button>
-              </>
+            {(isHeightTool || isMaskTool) && (
+              <button
+                className={`wk-tool${hard ? ' active' : ''}`}
+                onClick={() => setWorkshopBrush({ workshopHard: !hard })}
+              >
+                {hard ? '硬笔（无扩散）' : '软笔（高斯）'}
+              </button>
             )}
           </Section>
 
@@ -346,6 +363,28 @@ export function Workshop({ container, preview }) {
               checked={paintShadow}
               title="开启后，上色时会按当前地形给所选颜色叠明暗"
               onChange={(checked) => setWorkshopBrush({ workshopPaintShadow: checked })}
+            />
+          </Section>
+
+          <Section title="边界" note="地形有效范围">
+            <div className="wk-toolgrid">
+              {BOUNDARY_TOOLS.map(([id, label, tip]) => (
+                <button
+                  key={id}
+                  className={`wk-tool${tool === id ? ' active' : ''}`}
+                  aria-pressed={tool === id}
+                  title={tip}
+                  onClick={() => setWorkshopBrush({ workshopTool: id })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <ToggleRow
+              label="掩膜预览"
+              checked={showMask}
+              title="在画布上叠一层黑白掩膜：白=保留地形，黑=透明洞"
+              onChange={(checked) => setWorkshopBrush({ workshopShowMask: checked })}
             />
           </Section>
 
@@ -445,22 +484,6 @@ export function Workshop({ container, preview }) {
         <div className="wk-canvas-wrap">
           {/* 画布绝对定位在 .wk-stage 里，靠 transform 缩放；外层只管边框与裁切 */}
           <div className="wk-stage" ref={wrapRef} />
-
-          {/* 平板世界的画布语义：四缘不是「地图边界」而是世界的断面。
-              贴边画的大陆在球体上是绕过去，在平板上会被断面截开——画的时候提醒一句 */}
-          {shapeType === 'slab' && (
-            <p
-              className="wk-dim"
-              style={{
-                position: 'absolute', left: '50%', bottom: 8, transform: 'translateX(-50%)',
-                margin: 0, padding: '4px 12px', pointerEvents: 'none', zIndex: 1,
-                background: 'rgba(13, 12, 11, 0.72)', borderRadius: 6, whiteSpace: 'nowrap',
-              }}
-            >
-              平板世界：画布四缘即世界的断面，贴边的大陆会被断面截开
-            </p>
-          )}
-
           {/* 主渲染画布在打开预览时会被搬进这里；尺寸由 main.js 量取后同步给渲染器 */}
           {previewOn && (
             <div className={`wk-preview${previewBig ? ' big' : ''}`}>
@@ -471,6 +494,15 @@ export function Workshop({ container, preview }) {
                 aria-label="地形实时预览"
               />
               <div className="wk-preview-tools">
+                <button
+                  type="button"
+                  className="wk-preview-btn"
+                  title={`切换世界形状为${shapeType === 'sphere' ? '平板' : '球体'}`}
+                  disabled={generating}
+                  onClick={() => setProjectShape(shapeType === 'sphere' ? 'slab' : 'sphere')}
+                >
+                  {shapeType === 'sphere' ? '▭' : '○ '}
+                </button>
                 <button
                   type="button"
                   className="wk-preview-btn"

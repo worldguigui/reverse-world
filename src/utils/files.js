@@ -114,3 +114,16 @@ export function pickFile(accept) {
     input.click();
   });
 }
+
+/**
+ * 把文件原样读成 dataURL：不经图片压缩与降采样，逐字节保真。
+ * 掩膜是数据不是配图——每个像素的亮暗都决定一块地形去留，走 fileToDataUrl 会失真。
+ */
+export function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('读取文件失败'));
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(file);
+  });
+}

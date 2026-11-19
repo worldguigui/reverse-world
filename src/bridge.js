@@ -32,10 +32,16 @@ export function initBridge() {
   subscribe((s) => s.toasts, () => renderToast());
 }
 
-/** 解码并缓存地图（同一张只解码一次，工坊编辑后会回填） */
+/** 解码并缓存地图（同一张只解码一次，工坊编辑后会回填）；透明掩膜跟着一起解码 */
 export async function getGridCached(rmap) {
   if (session.gridCache.has(rmap.id)) return session.gridCache.get(rmap.id);
   const grid = await TerrainGrid.fromPNG(rmap.dataUrl);
+  if (rmap.maskDataUrl) {
+    grid.applyMaskPNG(rmap.maskDataUrl);
+    // fromPNG 内部的 renderColor 发生在掩膜就位之前（当时 mask 还是 null，
+    // 颜色画布 alpha 全 255），必须重绘一次把洞写进画布，否则透明全部失效
+    grid.renderColor();
+  }
   session.gridCache.set(rmap.id, grid);
   return grid;
 }

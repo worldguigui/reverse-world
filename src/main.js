@@ -208,6 +208,7 @@ async function main() {
           onCommit(g) {
             const st = store.getState();
             const png = g.encodePNG();
+            const maskPng = g.hasHoles() ? g.encodeMaskPNG() : null;
             // 工坊打开期间项目可能已被替换（例如键盘或脚本触发换世界）：
             // 会话里的网格属于旧世界，绝不能再把旧地形写进去。
             // 项目对象只在换世界时被替换，普通编辑都原地改，所以引用比较就能认出换档；
@@ -225,9 +226,15 @@ async function main() {
             st.mutateProject((proj) => {
               let rmapId = binding?.rmapId;
               if (rmapId) {
-                P.getRasterMap(proj, rmapId).dataUrl = png;
+                const rmap = P.getRasterMap(proj, rmapId);
+                rmap.dataUrl = png;
+                if (maskPng) rmap.maskDataUrl = maskPng;
+                else delete rmap.maskDataUrl;
               } else {
-                rmapId = P.addRasterMap(proj, { name: '地图', w: g.w, h: g.h, dataUrl: png }).id;
+                rmapId = P.addRasterMap(proj, {
+                  name: '地图', w: g.w, h: g.h, dataUrl: png,
+                  maskDataUrl: maskPng ?? undefined,
+                }).id;
                 proj.baseRasterId = rmapId;
               }
               // 刚编好的网格就在手上，直接回填缓存：下次打开工坊或贴地都不必再解一次 PNG
@@ -309,10 +316,14 @@ async function main() {
   function pickAt(ndcVec) {
     raycaster.setFromCamera(ndcVec, camera);
     // 路线画在区域之上（半径更高），拾取也按同一顺序：否则整条河落在一个国家里时，
-    // 点河永远先命中那大片区域，只能从区域外露出来的那截河选中
-    const routeId = routes.pick(raycaster, camera.position);
+    // 点河永远先命中那大片区域，只能从区域外露出来的那截河选中。
+    // 「与相机同侧」的背面筛除是球体专属（原点球的背面点积为负）；平板是一张纸
+    // 没有背面，平面上的点与相机位置的点积没有符号语义（北半张图恒为负，
+    // 相机拉远后 z 分量占优，北半张图的区域会被误杀到永远选不中），故不传筛除条件
+    const camPos = globe.shape.planarCamera ? null : camera.position;
+    const routeId = routes.pick(raycaster, camPos);
     if (routeId) return { kind: 'route', id: routeId };
-    const regionId = regions.pick(raycaster, camera.position);
+    const regionId = regions.pick(raycaster, camPos);
     if (regionId) return { kind: 'region', id: regionId };
     return null;
   }

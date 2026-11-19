@@ -11,6 +11,8 @@
  * 边长总是奇数，因此恒有中心格：以指针所在格为中心向四周对称展开，
  * 边长 1 只落指针所在的那一格。
  * PNG 编码：R+G 打包 16-bit 高度，B+A 打包 RGB565 颜色。
+ * 透明边界不进地形 PNG：它是一张独立的灰度掩膜（白=保留、黑=透明洞），
+ * 存在 rasterMap 的 maskDataUrl 里；高度、颜色两通道对它一无所知。
  * 颜色在 alpha 通道里，而 canvas 会预乘 alpha、破坏低位数据，所以 PNG 编解码
  * 都直接走字节，不经过 canvas（见 core/png.js）；球面高度纹理画布也让 alpha
  * 固定为 255，避免颜色低位把 R/G 高度一起乘坏。
@@ -43,6 +45,10 @@ export class TerrainGrid {
     this.h = h;
     this.height = new Float32Array(w * h);
     this.color = new Uint16Array(w * h); // RGB565
+    // 透明掩膜：255 = 不透明（保留地形），0 = 透明洞。null = 全不透明（缺省，
+    // 旧地图零开销）；只在第一次挖洞 / 导入掩膜时才分配。掩膜只决定「挖不挖」，
+    // 与高度、颜色完全解耦——洞下的高度颜色照常采样，事件路线区域的逻辑不受影响。
+    this.mask = null;
     this.colorCanvas = document.createElement('canvas');
     this.colorCanvas.width = w;
     this.colorCanvas.height = h;
@@ -131,6 +137,45 @@ export class TerrainGrid {
     // 一半新、一半旧的邻居高度，坡面颜色随扫描方向偏。
     // 重着色范围与画笔矩形完全相同，画笔不会碰它没选中的格子。
     if (heightKind) this._recolorHeightArea(x0, y0, x1, y1, color);
+    return [x0, y0, x1 - x0 + 1, y1 - y0 + 1];
+  }
+
+  /**
+   * 边界笔：只写透明掩膜，不碰高度与颜色。
+   *   erase   → 挖洞（掩膜置 0，地形在该处透明）
+   *   restore → 回填（掩膜置 255，恢复显示）
+   *   reverse → 反转（笔刷范围内的透明状态逐格翻转，保留地 ↔ 洞互换）
+   * 矩形/奇数边长/软硬笔规则与 applyBrush 完全同一套；软笔以衰减 ≥0.5 为界，
+   * 挖出来的仍是一刀切的硬边——掩膜没有半透明。
+   * 首次落笔时才分配掩膜（全 255 起步；reverse 落在无掩膜网格上等同 erase）。
+   * @returns {[x,y,w,h]|null} 受影响矩形（渲染脏区）
+   */
+  applyMaskBrush(kind, cx, cy, size, hard = false) {
+    if (kind !== 'erase' && kind !== 'restore' && kind !== 'reverse') return null;
+    const rounded = Math.max(1, Math.round(size));
+    const side = rounded % 2 === 1 ? rounded : rounded + 1;
+    const anchorX = Math.floor(cx);
+    const anchorY = Math.floor(cy);
+    const before = (side - 1) / 2;
+    const x0 = Math.max(0, anchorX - before);
+    const y0 = Math.max(0, anchorY - before);
+    const x1 = Math.min(this.w - 1, anchorX + before);
+    const y1 = Math.min(this.h - 1, anchorY + before);
+    if (x1 < x0 || y1 < y0) return null;
+    // 完全落空的不分配：掩膜 2MB，别为一笔画在画布外的空枪买单
+    if (!this.mask) this.mask = new Uint8Array(this.w * this.h).fill(255);
+    const half = side / 2;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const edge = Math.min(x - x0 + 0.5, x1 - x + 0.5, y - y0 + 0.5, y1 - y + 0.5);
+        const fall = hard ? 1 : Math.exp(-4.5 * (1 - Math.min(1, edge / half)) ** 2);
+        if (fall < 0.5) continue;
+        const i = this.idx(x, y);
+        this.mask[i] = kind === 'erase' ? 0
+          : kind === 'restore' ? 255
+          : (this.mask[i] === 0 ? 255 : 0);
+      }
+    }
     return [x0, y0, x1 - x0 + 1, y1 - y0 + 1];
   }
 
@@ -266,7 +311,10 @@ export class TerrainGrid {
         data[o] = (r5 << 3) | (r5 >>> 2);
         data[o + 1] = (g6 << 2) | (g6 >>> 4);
         data[o + 2] = (b5 << 3) | (b5 >>> 2);
-        data[o + 3] = 255;
+        // alpha 携带透明掩膜（0/255 二值）：工坊画布靠它露出棋盘格，
+        // 球面靠它 + alphaTest 一刀切挖洞。洞里的 RGB 会被 canvas 预乘成 0，
+        // 但那些片元本来就被裁掉；上传纹理时按非预乘解读（见 globe.js）。
+        data[o + 3] = this.mask ? this.mask[i] : 255;
 
         // 高度纹理画布：R+G=16-bit 高度，clamp 到编码可逆范围仅在这一步。
         // alpha 固定 255，保证 canvas 的原样上传；颜色只写进 PNG 字节。
@@ -319,7 +367,7 @@ export class TerrainGrid {
     );
   }
 
-  /** 双线性重采样到新分辨率；颜色在 RGB565 的各通道上插值 */
+  /** 双线性重采样到新分辨率；颜色在 RGB565 的各通道上插值，掩膜按最近邻传播（二值场不插值） */
   resample(newW, newH) {
     const next = new TerrainGrid(newW, newH);
     for (let y = 0; y < newH; y++) {
@@ -329,6 +377,12 @@ export class TerrainGrid {
         const i = y * newW + x;
         next.height[i] = bilinearArray(this.height, this.w, this.h, gx, gy);
         next.color[i] = bilinearColor565(this.color, this.w, this.h, gx, gy);
+        if (this.mask) {
+          const sx = clampI(Math.round(gx), 0, this.w - 1);
+          const sy = clampI(Math.round(gy), 0, this.h - 1);
+          next.mask = next.mask ?? new Uint8Array(newW * newH).fill(255);
+          next.mask[i] = this.mask[sy * this.w + sx];
+        }
       }
     }
     next.renderColor();
@@ -339,6 +393,7 @@ export class TerrainGrid {
     const g = new TerrainGrid(this.w, this.h);
     g.height.set(this.height);
     g.color.set(this.color);
+    if (this.mask) g.mask = new Uint8Array(this.mask);
     g.renderColor();
     return g;
   }
@@ -348,6 +403,8 @@ export class TerrainGrid {
     const src = (other.w !== this.w || other.h !== this.h) ? other.resample(this.w, this.h) : other;
     this.height.set(src.height);
     this.color.set(src.color);
+    // 掩膜跟着源走：真实地球这类没有掩膜的原料会把旧边界一并清掉
+    this.mask = src.mask ? new Uint8Array(src.mask) : null;
     this.renderColor();
   }
 
@@ -381,6 +438,60 @@ export class TerrainGrid {
     }
     grid.renderColor();
     return grid;
+  }
+
+  // ---------------------------------------------------------------- 透明掩膜
+
+  /** 是否存在透明洞（存档与预览据此决定要不要背掩膜数据） */
+  hasHoles() {
+    return !!this.mask && this.mask.includes(0);
+  }
+
+  /**
+   * 编码透明掩膜为 PNG dataURL。灰度图：白 = 保留地形，黑 = 透明洞，
+   * 任何图像编辑器都能画；alpha 通道不承载语义（恒 255）。
+   * 无掩膜时编出一张纯白图（调用方应先用 hasHoles() 判断，避免白白背一张 PNG）。
+   */
+  encodeMaskPNG() {
+    const n = this.w * this.h;
+    const rgba = new Uint8Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      const v = this.mask ? this.mask[i] : 255;
+      const o = i * 4;
+      rgba[o] = v;
+      rgba[o + 1] = v;
+      rgba[o + 2] = v;
+      rgba[o + 3] = 255;
+    }
+    return encodePngRgba(this.w, this.h, rgba);
+  }
+
+  /**
+   * 从掩膜 PNG dataURL 读入透明边界，就地替换现有掩膜。
+   * 白（亮）= 不透明、黑（暗）= 透明洞；alpha 低于 128 也算洞——
+   * 外部作者用橡皮擦出的透明像素同样认账。尺寸与网格不同时按最近邻对齐。
+   * 全图不透明时把掩膜置回 null：省一份 2MB 数组，存档也不再背纯白 PNG。
+   * @returns {boolean} 是否真的存在洞
+   */
+  applyMaskPNG(dataUrl) {
+    const img = decodePngRgba(dataUrl);
+    const { width: sw, height: sh, data } = img;
+    const mask = new Uint8Array(this.w * this.h).fill(255);
+    let holes = 0;
+    for (let y = 0; y < this.h; y++) {
+      const sy = clampI(Math.floor(((y + 0.5) / this.h) * sh), 0, sh - 1);
+      for (let x = 0; x < this.w; x++) {
+        const sx = clampI(Math.floor(((x + 0.5) / this.w) * sw), 0, sw - 1);
+        const o = (sy * sw + sx) * 4;
+        const lum = (data[o] + data[o + 1] + data[o + 2]) / 3;
+        if (data[o + 3] < 128 || lum < 128) {
+          mask[y * this.w + x] = 0;
+          holes++;
+        }
+      }
+    }
+    this.mask = holes ? mask : null;
+    return holes > 0;
   }
 }
 

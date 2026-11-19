@@ -127,8 +127,11 @@ export class SphereShape extends WorldShape {
   /**
    * GPU 地形位移：高度纹理（R+G 打包 16-bit）双线性采样，沿径向位移顶点，
    * 法线用邻域差分扰动。uniforms 由 Globe 持有，这里只挂进着色器程序。
+   * 单面渲染：内壁不渲染，洞里是暗的空腔（产品语义，试过点亮内壁，观感怪，废弃）。
+   * 显式声明 side：形状切换时材质复用，slab 的 DoubleSide 不能残留到球体。
    */
   patchBodyMaterial(mat, { uniforms }) {
+    mat.side = THREE.FrontSide;
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uHeightTex = uniforms.uHeightTex;
       shader.uniforms.uExaggeration = uniforms.uExaggeration;
@@ -225,7 +228,7 @@ export class SphereShape extends WorldShape {
    * 外圈辉光：放大球 + BackSide + 加法混合，只在地平线边缘露出光环；
    * 地表薄雾：FrontSide 菲涅尔。都是球体专属效果，平板没有对应物。
    */
-  buildAtmosphere(group, config) {
+  buildAtmosphere(group, config, raster = {}) {
     const atmoMat = new THREE.ShaderMaterial({
       uniforms: {
         uColor: { value: new THREE.Color(config.atmosphere[this.atmosphereColorKey]) },
@@ -234,18 +237,37 @@ export class SphereShape extends WorldShape {
       },
       vertexShader: /* glsl */ `
         varying vec3 vNormal;
+        varying vec3 vWorldPos;
         void main() {
           vNormal = normalize(normalMatrix * normal);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          vWorldPos = wp.xyz;
+          gl_Position = projectionMatrix * viewMatrix * wp;
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uColor;
         uniform float uStrength;
         uniform float uPower;
         varying vec3 vNormal;
+        varying vec3 vWorldPos;
         void main() {
+          // 原版实现：远端内壁片元的法线恰好指向视线方向，view 空间里
+          // d ≈ +1，rim 饱和——整个远端内壁渲染成一颗亮蓝光球，透过挖洞
+          // 与海洋透镜可见；轮廓外因深度衰减自然成环。
           float d = clamp(dot(normalize(vNormal), vec3(0.0, 0.0, -1.0)), 0.0, 1.0);
           float rim = pow(d * 1.9, uPower);
+          // 眼球分层：以「视线到球心最近距离 p」为横坐标的三道同心暗带，
+          // 把光球分成四层（瞳心 / 内环 / 中环 / 外环）。分层带全部在
+          // p < 0.86 < 地形轮廓内，轮廓外的辉光环与常态画面零影响。
+          vec3 ro = cameraPosition;
+          vec3 rd = normalize(vWorldPos - cameraPosition);
+          float b = dot(ro, rd);
+          float p = sqrt(max(dot(ro, ro) - b * b, 0.0));
+          float layers = 1.0
+            - 0.28 * smoothstep(0.16, 0.24, p) * (1.0 - smoothstep(0.30, 0.38, p))
+            - 0.20 * smoothstep(0.42, 0.50, p) * (1.0 - smoothstep(0.56, 0.64, p))
+            - 0.14 * smoothstep(0.66, 0.74, p) * (1.0 - smoothstep(0.80, 0.88, p));
+          rim *= layers;
           gl_FragColor = vec4(uColor * rim * uStrength, 1.0);
         }`,
       side: THREE.BackSide,
@@ -260,27 +282,55 @@ export class SphereShape extends WorldShape {
       hazeMesh: null,
     };
 
-    // 地表薄雾：FrontSide 菲涅尔
+    // 地表薄雾：FrontSide 菲涅尔，随地形起伏贴合地表（几何半径 1.004 的余量 +
+    // 高度位移）。固定半径的雾壳会被抬高的地形整个埋掉（全陆地时雾层直接消失），
+    // 所以顶点采样同一张高度纹理做同源位移，永远浮在地表上方一线；
+    // 挖掉地形的地方靠颜色贴图的直通 alpha 一刀切开，与顶面/遮挡代理同一套掩膜语义
     const hazeMat = new THREE.ShaderMaterial({
       uniforms: {
         uColor: { value: new THREE.Color(config.atmosphere[this.atmosphereColorKey]) },
         uStrength: { value: config.atmosphere.strength * 0.3 },
+        uHeightTex: raster.uHeightTex ?? { value: null },
+        uExaggeration: raster.uExaggeration ?? { value: 1 },
+        uColorTex: raster.uColorTex ?? { value: null },
       },
       vertexShader: /* glsl */ `
+        uniform sampler2D uHeightTex;
+        uniform float uExaggeration;
         varying vec3 vNormal;
         varying vec3 vViewDir;
+        varying vec3 vWorldPos;
+        varying vec2 vUv;
+        float unpackHeightHaze(vec2 rg) {
+          float u16 = dot(floor(rg * 255.0 + 0.5), vec2(256.0, 1.0));
+          return (u16 / 65535.0) * 8.0 - 4.0;
+        }
+        vec2 heightUvHaze(vec2 baseUv) {
+          float pole = max(smoothstep(0.999, 1.0, baseUv.y), smoothstep(0.999, 1.0, 1.0 - baseUv.y));
+          return vec2(mix(baseUv.x, 0.5, pole), baseUv.y);
+        }
         void main() {
           vNormal = normalize(normalMatrix * normal);
+          vUv = uv;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           vViewDir = normalize(-mv.xyz);
-          gl_Position = projectionMatrix * mv;
+          // 沿径向做与地形同源的高度位移：雾壳始终浮在地表上方
+          float hC = unpackHeightHaze(texture2D(uHeightTex, heightUvHaze(uv)).rg);
+          vec3 displaced = position + normalize(position) * hC * uExaggeration;
+          vWorldPos = (modelMatrix * vec4(displaced, 1.0)).xyz;
+          gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(displaced, 1.0);
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uColor;
         uniform float uStrength;
+        uniform sampler2D uColorTex;
         varying vec3 vNormal;
         varying vec3 vViewDir;
+        varying vec3 vWorldPos;
+        varying vec2 vUv;
         void main() {
+          // 透明掩膜挖掉地形的地方，雾也一起切开（直通 alpha，与顶面同一判据）
+          if (texture2D(uColorTex, vUv).a < 0.5) discard;
           float fresnel = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewDir)), 0.0, 1.0), 2.6);
           gl_FragColor = vec4(uColor * fresnel * uStrength, 1.0);
         }`,

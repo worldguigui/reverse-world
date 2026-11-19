@@ -26,7 +26,7 @@ export function createProject({ name = '未命名世界', description = '' } = {
     // 舞台：球自己的那张脸，与时间无关，最多一张
     baseRasterId: null, // 地图 id（工坊可编辑的那种），空 = 深色空球
     shape: { type: 'sphere' }, // 世界形状：sphere（球）| slab（平板）。舞台属性，与时间无关
-    rasterMaps: [], // { id, name, w, h, dataUrl } 地图（R+G=高度、B+A=RGB565 颜色）
+    rasterMaps: [], // { id, name, w, h, dataUrl, maskDataUrl? } 地图（R+G=高度、B+A=RGB565 颜色；maskDataUrl=透明边界灰度掩膜，白=保留、黑=透明洞）
     events: [],     // { id, title, description, image, lat, lng, from, to, tags, characters } 事件
                     //   from / to 是 Y…YMDHMS 时间串或 null；空格后是备注
                     //   lat / lng 为空 = 纯叙事事件：不上球、不渲染标注，只进编年史
@@ -149,6 +149,11 @@ export function normalizeProject(raw) {
       w: m.w,
       h: m.h,
       dataUrl: needString(m.dataUrl, `${what}.dataUrl`),
+      // 透明边界掩膜（灰度 PNG dataURL，白=保留、黑=透明洞）。
+      // 后加的字段：旧文件里没有，缺省即全不透明，与 shape 缺键兜底同一先例
+      ...(m.maskDataUrl != null
+        ? { maskDataUrl: needString(m.maskDataUrl, `${what}.maskDataUrl`) }
+        : {}),
     };
   });
   // 球只有一张脸：只留 baseRasterId 指向的那张。
@@ -271,9 +276,10 @@ export function getItem(project, kind, id) {
 
 // ---------------------------------------------------------------- 舞台
 
-/** 地图：PNG 里 R+G 是 16 位高度、B+A 是 RGB565 颜色 */
-export function addRasterMap(project, { name = '地图', w, h, dataUrl }) {
+/** 地图：PNG 里 R+G 是 16 位高度、B+A 是 RGB565 颜色；maskDataUrl 是可选的透明边界掩膜 */
+export function addRasterMap(project, { name = '地图', w, h, dataUrl, maskDataUrl = undefined }) {
   const map = { id: uid('rm'), name, w, h, dataUrl };
+  if (maskDataUrl != null) map.maskDataUrl = maskDataUrl;
   project.rasterMaps.push(map);
   return map;
 }

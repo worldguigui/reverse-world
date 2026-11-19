@@ -222,14 +222,26 @@ export class WorldShape {
   }
 
   /**
-   * 出厂位姿（初始载入 / 形状落位 / 视角复位的落点）。
-   * 球体 = 设置里的经纬度；平板 = 板面中心——切换到平板时板心位于画面中心。
+   * 出厂落点的经纬度：球体 = 设置里的经纬度（出厂朝向）。
+   * 视角复位要靠它算飞行终点——不能拿 home.target 反推经纬度：球体的
+   * home.target 是原点，原点没有经纬度，反推会得到 NaN 并写废整个相机
+   * （画面静默全黑、档位冻结）。
    * @param {{ lat:number, lon:number }} config config.camera（也容忍整个 viewConfig）
+   * @returns {{ lat:number, lng:number }}
+   */
+  getHomeLatLng(config) {
+    const cam = config.camera ?? config;
+    return { lat: cam.lat, lng: cam.lon };
+  }
+
+  /**
+   * 出厂位姿（初始载入 / 形状落位 / 视角复位的落点）。
+   * 球体 = 设置里的经纬度；平板覆写 getHomeLatLng 回报板面中心。
    * @returns {{ position: THREE.Vector3, target: THREE.Vector3 }}
    */
   getHomePose(config, distance) {
-    const cam = config.camera ?? config;
-    return this.getCameraPose(cam.lat, cam.lon, { distance });
+    const { lat, lng } = this.getHomeLatLng(config);
+    return this.getCameraPose(lat, lng, { distance });
   }
 
   // ---------------------------------------------------------- 渲染工厂
@@ -249,15 +261,6 @@ export class WorldShape {
   buildStaticMeshes() {
     return [];
   }
-
-  /**
-   * 栅格变化后刷新形状的静态附属（平板：侧壁断面纹理重绑定）。
-   * 在 Globe.setRaster 末尾调用；base 无操作。只换纹理内容，不重建几何。
-   * @param {object} grid TerrainGrid
-   * @param {THREE.Texture} map 顶面正在使用的颜色纹理（侧壁直接共享它，接缝由构造保证）
-   */
-  // eslint-disable-next-line no-unused-vars
-  updateFrame(grid, map) {}
 
   /**
    * 给主体材质注入位移/法线 shader。uniforms 里的三个共享量由 Globe 持有

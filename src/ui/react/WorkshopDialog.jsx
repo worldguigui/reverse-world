@@ -45,9 +45,9 @@ export function WorkshopDialog({ onClose }) {
   const [preview, setPreview] = useState(null); // dataURL，可不选
   const [includeRaster, setIncludeRaster] = useState(Boolean(project?.rasterMaps?.length));
 
-  // 底图是体积大头，随勾选状态实时给出估算，让人知道勾上要传多大
+  // 底图是体积大头，随勾选状态实时给出估算，让人知道勾上要传多大（掩膜很小，一并计入）
   const rasterBytes = useMemo(() => (project?.rasterMaps ?? [])
-    .reduce((sum, m) => sum + dataUrlBytes(m.dataUrl), 0), [project]);
+    .reduce((sum, m) => sum + dataUrlBytes(m.dataUrl) + dataUrlBytes(m.maskDataUrl), 0), [project]);
 
   const loadList = async () => {
     setItems(null);

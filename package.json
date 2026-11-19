@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "server": "node server/index.js",
     "verify:shapes": "node scripts/verify-shapes.mjs",
-    "verify:zoom": "node scripts/verify-zoom-rig.mjs"
+    "verify:zoom": "node scripts/verify-zoom-rig.mjs",
+    "verify:mask": "node scripts/verify-mask.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.3",

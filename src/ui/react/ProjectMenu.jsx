@@ -12,6 +12,7 @@ export function ProjectMenu({ onClose, onWorkshop }) {
   const exportProject = useStore((s) => s.exportProject);
   const openWorkshop = useStore((s) => s.openWorkshop);
   const generateRealEarth = useStore((s) => s.generateRealEarth);
+  const importTerrainMask = useStore((s) => s.importTerrainMask);
   const openOverview = useStore((s) => s.openOverview);
   const setMode = useStore((s) => s.setMode);
 
@@ -27,6 +28,7 @@ export function ProjectMenu({ onClose, onWorkshop }) {
       <div className="menu-sep" />
       {item('地图工坊', () => openWorkshop())}
       {item('真实地球地图', () => generateRealEarth())}
+      {item('导入外部掩膜', () => pickFile('image/png,image/*').then((f) => f && importTerrainMask(f)))}
       <div className="menu-sep" />
       {item('导入项目 (.world.json)', () => pickFile('.json,application/json').then((f) => f && importFile(f)))}
       {item('导出项目', exportProject)}
